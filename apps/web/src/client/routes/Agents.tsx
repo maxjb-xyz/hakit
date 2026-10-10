@@ -259,7 +259,7 @@ function SessionCard(props: {
         <Button
           size="sm"
           variant={props.selected ? 'secondary' : 'ghost'}
-          className="ml-auto"
+          className="ml-auto shrink-0 whitespace-nowrap"
           aria-pressed={props.selected}
           onClick={props.onSelect}
         >

@@ -108,6 +108,22 @@ export const initials = (name: string) =>
     .join('')
     .toUpperCase();
 
+/**
+ * One background class per member colour (tokens.css --color-member-0…7). They're written out in full on
+ * purpose: Tailwind only keeps a theme colour if it sees the whole class name somewhere in the code, so
+ * `var(--color-member-${i})` alone comes out empty.
+ */
+const MEMBER_BG = [
+  'bg-member-0',
+  'bg-member-1',
+  'bg-member-2',
+  'bg-member-3',
+  'bg-member-4',
+  'bg-member-5',
+  'bg-member-6',
+  'bg-member-7',
+];
+
 export function MemberAvatar({ member, className }: { member: Member | undefined; className?: string }) {
   if (!member) {
     return (
@@ -125,9 +141,9 @@ export function MemberAvatar({ member, className }: { member: Member | undefined
       aria-label={name}
       className={cn(
         'grid size-5 shrink-0 place-items-center rounded-full text-caption font-semibold text-canvas',
+        MEMBER_BG[member.colorIndex % MEMBER_BG.length],
         className,
       )}
-      style={{ background: `var(--color-member-${member.colorIndex})` }}
     >
       {initials(name)}
     </span>
