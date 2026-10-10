@@ -218,11 +218,23 @@ it('rejects missing taxonomy instead of reporting a misleading successful empty 
   );
   expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(0);
 });
-it('rejects semantic providers with the wrong model or dimension', async () => {
-  await expect(
-    importSkillFacts(testDb.db, userId, [repo], { ...provider, model: 'different' }, now, async () => {}),
-  ).rejects.toThrow('Qwen3');
-});
+it.each([{ model: 'different' }, { dim: 768 }])(
+  'keeps deterministic evidence and skips semantics for incompatible providers (%o)',
+  async (override) => {
+    const embed = vi.fn();
+    const result = await importSkillFacts(
+      testDb.db,
+      userId,
+      [{ ...repo, topics: ['web'], readmeExcerpt: 'hello' }],
+      { ...provider, ...override, embed },
+      now,
+      async () => {},
+    );
+    expect(result).toEqual({ skills: 1, semanticUnavailable: true });
+    expect(embed).not.toHaveBeenCalled();
+    expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(1);
+  },
+);
 it('rechecks membership before saving after a member leaves during processing', async () => {
   const [workspace] = await testDb.db
     .insert(schema.workspaces)
@@ -279,4 +291,41 @@ it('saves suggestions even when realtime broadcasts fail', async () => {
   );
   expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(1);
   expect(send).toHaveBeenCalledOnce();
+});
+it('reports success when the embedding refresh cannot be enqueued after commit', async () => {
+  const [workspace] = await testDb.db
+    .insert(schema.workspaces)
+    .values({ name: 'Team', slug: 'queue-down', createdBy: userId, deadlineAt: new Date('2099-01-01') })
+    .returning();
+  await testDb.db
+    .insert(schema.memberships)
+    .values({ workspaceId: workspace!.id, userId, role: 'owner', colorIndex: 0 });
+  await testDb.db.insert(schema.projects).values({ workspaceId: workspace!.id, name: 'Demo' });
+  const events: { data: { progress: { stage: string } } }[] = [];
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const env = {
+    HAKIT_MOCKS: '0',
+    EMBED_MODEL: provider.model,
+    EMBED_DIM: '1024',
+    JOBS: {
+      send: vi.fn(async () => {
+        throw new Error('queue down');
+      }),
+    },
+    PROJECT_ROOM: {
+      idFromName: (id: string) => id,
+      get: () => ({ broadcast: async (e: (typeof events)[number]) => void events.push(e) }),
+    },
+  } as unknown as Env;
+  await processSkillsImport(
+    { type: 'skills.import', userId, workspaceId: workspace!.id, repoCursor: null },
+    testDb.db,
+    { env, services: getServices(env) },
+    async () => [repo],
+  );
+  expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(1);
+  expect(events.at(-1)?.data.progress.stage).toBe('done');
+  expect(events.some((e) => e.data.progress.stage === 'error')).toBe(false);
+  expect(warn).toHaveBeenCalledOnce();
+  warn.mockRestore();
 });
