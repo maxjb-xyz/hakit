@@ -14,6 +14,8 @@ import { github } from './github';
 import { authFlow } from './auth-flow';
 
 afterEach(() => vi.restoreAllMocks());
+/** Reads made by the central route guard (middleware/auth.ts authorizePath) for /projects/:pid paths. */
+const routeGuard = [[{ workspaceId: ids.workspace }], [{ role: 'member' }]];
 async function setup() {
   const responses: unknown[][] = [];
   const store = fakeDb(responses);
@@ -187,7 +189,12 @@ describe('T-402 installation and repository routes', () => {
   });
   it('connects only a verified repo and queues backfill after commit', async () => {
     const s = await setup();
-    s.responses.push([{ workspaceId: ids.workspace }], [s.token], [{ workspaceId: ids.workspace }]);
+    s.responses.push(
+      ...routeGuard,
+      [{ workspaceId: ids.workspace }],
+      [s.token],
+      [{ workspaceId: ids.workspace }],
+    );
     const response = await s.connect();
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(fixtureRepo);
@@ -206,7 +213,7 @@ describe('T-402 installation and repository routes', () => {
   });
   it('rejects connecting an inaccessible repo without database mutations', async () => {
     const s = await setup();
-    s.responses.push([{ workspaceId: ids.workspace }], [s.token]);
+    s.responses.push(...routeGuard, [{ workspaceId: ids.workspace }], [s.token]);
     expect((await s.connect(999)).status).toBe(404);
     expect(s.writes).not.toHaveBeenCalled();
     expect(s.send).not.toHaveBeenCalled();
@@ -220,7 +227,7 @@ describe('T-402 installation and repository routes', () => {
   });
   it('rechecks project membership inside the mutation transaction', async () => {
     const s = await setup();
-    s.responses.push([{ workspaceId: ids.workspace }], [s.token], []);
+    s.responses.push(...routeGuard, [{ workspaceId: ids.workspace }], [s.token], []);
     expect((await s.connect()).status).toBe(404);
     expect(s.trace).toEqual(['rollback']);
     expect(s.writes).not.toHaveBeenCalled();
@@ -228,7 +235,11 @@ describe('T-402 installation and repository routes', () => {
   });
   it('fails before mutation for expired tokens', async () => {
     const s = await setup();
-    s.responses.push([{ workspaceId: ids.workspace }], [{ ...s.token, accessExpiresAt: new Date(0) }]);
+    s.responses.push(
+      ...routeGuard,
+      [{ workspaceId: ids.workspace }],
+      [{ ...s.token, accessExpiresAt: new Date(0) }],
+    );
     expect((await s.connect()).status).toBe(401);
     expect(s.writes).not.toHaveBeenCalled();
   });
@@ -241,7 +252,12 @@ describe('T-402 installation and repository routes', () => {
     const s = await setup();
     s.send.mockRejectedValueOnce(new Error('queue unavailable'));
     for (let attempt = 0; attempt < 2; attempt++) {
-      s.responses.push([{ workspaceId: ids.workspace }], [s.token], [{ workspaceId: ids.workspace }]);
+      s.responses.push(
+        ...routeGuard,
+        [{ workspaceId: ids.workspace }],
+        [s.token],
+        [{ workspaceId: ids.workspace }],
+      );
       expect((await s.connect()).status).toBe(attempt === 0 ? 500 : 200);
     }
     expect(s.trace).toEqual(['commit', 'commit', 'queue']);

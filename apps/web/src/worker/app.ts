@@ -3,6 +3,7 @@ import type { ApiError } from '@hakit/contracts';
 import { API_PREFIX } from '@hakit/contracts';
 import type { AppEnv } from './lib/context';
 import { HttpError } from './lib/errors';
+import { redact } from './lib/redact';
 import { base, type BaseOptions } from './middleware/base';
 import { requireMember, requireUser, session } from './middleware/auth';
 import { health } from './routes/health';
@@ -39,8 +40,8 @@ export function createApp(opts: BaseOptions = {}) {
         level: 'error',
         msg: 'unhandled',
         requestId,
-        error: String(err),
-        stack: (err as Error).stack,
+        error: redact(String(err)),
+        stack: redact(String((err as Error).stack)),
       }),
     );
     const body: ApiError = { error: { code: 'internal', message: 'Something went wrong', requestId } };

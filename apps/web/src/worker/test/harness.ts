@@ -8,6 +8,10 @@ import { createSession } from '../lib/session';
 import type { GithubService } from '../services/github';
 import { createTestDb } from './pglite';
 
+/** Realistic-length fake GitHub tokens (redaction matches real token shapes). */
+export const GHO = `gho_${'A1b2C3d4E5'.repeat(4).slice(0, 36)}`;
+export const GHR = `ghr_${'Z9y8X7w6V5'.repeat(8).slice(0, 76)}`;
+
 export const TOKEN_ENC_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
 
 export async function createHarness() {
@@ -17,8 +21,8 @@ export async function createHarness() {
       `https://github.test/authorize?state=${state}&redirect_uri=${redirect}`,
     installUrl: () => '',
     exchangeCode: vi.fn(async () => ({
-      accessToken: 'gho_access',
-      refreshToken: 'ghr_refresh',
+      accessToken: GHO,
+      refreshToken: GHR,
       expiresIn: 8 * 3600,
       refreshTokenExpiresIn: 180 * 86400,
     })),
@@ -54,11 +58,14 @@ export async function createHarness() {
   } as unknown as ExecutionContext;
   const app = createApp({ db, services: { github } });
 
-  async function call(path: string, init: RequestInit & { token?: string; json?: unknown } = {}) {
+  async function call(
+    path: string,
+    init: RequestInit & { token?: string; json?: unknown; csrf?: boolean } = {},
+  ) {
     const headers = new Headers(init.headers);
     if (init.token) headers.set('cookie', `hakit_session=${init.token}`);
     if (init.json !== undefined) headers.set('content-type', 'application/json');
-    if (init.method && init.method !== 'GET') headers.set('x-requested-with', 'hakit');
+    if (init.method && init.method !== 'GET' && init.csrf !== false) headers.set('x-requested-with', 'hakit');
     const body = init.json !== undefined ? JSON.stringify(init.json) : init.body;
     const res = await app.request(`${API_PREFIX}${path}`, { ...init, headers, body }, env, ctx);
     await Promise.all(pending.splice(0));

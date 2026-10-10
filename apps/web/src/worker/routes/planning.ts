@@ -17,6 +17,7 @@ import { conflict, HttpError, notFound, notImplemented } from '../lib/errors';
 import { loadBoard } from '../lib/board';
 import { broadcast } from '../lib/broadcast';
 import { planRows } from '../lib/materialize';
+import { redact } from '../lib/redact';
 import { assertProjectMember } from '../middleware/auth';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
@@ -286,7 +287,7 @@ route(planning, 'acceptPlan', async ({ c, params }) => {
         level: 'warn',
         msg: 'embed_enqueue_failed',
         requestId: c.var.requestId,
-        error: String(e),
+        error: redact(String(e)),
       }),
     );
   }

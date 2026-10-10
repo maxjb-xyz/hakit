@@ -20,5 +20,7 @@ export interface AppEnv {
     user: SessionUser | null;
     /** Set by requireMember for /w/:wid/* routes. */
     role: Role | null;
+    /** Per-request cache of resolved project access (middleware/auth.ts). */
+    access?: Map<string, { workspaceId: string; role: Role }>;
   };
 }

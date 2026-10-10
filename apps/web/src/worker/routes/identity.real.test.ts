@@ -8,7 +8,7 @@ import { schema, type Db } from '@hakit/db';
 import { importEncKey } from '../lib/crypto';
 import { getGithubAccessToken, storeGithubTokens } from '../lib/github-token';
 import { GithubAuthError, type GithubService } from '../services/github';
-import { createHarness, TOKEN_ENC_KEY } from '../test/harness';
+import { createHarness, GHO, TOKEN_ENC_KEY } from '../test/harness';
 
 let db: Db;
 let github: GithubService;
@@ -71,7 +71,7 @@ describe('T-201 sign-in & sessions', () => {
     expect(sess!.id).not.toBe(token);
     expect(sess!.id).toMatch(/^[0-9a-f]{64}$/);
     const [tok] = await db.select().from(schema.githubTokens);
-    expect(new TextDecoder().decode(tok!.accessTokenEnc)).not.toContain('gho_access');
+    expect(new TextDecoder().decode(tok!.accessTokenEnc)).not.toContain(GHO);
 
     const me = await call('/me', { token });
     expect(me.status).toBe(200);

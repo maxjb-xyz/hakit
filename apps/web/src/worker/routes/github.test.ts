@@ -18,7 +18,15 @@ function setup(member: boolean, signedIn = true) {
         innerJoin: () => query,
         where: () => query,
         orderBy: () => query,
-        limit: async () => (index === 0 ? (member ? [{ id: ids.project }] : []) : [stored]),
+        // Reads 0–1 are the central route guard (project → membership); later reads are the handler's.
+        limit: async () =>
+          index === 0
+            ? member
+              ? [{ id: ids.project, workspaceId: ids.workspace }]
+              : []
+            : index === 1
+              ? [{ role: 'member' }]
+              : [stored],
       };
       return query;
     },

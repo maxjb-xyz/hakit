@@ -11,6 +11,7 @@ import {
 } from '@hakit/contracts';
 import type { AppEnv } from './context';
 import { HttpError } from './errors';
+import { authorizePath } from '../middleware/auth';
 
 export interface HandlerArgs<N extends EndpointName> {
   c: Context<AppEnv>;
@@ -54,6 +55,7 @@ export function route<N extends EndpointName>(
 ) {
   const def = endpoints[name] as Def;
   app.on(def.method, def.path, async (c) => {
+    await authorizePath(c, def.path, c.req.param());
     const input = await parseInput(c, def);
     const result = await handler({ c, ...input } as unknown as HandlerArgs<N>);
     if (def.response && c.var.mocks) {
@@ -80,6 +82,7 @@ export function sseRoute<N extends EndpointName>(
 ) {
   const def = endpoints[name] as Def;
   app.on(def.method, def.path, async (c) => {
+    await authorizePath(c, def.path, c.req.param());
     const input = await parseInput(c, def);
     return streamSSE(c, async (stream) => {
       const send = (event: { type: string } & Record<string, unknown>) =>
