@@ -1,11 +1,8 @@
 /** Screen stubs S1–S14 (DESIGN §8). Each FE task replaces one export with a real screen in its own file. */
 import { useParams } from 'react-router';
-import { ids } from '@hakit/contracts/fixtures';
 import { Button } from '@hakit/ui';
 import { Placeholder } from './Placeholder';
 
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const useProjectId = () => ids.project;
 const useWid = () => useParams().wid ?? '';
 
 export function Login() {
@@ -62,17 +59,7 @@ export function MemberProfile() {
   );
 }
 export { Code } from './Code';
-export function Agents() {
-  return (
-    <Placeholder
-      screen="S13"
-      title="Coding agents"
-      tasks="T-604"
-      endpoint="listAgentSessions"
-      args={{ params: { pid: useProjectId() } }}
-    />
-  );
-}
+export { Agents } from './Agents';
 export function Settings() {
   return (
     <Placeholder screen="S14" title="Settings & integrations" tasks="T-601, T-402" endpoint="aiStatus" />
