@@ -1,0 +1,132 @@
+/*
+ * Hakit design tokens (docs/DESIGN.md §2–5). SOURCE OF TRUTH — Figma variables mirror this file.
+ * Use Tailwind utilities generated from @theme (bg-surface, text-muted, border-default, rounded-sm, …)
+ * or the CSS variables directly. Never hard-code hex/px outside these scales (DESIGN §12).
+ */
+@theme {
+  /* Neutrals (charcoal, dark-first) */
+  --color-canvas: #0b0c0e;
+  --color-sunken: #111215;
+  --color-surface: #16181c;
+  --color-raised: #1c1f24;
+  --color-hover: #24272d;
+  --color-border: #2e323a;
+  --color-border-strong: #3d424c;
+  --color-disabled: #5b616d;
+  --color-subtle: #8a909c; /* tuned up from #808794 for ≥4.5:1 on surface */
+  --color-muted: #a4aab5;
+  --color-default: #d3d7de;
+  --color-strong: #f3f4f6;
+
+  /* Accent (D-9: Indigo) */
+  --color-accent-400: #8b93ff;
+  --color-accent-500: #6e78ff;
+  --color-accent-600: #5560e8;
+  --color-accent-a12: rgb(110 120 255 / 0.12);
+
+  /* Semantic */
+  --color-success: #3fb97a;
+  --color-warning: #e5a93b;
+  --color-danger: #e5534b;
+  --color-info: #4aa8d8;
+  --color-ai: #b48cf2; /* AI-originated marker: 2px rule or glyph only, never a fill/glow */
+
+  /* Member identity palette (index = membership.colorIndex) */
+  --color-member-0: #6e78ff;
+  --color-member-1: #3fb97a;
+  --color-member-2: #e5a93b;
+  --color-member-3: #e5534b;
+  --color-member-4: #4aa8d8;
+  --color-member-5: #b48cf2;
+  --color-member-6: #e07bb5;
+  --color-member-7: #9bb84a;
+
+  /* Typography */
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Inter Tight Variable', 'Inter Tight', var(--font-sans);
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+
+  --text-caption: 11px;
+  --text-caption--line-height: 14px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-body-lg: 15px;
+  --text-body-lg--line-height: 22px;
+  --text-title: 18px;
+  --text-title--line-height: 26px;
+  --text-display-sm: 24px;
+  --text-display-sm--line-height: 32px;
+  --text-display-lg: 32px;
+  --text-display-lg--line-height: 40px;
+
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Elevation (dark UIs: luminance + border; shadow only from e2) */
+  --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-e3: 0 16px 48px rgb(0 0 0 / 0.55);
+
+  /* Motion */
+  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --duration-instant: 80ms;
+  --duration-quick: 140ms;
+  --duration-standard: 220ms;
+  --duration-deliberate: 360ms;
+
+  /* Layout */
+  --spacing-sidebar: 232px;
+  --spacing-rail: 56px;
+  --spacing-inspector: 400px;
+}
+
+/* Control heights (DESIGN §4): h-control-sm/md/lg/xl */
+@utility h-control-sm {
+  height: 24px;
+}
+@utility h-control-md {
+  height: 28px;
+}
+@utility h-control-lg {
+  height: 32px;
+}
+@utility h-control-xl {
+  height: 40px;
+}
+
+/* Estimated values: hatched fill (DESIGN §2.5) */
+@utility bg-estimated {
+  background-image: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 6px);
+  opacity: 0.6;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    background: var(--color-canvas);
+    color: var(--color-default);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}

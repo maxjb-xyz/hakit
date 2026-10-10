@@ -1,0 +1,33 @@
+{
+  "name": "@hakit/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./seed/skills": "./src/seed/skills.ts",
+    "./seed/types": "./src/seed/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "studio": "drizzle-kit studio",
+    "seed": "tsx src/seed/run.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@hakit/contracts": "workspace:*",
+    "@types/pg": "^8.23.1",
+    "dotenv": "^17.2.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

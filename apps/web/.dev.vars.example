@@ -1,0 +1,24 @@
+# Copy to .dev.vars (gitignored). NEVER commit real values. Production: `npx wrangler secret put NAME`.
+# Mock mode: serves fixtures, fakes auth as the fixture user, mocks AI/GitHub. No accounts needed.
+HAKIT_MOCKS=1
+APP_URL=http://localhost:5173
+
+# Sessions & token encryption (generate: openssl rand -base64 32)
+SESSION_SECRET=
+TOKEN_ENC_KEY=
+
+# GitHub App "Hakit Dev" (docs/SETUP.md §3). Private key must be PKCS#8, newlines as \n.
+GITHUB_APP_ID=
+GITHUB_APP_SLUG=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GITHUB_WEBHOOK_SECRET=
+GITHUB_APP_PRIVATE_KEY=
+
+# AI providers
+GEMINI_API_KEY=
+HF_TOKEN=
+# Optional AMD MI300X vLLM endpoint (OpenAI-compatible)
+AMD_LLM_BASE_URL=
+AMD_EMBED_BASE_URL=
+AMD_LLM_KEY=

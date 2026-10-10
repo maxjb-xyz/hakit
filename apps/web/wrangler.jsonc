@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hakit",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/webhooks/*"],
+  },
+  // Hyperdrive → Tiger Cloud DIRECT service URL. Create with:
+  //   npx wrangler hyperdrive create hakit-db --connection-string="postgres://…"
+  // Locally, set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE to the Tiger dev URL (see docs/SETUP.md).
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://hakit:hakit@127.0.0.1:5432/hakit",
+    },
+  ],
+  "durable_objects": { "bindings": [{ "name": "PROJECT_ROOM", "class_name": "ProjectRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectRoom"] }],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "hakit-jobs" }],
+    "consumers": [
+      { "queue": "hakit-jobs", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "hakit-dlq" },
+    ],
+  },
+  "triggers": { "crons": ["*/2 * * * *"] },
+  "ai": { "binding": "AI" },
+  "vars": {
+    "APP_URL": "http://localhost:5173",
+    "HAKIT_MOCKS": "0",
+    "GEMINI_MODEL_PLAN": "gemini-flash-latest",
+    "GEMINI_MODEL_FAST": "gemini-flash-lite-latest",
+    "EMBED_MODEL": "Qwen/Qwen3-Embedding-0.6B",
+    "EMBED_DIM": "1024",
+    "WORKERS_AI_EMBED_MODEL": "@cf/qwen/qwen3-embedding-0.6b",
+  },
+}

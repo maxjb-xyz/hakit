@@ -287,13 +287,13 @@ All request/response bodies are Zod schemas exported from `packages/contracts` (
 | GET | `/hackathons/:slug` | → `HackathonTemplate` with `Challenge[]` |
 | POST | `/w/:wid/projects` | `CreateProject` → `Project` |
 | PUT | `/projects/:pid/constraints` | `ProjectConstraint[]` |
-| POST | `/projects/:pid/ideas:generate` | `GenerateIdeas { count, guidance? }` → **SSE stream** of `IdeaCandidate` |
-| POST | `/projects/:pid/ideas/:iid:refine` | `RefineIdea { instruction }` → SSE `IdeaCandidate` |
-| POST | `/projects/:pid/plans:generate` | `GeneratePlan { ideaId, guidance? }` → **SSE**: `PlanStreamEvent` (`stage`, `section`, `validation`, `done{planId}`) |
+| POST | `/projects/:pid/ideas/generate` | `GenerateIdeas { count, guidance? }` → **SSE stream** of `IdeaCandidate` |
+| POST | `/projects/:pid/ideas/:iid/refine` | `RefineIdea { instruction }` → SSE `IdeaCandidate` |
+| POST | `/projects/:pid/plans/generate` | `GeneratePlan { ideaId, guidance? }` → **SSE**: `PlanStreamEvent` (`stage`, `section`, `validation`, `done{planId}`) |
 | GET | `/projects/:pid/plans/:planId` | → `Plan` (payload `PlanDocument` + `Feasibility`) |
 | PATCH | `/projects/:pid/plans/:planId` | `PlanPatch` (JSON-patch-like edits to sections) |
-| POST | `/projects/:pid/plans/:planId:regenerate-section` | `{ section, instruction }` → SSE |
-| POST | `/projects/:pid/plans/:planId:accept` | Materializes milestones/tasks/deps → `ProjectBoard` |
+| POST | `/projects/:pid/plans/:planId/regenerate-section` | `{ section, instruction }` → SSE |
+| POST | `/projects/:pid/plans/:planId/accept` | Materializes milestones/tasks/deps → `ProjectBoard` |
 
 ### 6.5 Tasks & assignment
 | Method | Path | Contract |
@@ -302,8 +302,8 @@ All request/response bodies are Zod schemas exported from `packages/contracts` (
 | POST | `/projects/:pid/tasks` | `CreateTask` → `Task` |
 | PATCH | `/tasks/:tid` | `UpdateTask` (status, estimate, title, skills, milestone) |
 | PUT/DELETE | `/tasks/:tid/dependencies/:depId` | dependency edit (cycle check → 409) |
-| POST | `/projects/:pid/assignments:solve` | `SolveRequest { scope:'all'|'unassigned', respectLocks:true }` → `AssignmentProposal` (per-task `Assignment` with `ScoreBreakdown`, explanation, alternatives) |
-| POST | `/projects/:pid/assignments:accept` | `{ assignmentIds[] }` → `ProjectBoard` |
+| POST | `/projects/:pid/assignments/solve` | `SolveRequest { scope:'all'|'unassigned', respectLocks:true }` → `AssignmentProposal` (per-task `Assignment` with `ScoreBreakdown`, explanation, alternatives) |
+| POST | `/projects/:pid/assignments/accept` | `{ assignmentIds[] }` → `ProjectBoard` |
 | PUT | `/tasks/:tid/assignee` | `ManualAssign { userId, lock }` → `Assignment` (score computed for display, source=manual) |
 | GET | `/tasks/:tid/explanation` | → `AssignmentExplanation` |
 
@@ -324,8 +324,8 @@ All request/response bodies are Zod schemas exported from `packages/contracts` (
 |---|---|---|
 | GET | `/projects/:pid/mission-control` | → `MissionControlSnapshot` (countdown, health, progress{measured, estimated}, lanes, criticalPath, blockers, recentActivity, openRecommendations) |
 | GET | `/projects/:pid/recommendations?status=open` | → `Recommendation[]` |
-| POST | `/recommendations/:rid:accept` | `{ actionIndex?, modifications? }` → applies typed actions transactionally → `ProjectBoard` |
-| POST | `/recommendations/:rid:dismiss` | `{ reason? }` |
+| POST | `/recommendations/:rid/accept` | `{ actionIndex?, modifications? }` → applies typed actions transactionally → `ProjectBoard` |
+| POST | `/recommendations/:rid/dismiss` | `{ reason? }` |
 | GET (WS) | `/projects/:pid/ws` | Upgrade → ProjectRoom DO |
 
 ### 6.8 Agents

@@ -1,0 +1,21 @@
+{
+  "name": "hakit",
+  "version": "0.1.0",
+  "description": "Share your Claude Code session status (active / awaiting input / idle) with your Hakit team. Opt-in; never sends prompts or code by default.",
+  "author": { "name": "Hakit" },
+  "userConfig": {
+    "hakit_token": {
+      "type": "string",
+      "title": "Hakit agent token",
+      "description": "Create one in Hakit → Agents → Connect Claude Code. Starts with hk_at_.",
+      "sensitive": true,
+      "required": true
+    },
+    "endpoint": {
+      "type": "string",
+      "title": "Hakit URL",
+      "description": "e.g. https://hakit.example.workers.dev",
+      "required": true
+    }
+  }
+}

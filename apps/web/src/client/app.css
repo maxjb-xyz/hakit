@@ -1,0 +1,4 @@
+@import 'tailwindcss';
+@import '@hakit/ui/tokens.css';
+/* Tailwind must scan the shared UI package too. */
+@source '../../../../packages/ui/src';

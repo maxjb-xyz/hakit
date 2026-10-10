@@ -16,6 +16,31 @@ Status: **Planning draft v1.** Tasks are sized for one developer or one coding a
 - UI tasks meet the DESIGN §12 checklist
 - deployed to preview
 
+## Scaffold status (2026-10-10)
+
+The scaffold commit delivered the following. Remaining work for a partial task is listed under it.
+
+| Task | Status | Remaining |
+|---|---|---|
+| T-001 Monorepo | ✅ done | – |
+| T-002 Bindings | 🟡 config written | Create the Hyperdrive config + queues; put the real Hyperdrive id in `wrangler.jsonc` (SETUP §4) |
+| T-003 DB package | 🟡 schema + migrations written | Run them on Tiger dev. `0001_init.sql` passed on plain Postgres 16; `0002_timescale.sql` is untested on TimescaleDB |
+| T-004 Contracts v1 | ✅ done | Freeze at C1 after the team reviews it |
+| T-005 Seeds | 🟡 286 skills, 1,678 dependency mappings, Knight Hacks IX template | Taxonomy embeddings (embed.batch job); verify challenges on Devpost |
+| T-006 GitHub Apps | ⬜ manual | SETUP §3 |
+| T-007 CI/CD | 🟡 check job | Deploy job gated on `vars.DEPLOY_ENABLED` + Cloudflare secrets |
+| T-008 Deep health | 🟡 DO, DB, queue checks | GitHub JWT, Gemini and HF pings |
+| T-101 Tokens | ✅ done | Sync Figma variables |
+| T-104 App shell | 🟡 functional skeleton + routes + placeholders | Real design, inspector, ⌘K |
+| T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
+| T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
+
+Also in the scaffold:
+- **Mock mode** (`HAKIT_MOCKS=1`): every endpoint serves fixtures.
+- The **typed API client** and the **route helper**.
+- **Engine stubs**, each naming the task that implements it, plus three helpers that are already implemented: `topoSort`, `cosine`, and `HK-` ref parsing.
+- **Provider interfaces** with mocks for LLM, embeddings and GitHub.
+
 ---
 
 ## Phase 0 — Foundations

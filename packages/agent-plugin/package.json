@@ -1,0 +1,10 @@
+{
+  "name": "@hakit/agent-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Claude Code plugin that reports minimized session status to Hakit (opt-in). Owner: GH (T-603).",
+  "scripts": {
+    "typecheck": "true",
+    "test": "sh scripts/test-emit.sh"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@hakit/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types --include-runtime false"
+  },
+  "dependencies": {
+    "@hakit/contracts": "workspace:*",
+    "@hakit/db": "workspace:*",
+    "@hakit/engine": "workspace:*",
+    "@hakit/ui": "workspace:*",
+    "@tanstack/react-query": "^5.104.1",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.13",
+    "pg": "^8.23.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^7.18.4",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.63.1",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.149.0"
+  }
+}
