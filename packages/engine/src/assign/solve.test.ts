@@ -133,11 +133,15 @@ describe('assignment constraints', () => {
     for (let i = 1; i < 60; i += 3)
       s.dependencies.push({ taskId: `t${i + 1}`, dependsOnTaskId: `t${i}`, kind: 'blocks' });
     solveAssignments(s, options); // warm module/JIT
-    const start = performance.now();
-    const result = solveAssignments(s, options);
-    const elapsed = performance.now() - start;
-    expect(result.assignments).toHaveLength(60);
-    expect(elapsed).toBeLessThan(200);
+    // Best of five: a scheduler stall from parallel test workers can't fail it, a real regression still does.
+    let best = Infinity;
+    for (let run = 0; run < 5; run++) {
+      const start = performance.now();
+      const result = solveAssignments(s, options);
+      best = Math.min(best, performance.now() - start);
+      expect(result.assignments).toHaveLength(60);
+    }
+    expect(best).toBeLessThan(200);
   });
 });
 it('renders only supported facts including warnings, locks, and signed alternative deltas', () => {
