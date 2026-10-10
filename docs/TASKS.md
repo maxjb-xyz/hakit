@@ -148,12 +148,14 @@ Also in the scaffold:
 - AC: availability windows validated (inside the event window, no overlaps); `available_hours` derived.
 
 **T-204 · Skill import job** · P0 · IN · 4h · T-005, T-201
+- Status: public-repo import route/job, deterministic inference, semantic matching, protected upserts and fixture/in-memory database tests implemented. Project progress broadcasts wired; pre-project onboarding progress requires PL/GH/FE transport coordination. Live 40-repo latency verification remains pending. See `docs/INTELLIGENCE-QA.md` for QA and implementation limits.
 - AC: implements AI.md §A.2: GraphQL repo fetch, manifest fetch, deterministic map, semantic match, evidence, aggregation.
 - AC: progress events are broadcast to the user.
 - AC: confirmed and self-added rows are never overwritten.
 - AC: unit tests on the mappers and aggregation with fixtures; an import completes in under 30s for 40 repos.
 
 **T-205 · Embedding service** · P0 · IN · 2h · T-004
+- Status: implemented with provider, cache, fallback/breaker, batch-job and health-probe tests. Live HF Qwen3 1024-dimensional embedding and a small semantic matching example verified; live AMD/Workers AI and Tiger/Queue deployment verification remain pending. See `docs/EMBEDDING-VERIFICATION.md`.
 - AC: `EmbeddingProvider` implementations for the HF router, OpenAI-compatible (AMD) and Workers AI, all using the same model and dimension.
 - AC: content-hash cache, circuit breaker, Qwen3 query instruction prefix.
 - AC: test that the fallback produces 1024-dim vectors.
