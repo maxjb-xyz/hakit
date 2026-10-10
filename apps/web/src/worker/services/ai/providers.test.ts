@@ -2,7 +2,6 @@ import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { IdeaCandidates } from '@hakit/contracts';
 import { geminiProvider } from './gemini';
-import { openaiCompatProvider } from './openai-compat';
 import { mockLlm } from './mock';
 import { sseData } from './structured';
 import type { StructuredRequest } from './types';
@@ -18,32 +17,18 @@ const gemini = (text = '{"title":"Idea"}', finishReason = 'STOP') => ({
   candidates: [{ content: { parts: [{ text }] }, finishReason }],
   usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 8 },
 });
-const amd = (text = '{"title":"Idea"}', finish_reason = 'stop') => ({
-  choices: [{ message: { content: text }, finish_reason }],
-  usage: { prompt_tokens: 12, completion_tokens: 8 },
-});
-const setup = (kind: 'gemini' | 'amd' = 'gemini', timeoutMs?: number) => {
+const setup = (timeoutMs?: number | { plan?: number; fast?: number }) => {
   const send = vi.fn<typeof fetch>(),
     log = vi.fn();
-  const provider =
-    kind === 'gemini'
-      ? geminiProvider({
-          apiKey: 'test-secret',
-          planModel: 'gemini-3.8-flash',
-          fastModel: 'gemini-3.8-flash',
-          fetch: send,
-          log,
-          timeoutMs,
-        })
-      : openaiCompatProvider({
-          baseUrl: 'https://amd.example/v1/',
-          apiKey: 'test-secret',
-          model: 'Qwen/instruct',
-          fetch: send,
-          log,
-          timeoutMs,
-        });
-  return { send, log, provider, envelope: kind === 'gemini' ? gemini : amd };
+  const provider = geminiProvider({
+    apiKey: 'test-secret',
+    planModel: 'gemini-3.8-flash',
+    fastModel: 'gemini-3.8-flash',
+    fetch: send,
+    log,
+    timeoutMs,
+  });
+  return { send, log, provider, envelope: gemini };
 };
 const response = (value: unknown) =>
   new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
@@ -64,29 +49,26 @@ const streamResponse = (data: string) => {
     { headers: { 'content-type': 'text/event-stream' } },
   );
 };
-it.each(['gemini', 'amd'] as const)(
+it.each(['gemini'] as const)(
   '%s serializes structured data and records only safe call metadata',
   async (kind) => {
-    const { send, log, provider, envelope } = setup(kind);
+    const { send, log, provider, envelope } = setup();
     send.mockResolvedValue(response(envelope()));
     expect(await provider.generateStructured(req)).toEqual({ title: 'Idea' });
     const [url, options] = send.mock.calls[0]!;
     const body = JSON.parse(options!.body as string);
     expect(url).toBe(
-      kind === 'gemini'
-        ? 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'
-        : 'https://amd.example/v1/chat/completions',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
     );
     expect(options!.redirect).toBe('error');
     expect(JSON.stringify(body)).toContain('do-not-log');
-    if (kind === 'gemini') {
-      expect(body.generationConfig).toMatchObject({
-        responseMimeType: 'application/json',
-        responseJsonSchema: { type: 'object' },
-        thinkingConfig: { thinkingLevel: 'MEDIUM' },
-      });
-      expect(options!.headers).toMatchObject({ 'x-goog-api-key': 'test-secret' });
-    } else expect(body.response_format.type).toBe('json_schema');
+    expect(kind).toBe('gemini');
+    expect(body.generationConfig).toMatchObject({
+      responseMimeType: 'application/json',
+      responseJsonSchema: { type: 'object' },
+      thinkingConfig: { thinkingLevel: 'MEDIUM' },
+    });
+    expect(options!.headers).toMatchObject({ 'x-goog-api-key': 'test-secret' });
     expect(log).toHaveBeenCalledWith(
       expect.objectContaining({
         task: req.task,
@@ -99,29 +81,21 @@ it.each(['gemini', 'amd'] as const)(
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/do-not-log|test-secret|Return an idea/);
   },
 );
-it.each(['gemini', 'amd'] as const)(
-  '%s repairs JSON/schema failures once with validation issues',
-  async (kind) => {
-    const { send, log, provider, envelope } = setup(kind);
-    send
-      .mockResolvedValueOnce(response(envelope('{"title":12}')))
-      .mockResolvedValueOnce(response(envelope()));
-    expect(await provider.generateStructured(req)).toEqual({ title: 'Idea' });
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(send.mock.calls[1]![1]!.body).toContain('invalid_type');
-    expect(send.mock.calls[1]![1]!.body).toContain('title');
-    expect(log.mock.calls.map(([record]) => record.validationPassed)).toEqual([false, true]);
-  },
-);
-it.each(['gemini', 'amd'] as const)(
-  '%s rejects two invalid responses without unbounded repairs',
-  async (kind) => {
-    const { send, provider, envelope } = setup(kind);
-    send.mockImplementation(async () => response(envelope('not JSON')));
-    await expect(provider.generateStructured(req)).rejects.toMatchObject({ code: 'validation' });
-    expect(send).toHaveBeenCalledTimes(2);
-  },
-);
+it.each(['gemini'] as const)('%s repairs JSON/schema failures once with validation issues', async (kind) => {
+  const { send, log, provider, envelope } = setup();
+  send.mockResolvedValueOnce(response(envelope('{"title":12}'))).mockResolvedValueOnce(response(envelope()));
+  expect(await provider.generateStructured(req)).toEqual({ title: 'Idea' });
+  expect(send).toHaveBeenCalledTimes(2);
+  expect(send.mock.calls[1]![1]!.body).toContain('invalid_type');
+  expect(send.mock.calls[1]![1]!.body).toContain('title');
+  expect(log.mock.calls.map(([record]) => record.validationPassed)).toEqual([false, true]);
+});
+it.each(['gemini'] as const)('%s rejects two invalid responses without unbounded repairs', async (kind) => {
+  const { send, provider, envelope } = setup();
+  send.mockImplementation(async () => response(envelope('not JSON')));
+  await expect(provider.generateStructured(req)).rejects.toMatchObject({ code: 'validation' });
+  expect(send).toHaveBeenCalledTimes(2);
+});
 it.each([401, 403, 429, 500])('classifies HTTP %s without exposing upstream bodies', async (status) => {
   const { send, provider } = setup();
   send.mockResolvedValue(new Response('secret provider error', { status }));
@@ -185,18 +159,6 @@ it('streams Gemini SSE across byte boundaries and validates the final document',
   expect(send.mock.calls[0]![0]).toContain('streamGenerateContent?alt=sse');
   expect(log.mock.calls[0]![0].validationPassed).toBe(true);
 });
-it('streams AMD deltas, stop, usage-only events and DONE', async () => {
-  const { send, provider } = setup('amd');
-  const frames = [
-    { choices: [{ delta: { content: '{"title":' }, finish_reason: null }] },
-    { choices: [{ delta: { content: '"Idea"}' }, finish_reason: 'stop' }] },
-    { choices: [], usage: { prompt_tokens: 1, completion_tokens: 2 } },
-  ];
-  send.mockResolvedValue(
-    streamResponse(frames.map((v) => `data: ${JSON.stringify(v)}\n\n`).join('') + 'data: [DONE]\n\n'),
-  );
-  expect(await collect(provider.streamStructured!(req))).toBe('{"title":"Idea"}');
-});
 it('rejects invalid streamed JSON without emitting a replacement document', async () => {
   const { send, provider } = setup();
   send.mockResolvedValue(streamResponse(`data: ${JSON.stringify(gemini('not JSON'))}\n\n`));
@@ -216,7 +178,7 @@ it('supports multiline SSE data and a final frame without a trailing newline', a
   ).toBe('hello\nworldlast');
 });
 it('times out a stalled response body and sanitizes network failures', async () => {
-  const { send, provider } = setup('gemini', 10);
+  const { send, provider } = setup(10);
   send.mockResolvedValue(
     new Response(new ReadableStream(), { headers: { 'content-type': 'application/json' } }),
   );
@@ -250,19 +212,27 @@ it('does not allow logging failures to break valid output', async () => {
   });
   expect(await provider.generateStructured(req)).toEqual({ title: 'Idea' });
 });
-it('rejects missing credentials, malformed model IDs and unsafe AMD URLs lazily', async () => {
+it('rejects missing credentials and malformed model IDs lazily', async () => {
   const bad = geminiProvider({ apiKey: '', planModel: 'bad/path', fastModel: '', log: vi.fn() });
   await expect(bad.generateStructured(req)).rejects.toMatchObject({ code: 'configuration' });
-  for (const baseUrl of [
-    'bad',
-    'http://amd.example',
-    'https://user:password@amd.example',
-    'https://amd.example?token=x',
-  ]) {
-    await expect(
-      openaiCompatProvider({ baseUrl, model: 'qwen', log: vi.fn() }).generateStructured(req),
-    ).rejects.toMatchObject({ code: 'configuration' });
+});
+it('gives the plan tier a longer default timeout than the fast tier', async () => {
+  const spy = vi.spyOn(globalThis, 'setTimeout');
+  try {
+    const { send, provider } = setup();
+    send.mockImplementation(async () => response(gemini()));
+    await provider.generateStructured({ ...req, tier: 'fast' });
+    await provider.generateStructured(req);
+    const delays = spy.mock.calls.map(([, ms]) => ms);
+    expect(delays).toContain(30_000);
+    expect(delays).toContain(120_000);
+  } finally {
+    spy.mockRestore();
   }
+});
+it('accepts per-tier timeout overrides and rejects invalid ones', () => {
+  expect(() => setup({ plan: 0 })).toThrow();
+  expect(() => setup({ fast: 5_000 })).not.toThrow();
 });
 it('returns schema-validated fixture ideas in mock mode without keys', async () => {
   expect((await mockLlm.generateStructured({ ...req, schema: IdeaCandidates })).ideas).toHaveLength(1);

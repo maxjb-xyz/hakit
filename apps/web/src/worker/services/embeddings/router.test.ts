@@ -13,31 +13,31 @@ afterEach(() => vi.useRealTimers());
 describe('embedding fallback and breakers', () => {
   it('uses HF primary without contacting fallbacks', async () => {
     const hf = provider('hf');
-    const amd = provider('amd');
-    const router = embeddingRouter([hf, amd]);
+    const second = provider('template');
+    const router = embeddingRouter([hf, second]);
     expect(await router.embed(['a'], 'query')).toEqual(vectors());
-    expect(amd.embed).not.toHaveBeenCalled();
+    expect(second.embed).not.toHaveBeenCalled();
     expect(router.name).toBe('hf');
   });
-  it('falls through HF and AMD failures to real-shaped Workers AI vectors', async () => {
+  it('falls through earlier failures to the last provider', async () => {
     const hf = provider('hf');
-    const amd = provider('amd');
-    const workers = provider('workers_ai');
+    const second = provider('template');
+    const workers = provider('keyword');
     hf.embed.mockRejectedValue(new Error('HF failure'));
-    amd.embed.mockRejectedValue(new Error('AMD failure'));
-    const router = embeddingRouter([hf, amd, workers]);
+    second.embed.mockRejectedValue(new Error('second failure'));
+    const router = embeddingRouter([hf, second, workers]);
     expect((await router.embed(['a'], 'query'))[0]).toHaveLength(1024);
-    expect(router.name).toBe('workers_ai');
+    expect(router.name).toBe('keyword');
   });
   it('treats malformed provider vectors as failures', async () => {
     const hf = provider('hf');
     hf.embed.mockResolvedValue([[1, 2]]);
-    expect((await embeddingRouter([hf, provider('workers_ai')]).embed(['a'], 'query'))[0]).toHaveLength(1024);
+    expect((await embeddingRouter([hf, provider('keyword')]).embed(['a'], 'query'))[0]).toHaveLength(1024);
   });
   it('opens after three failures in 60s and recovers after two minutes', async () => {
     let now = 0;
     const hf = provider('hf');
-    const workers = provider('workers_ai');
+    const workers = provider('keyword');
     hf.embed.mockRejectedValue(new Error());
     const router = embeddingRouter([hf, workers], () => now);
     for (let i = 0; i < 4; i++) await router.embed(['a'], 'query');
@@ -53,7 +53,7 @@ describe('embedding fallback and breakers', () => {
     let now = 0;
     const hf = provider('hf');
     hf.embed.mockRejectedValue(new Error());
-    const router = embeddingRouter([hf, provider('workers_ai')], () => now);
+    const router = embeddingRouter([hf, provider('keyword')], () => now);
     for (let i = 0; i < 4; i++) {
       await router.embed(['a'], 'query');
       now += 61_000;
@@ -69,7 +69,7 @@ describe('embedding fallback and breakers', () => {
     let now = 0;
     const hf = provider('hf');
     hf.embed.mockRejectedValue(new Error());
-    const router = embeddingRouter([hf, provider('workers_ai')], () => now);
+    const router = embeddingRouter([hf, provider('keyword')], () => now);
     for (let i = 0; i < 3; i++) await router.embed(['a'], 'query');
     now = 120_001;
     await router.embed(['a'], 'query');
@@ -81,7 +81,7 @@ describe('embedding fallback and breakers', () => {
     let resolve!: (value: number[][]) => void;
     const hf = provider('hf');
     hf.embed.mockRejectedValue(new Error());
-    const router = embeddingRouter([hf, provider('workers_ai')], () => now);
+    const router = embeddingRouter([hf, provider('keyword')], () => now);
     for (let i = 0; i < 3; i++) await router.embed(['a'], 'query');
     now = 120_001;
     hf.embed.mockImplementation(
@@ -106,8 +106,8 @@ describe('embedding fallback and breakers', () => {
   });
   it('does not accept mixed models/dimensions or invalid text', async () => {
     expect(() => embeddingRouter([])).toThrow();
-    expect(() => embeddingRouter([provider('hf'), { ...provider('amd'), model: 'other' }])).toThrow();
-    expect(() => embeddingRouter([provider('hf'), { ...provider('amd'), dim: 384 }])).toThrow();
+    expect(() => embeddingRouter([provider('hf'), { ...provider('template'), model: 'other' }])).toThrow();
+    expect(() => embeddingRouter([provider('hf'), { ...provider('template'), dim: 384 }])).toThrow();
     const hf = provider('hf');
     await expect(embeddingRouter([hf]).embed([''], 'query')).rejects.toMatchObject({ code: 'invalid_input' });
     expect(hf.embed).not.toHaveBeenCalled();

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  amdEmbeddings,
   EmbeddingError,
   hfEmbeddings,
   openAiVectors,
@@ -9,8 +8,6 @@ import {
   QWEN_DIM,
   QWEN_MODEL,
   validateVectors,
-  workersAiEmbeddings,
-  WORKERS_QWEN_MODEL,
 } from './providers';
 
 const vector = () => Array.from({ length: QWEN_DIM }, (_, i) => (i === 0 ? 2 : 0));
@@ -130,35 +127,5 @@ describe('embedding providers', () => {
     await vi.advanceTimersByTimeAsync(15_000);
     await failed;
     expect(opts.fetch.mock.calls[0]![1]!.signal!.aborted).toBe(true);
-  });
-  it('calls a configured HTTPS AMD /v1 endpoint', async () => {
-    const opts = options();
-    await amdEmbeddings({ ...opts, baseUrl: 'https://amd.test/v1/' }).embed(['a'], 'document');
-    expect(opts.fetch.mock.calls[0]![0]).toBe('https://amd.test/v1/embeddings');
-  });
-  it.each([
-    'http://amd.test/v1',
-    'https://user:password@amd.test/v1',
-    'https://amd.test/v1?key=secret',
-    'https://amd.test/v1#fragment',
-  ])('rejects unsafe AMD configuration %s', (baseUrl) =>
-    expect(() => amdEmbeddings({ ...options(), baseUrl })).toThrow(EmbeddingError),
-  );
-  it('calls Workers AI with the same model and query formatting', async () => {
-    const run = vi.fn().mockResolvedValue({ data: [vector()] });
-    const provider = workersAiEmbeddings({ run } as unknown as Ai, WORKERS_QWEN_MODEL, 1024);
-    const [result] = await provider.embed(['a'], 'query');
-    expect(provider.model).toBe(QWEN_MODEL);
-    expect(result).toHaveLength(1024);
-    expect(run).toHaveBeenCalledWith(WORKERS_QWEN_MODEL, { text: [QUERY_INSTRUCTION + 'a'] });
-  });
-  it('fails closed for an incompatible Workers AI model or malformed response', async () => {
-    const ai = { run: vi.fn().mockResolvedValue({ unexpected: [] }) } as unknown as Ai;
-    await expect(workersAiEmbeddings(ai, 'other', 1024).embed(['a'], 'query')).rejects.toMatchObject({
-      code: 'configuration',
-    });
-    await expect(
-      workersAiEmbeddings(ai, WORKERS_QWEN_MODEL, 1024).embed(['a'], 'query'),
-    ).rejects.toMatchObject({ code: 'invalid_output' });
   });
 });

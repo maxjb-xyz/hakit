@@ -140,7 +140,6 @@ it('runs the 40-repo fixture pipeline, broadcasts done after commit and enqueues
     HAKIT_MOCKS: '0',
     EMBED_MODEL: provider.model,
     EMBED_DIM: '1024',
-    WORKERS_AI_EMBED_MODEL: '@cf/qwen/qwen3-embedding-0.6b',
     JOBS: { send },
     PROJECT_ROOM: {
       idFromName: (id: string) => id,

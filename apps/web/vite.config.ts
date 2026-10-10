@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // Workers AI has no local emulator; remote bindings need `wrangler login`. Opt in with HAKIT_REMOTE_BINDINGS=1.
+    // Remote bindings need `wrangler login`. Opt in with HAKIT_REMOTE_BINDINGS=1.
     cloudflare({ remoteBindings: process.env.HAKIT_REMOTE_BINDINGS === '1' }),
   ],
 });
