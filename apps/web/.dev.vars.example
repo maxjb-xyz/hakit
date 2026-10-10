@@ -22,3 +22,6 @@ HF_TOKEN=
 AMD_LLM_BASE_URL=
 AMD_EMBED_BASE_URL=
 AMD_LLM_KEY=
+
+# DB scripts read DATABASE_URL from packages/db/.env (see packages/db/.env.example).
+# Real mode locally: export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (docs/SETUP.md §3).

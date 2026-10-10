@@ -8,6 +8,8 @@ export interface Env {
   PROJECT_ROOM: DurableObjectNamespace<ProjectRoom>;
   JOBS: Queue<JobMessage>;
   AI: Ai;
+  /** Per-agent-token ingestion limit (wrangler `ratelimits`). Optional so tests and local dev run without it. */
+  AGENT_RATE_LIMITER?: RateLimit;
 
   APP_URL: string;
   /** "1" = fixtures + fake auth + mock providers. */
