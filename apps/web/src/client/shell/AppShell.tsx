@@ -9,15 +9,7 @@ import { cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { Countdown } from './Countdown';
-import {
-  IconAgents,
-  IconCode,
-  IconMission,
-  IconPlan,
-  IconSettings,
-  IconTasks,
-  IconTeam,
-} from './icons';
+import { IconAgents, IconCode, IconMission, IconPlan, IconSettings, IconTasks, IconTeam } from './icons';
 
 type NavItem = { to: string; label: string; icon: ComponentType };
 

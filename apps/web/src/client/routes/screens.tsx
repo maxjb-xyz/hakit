@@ -80,17 +80,7 @@ export function Plan() {
     />
   );
 }
-export function Tasks() {
-  return (
-    <Placeholder
-      screen="S10"
-      title="Tasks"
-      tasks="T-312"
-      endpoint="getBoard"
-      args={{ params: { pid: useProjectId() } }}
-    />
-  );
-}
+export { Tasks } from './Tasks';
 export function Team() {
   return (
     <Placeholder
