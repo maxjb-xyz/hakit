@@ -15,7 +15,7 @@ import {
 import { MemberSkill, Skill, TeamCapability, UpsertMemberSkill } from './capability';
 import { CreateProject, HackathonTemplate, Project, PutConstraints } from './hackathon';
 import { GenerateIdeas, GeneratePlan, Idea, Plan, PlanPatch, RefineIdea, SubmitIdea } from './planning';
-import { CreateTask, PutDependency, Task, UpdateTask } from './tasks';
+import { CreateTask, PutDependency, Task, TaskHistory, UpdateTask } from './tasks';
 import {
   AcceptAssignments,
   Assignment,
@@ -203,6 +203,7 @@ export const endpoints = {
   getBoard: { method: 'GET', path: '/projects/:pid/board', response: ProjectBoard, owner: 'PL' },
   createTask: { method: 'POST', path: '/projects/:pid/tasks', body: CreateTask, response: Task, owner: 'PL' },
   updateTask: { method: 'PATCH', path: '/tasks/:tid', body: UpdateTask, response: Task, owner: 'PL' },
+  listTaskHistory: { method: 'GET', path: '/tasks/:tid/history', response: TaskHistory, owner: 'PL' },
   putDependency: {
     method: 'PUT',
     path: '/tasks/:tid/dependencies/:depId',

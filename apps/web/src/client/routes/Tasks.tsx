@@ -207,11 +207,11 @@ function Banner(props: { tone: 'warning' | 'danger'; children: ReactNode; action
 
 export function Tasks() {
   const { wid = '' } = useParams();
-  const b = useTaskBoard(pid, wid);
-  useProjectSocket(b.live ? pid : undefined);
-  const [creating, setCreating] = useState<TaskStatus | null>(null);
   const [search, setSearch] = useSearchParams();
   const selectedKey = search.get('task');
+  const b = useTaskBoard(pid, wid, selectedKey);
+  useProjectSocket(b.live ? pid : undefined);
+  const [creating, setCreating] = useState<TaskStatus | null>(null);
   const view = search.get('view') === 'list' ? 'list' : 'board';
   const groupParam = search.get('group');
   const groupBy: GroupBy = groupParam === 'person' || groupParam === 'milestone' ? groupParam : 'none';

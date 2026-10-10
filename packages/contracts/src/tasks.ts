@@ -40,8 +40,12 @@ export const Task = z.object({
   startedAt: Timestamp.nullable(),
   completedAt: Timestamp.nullable(),
   updatedAt: Timestamp,
+  /** Labels set by a person (additive). Empty or absent: the client infers one from required skills. */
+  labels: z.array(z.string()).optional(),
 });
 export type Task = z.infer<typeof Task>;
+
+export const TaskLabels = z.array(z.string().min(1).max(40)).max(10);
 
 export const TaskDependency = z.object({
   taskId: Id,
@@ -58,6 +62,7 @@ export const CreateTask = z.object({
   estimateHours: z.number().min(0).max(24).default(2),
   requiredSkills: z.array(TaskRequiredSkill).default([]),
   acceptanceCriteria: z.array(z.string()).default([]),
+  labels: TaskLabels.optional(),
 });
 export type CreateTask = z.infer<typeof CreateTask>;
 
@@ -71,9 +76,26 @@ export const UpdateTask = z
     estimateHours: z.number().min(0).max(24),
     requiredSkills: z.array(TaskRequiredSkill),
     acceptanceCriteria: z.array(z.string()),
+    labels: TaskLabels,
   })
   .partial();
 export type UpdateTask = z.infer<typeof UpdateTask>;
+
+/** One row of a task's audit trail (status, assignee and label changes, creation). */
+export const TaskHistoryEntry = z.object({
+  id: Id,
+  taskId: Id,
+  actorUserId: Id.nullable(),
+  /** 'created' | 'status' | 'assignee' | 'label', plus kinds other writers add later. */
+  kind: z.string(),
+  fromValue: z.string().nullable(),
+  toValue: z.string().nullable(),
+  at: Timestamp,
+});
+export type TaskHistoryEntry = z.infer<typeof TaskHistoryEntry>;
+
+export const TaskHistory = z.object({ items: z.array(TaskHistoryEntry) });
+export type TaskHistory = z.infer<typeof TaskHistory>;
 
 export const PutDependency = z.object({ kind: z.enum(['blocks', 'soft']).default('blocks') });
 export type PutDependency = z.infer<typeof PutDependency>;

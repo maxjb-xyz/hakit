@@ -29,6 +29,13 @@
       "when": 1791654442497,
       "tag": "0003_recommendation_dismiss_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791663811701,
+      "tag": "0004_fancy_junta",
+      "breakpoints": true
     }
   ]
 }

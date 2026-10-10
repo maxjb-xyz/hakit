@@ -1,6 +1,6 @@
 /** Board, tasks, dependencies, assignment. Owners: PL (CRUD, accept, manual), IN (solver/explanations). */
 import { Hono, type Context } from 'hono';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Id, type TaskStatus } from '@hakit/contracts';
 import * as fx from '@hakit/contracts/fixtures';
 import { schema, type Db } from '@hakit/db';
@@ -80,7 +80,12 @@ route(tasks, 'createTask', async ({ c, params, body }) => {
       .returning();
     await tx
       .insert(schema.taskEvents)
-      .values({ taskId: t!.id, actorUserId: c.var.user!.id, kind: 'created' });
+      .values([
+        { taskId: t!.id, actorUserId: c.var.user!.id, kind: 'created' },
+        ...(body.labels?.length
+          ? [{ taskId: t!.id, actorUserId: c.var.user!.id, kind: 'label', toValue: body.labels.join(', ') }]
+          : []),
+      ]);
     return toTask(t!, null);
   });
   notify(c, params.pid, { type: 'task.updated', data: { task, assignment: null } });
@@ -107,6 +112,9 @@ route(tasks, 'updateTask', async ({ c, params, body }) => {
   const { task, assignment } = await db.transaction(async (tx) => {
     const [cur] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
     const statusChanged = body.status !== undefined && body.status !== cur!.status;
+    const fromLabels = cur!.labels.join(', ');
+    const toLabels = body.labels?.join(', ');
+    const labelsChanged = toLabels !== undefined && toLabels !== fromLabels;
     const [t] = await tx
       .update(schema.tasks)
       .set({
@@ -124,11 +132,43 @@ route(tasks, 'updateTask', async ({ c, params, body }) => {
         fromValue: cur!.status,
         toValue: body.status!,
       });
+    if (labelsChanged)
+      await tx.insert(schema.taskEvents).values({
+        taskId: params.tid,
+        actorUserId: c.var.user!.id,
+        kind: 'label',
+        fromValue: fromLabels || null,
+        toValue: toLabels || null,
+      });
     const a = await activeAssignment(tx, params.tid);
     return { task: toTask(t!, a?.userId ?? null), assignment: a ? toAssignment(a) : null };
   });
   notify(c, projectId, { type: 'task.updated', data: { task, assignment } });
   return task;
+});
+
+/** Audit trail for one task, oldest first (written by create/update/assign in the same transaction). */
+route(tasks, 'listTaskHistory', async ({ c, params }) => {
+  if (c.var.mocks) return { items: fx.taskHistory.items.filter((h) => h.taskId === params.tid) };
+  await assertTaskMember(c, params.tid);
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.taskEvents)
+    .where(eq(schema.taskEvents.taskId, params.tid))
+    .orderBy(asc(schema.taskEvents.at))
+    .limit(500);
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      taskId: r.taskId,
+      actorUserId: r.actorUserId,
+      kind: r.kind,
+      fromValue: r.fromValue,
+      toValue: r.toValue,
+      at: r.at.toISOString(),
+    })),
+  };
 });
 
 /* ------------------------------- dependencies ------------------------------- */

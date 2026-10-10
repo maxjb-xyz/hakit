@@ -41,6 +41,7 @@ export const toTask = (t: typeof schema.tasks.$inferSelect, assigneeId: string |
   startedAt: isoOrNull(t.startedAt),
   completedAt: isoOrNull(t.completedAt),
   updatedAt: iso(t.updatedAt),
+  labels: t.labels,
 });
 
 export const toAssignment = (a: typeof schema.assignments.$inferSelect): Assignment => ({

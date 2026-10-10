@@ -19,6 +19,7 @@ import type {
   Recommendation,
   Task,
   TaskDependency,
+  TaskHistory,
   TeamCapability,
   Workspace,
 } from '../index';
@@ -570,6 +571,29 @@ export const tasks: Task[] = taskSeeds.map(([n, title, status, m, est, assignee,
   completedAt: status === 'done' ? '2026-10-10T09:00:00-04:00' : null,
   updatedAt: NOW,
 }));
+
+export const taskHistory: TaskHistory = {
+  items: [
+    {
+      id: uid('d0', 1),
+      taskId: ids.task(4),
+      actorUserId: ids.users.priya,
+      kind: 'status',
+      fromValue: 'todo',
+      toValue: 'in_progress',
+      at: '2026-10-10T07:30:00-04:00',
+    },
+    {
+      id: uid('d0', 2),
+      taskId: ids.task(4),
+      actorUserId: ids.users.priya,
+      kind: 'label',
+      fromValue: null,
+      toValue: 'Backend',
+      at: '2026-10-10T07:45:00-04:00',
+    },
+  ],
+};
 
 export const dependencies: TaskDependency[] = [
   [2, 1],

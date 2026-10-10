@@ -20,7 +20,7 @@ import {
 } from './meta';
 
 /** A change made in this session, shown in the activity list until the API records it. */
-export type HistoryEntry = { id: string; ts: string; text: string };
+export type HistoryEntry = { id: string; ts: string; actor: string; text: string };
 
 /** Branch name that confirms the task↔code link (DESIGN §8 S10, AI.md §C.5). */
 export const branchName = (t: Pick<Task, 'key' | 'title'>) =>
@@ -164,7 +164,7 @@ function Activity(props: { task: Task; events: ActivityEvent[]; history: History
             •
           </span>
           <p className="text-label text-muted">
-            <span className="text-default">You</span> {h.text}
+            <span className="text-default">{h.actor}</span> {h.text}
             <span className="text-subtle"> · {ago(h.ts, props.lookup.now)}</span>
           </p>
         </li>
