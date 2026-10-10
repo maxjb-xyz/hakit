@@ -29,7 +29,7 @@ Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 3. Run `pnpm db:migrate && pnpm db:seed`.
 4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`, and `timescaledb_information.continuous_aggregates` should list `activity_hourly`.
 5. Share the URL with the team **privately**: a password manager or DM, never the repo or chat logs.
-6. Create a **fork** named `hakit-preview`. The preview worker uses it (§3).
+6. Optional, later: fork the service as a demo snapshot (HACKATHON C5).
 
 **Each developer:** to run against the real database instead of mocks, set `HAKIT_MOCKS=0` in `.dev.vars` and export:
 
@@ -39,108 +39,59 @@ export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://…t
 
 ## 3. Cloudflare (PL owner)
 
-Two deployed workers share one Cloudflare account:
+One worker (`hakit`), one database (the Tiger dev service from §2). Run every `wrangler` command from `apps/web`.
 
-| | Production | Preview |
-|---|---|---|
-| Worker | `hakit` | `hakit-preview` |
-| Deploy | `pnpm deploy` (CI on `main`) | `pnpm deploy:preview` (manual) |
-| Database | Tiger dev service | Tiger fork `hakit-preview` |
-| Hyperdrive | `hakit-db` | `hakit-preview-db` |
-| Queues | `hakit-jobs`, `hakit-dlq` | `hakit-preview-jobs`, `hakit-preview-dlq` |
-| GitHub App | Hakit | Hakit Dev |
-
-Local dev (`pnpm dev`) needs none of this. It uses `.dev.vars` and, with `HAKIT_MOCKS=0`, the Tiger dev URL directly.
-
-1. `npx wrangler login`, then `npx wrangler whoami` and note the account ID.
-2. Create the resources. Hyperdrive takes the Tiger URL **without** `uselibpqcompat=true&`:
+1. `npx wrangler login`
+2. Create Hyperdrive with the Tiger URL **including the password** but **without** `uselibpqcompat=true&`, then paste the printed ID over the `000…0` in `wrangler.jsonc`:
    ```bash
-   npx wrangler hyperdrive create hakit-db --connection-string="<Tiger dev URL>"
-   npx wrangler hyperdrive create hakit-preview-db --connection-string="<Tiger fork URL>"
+   npx wrangler hyperdrive create hakit-db --connection-string="postgres://tsdbadmin:<password>@<host>:<port>/tsdb?sslmode=require"
+   ```
+3. Create the queues:
+   ```bash
    npx wrangler queues create hakit-jobs
    npx wrangler queues create hakit-dlq
-   npx wrangler queues create hakit-preview-jobs
-   npx wrangler queues create hakit-preview-dlq
    ```
-3. In `apps/web/wrangler.jsonc`, replace the two `000…0` Hyperdrive IDs: the top-level one with `hakit-db`, the one under `env.preview` with `hakit-preview-db`. Commit.
-4. Set the non-GitHub secrets for both workers (from `apps/web`; each prompts for the value). Use fresh `openssl rand -base64 32` values per worker for `SESSION_SECRET` and `TOKEN_ENC_KEY`:
-   ```bash
-   for s in SESSION_SECRET TOKEN_ENC_KEY GEMINI_API_KEY HF_TOKEN; do
-     npx wrangler secret put $s
-     npx wrangler secret put $s --env preview
-   done
-   ```
-   Missing secrets only turn their `/api/v1/health/deep` items red; they don't block a deploy.
-5. Deploy both: `pnpm deploy && pnpm deploy:preview`. Note the two `*.workers.dev` URLs.
-6. Put the URLs in `wrangler.jsonc`: `vars.APP_URL` (production) and `env.preview.vars.APP_URL`. Commit and deploy both again.
-7. Check `https://<each host>/api/v1/health/deep`.
-8. CI deploys (production only):
-   - Cloudflare → My Profile → API Tokens → Create Token → "Edit Cloudflare Workers" template.
-   - GitHub repo → Settings → Environments → create `production`.
-   - Settings → Secrets and variables → Actions: secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; variable `DEPLOY_ENABLED` = `true`.
+4. `pnpm deploy`. Note the `https://hakit.<you>.workers.dev` URL, set it as `vars.APP_URL` in `wrangler.jsonc`, and deploy again.
+5. Secrets: `npx wrangler secret put <NAME>` for `SESSION_SECRET` and `TOKEN_ENC_KEY` (each `openssl rand -base64 32`), then the GitHub values from §4 and the AI keys from §5 as they arrive. Missing secrets only turn their `/api/v1/health/deep` items red.
+6. CI deploys: Cloudflare API token ("Edit Cloudflare Workers" template); GitHub repo → Environments → `production`; Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; Actions variable `DEPLOY_ENABLED=true`.
 
-**Plan:** start on Workers Free. Upgrade to Paid ($5) only if you hit the CPU (10 ms), subrequest (50) or queue (10k/day) limits (RISKS D-2).
+**Plan:** Workers Free. Upgrade to Paid ($5) only if you hit the CPU, subrequest or queue limits (RISKS D-2).
 
 ## 4. GitHub Apps (GH owner)
 
-Two apps, no local tunnels. **Hakit** serves production. **Hakit Dev** serves local sign-in (callbacks to `localhost`) and sends its webhooks to the preview worker. Create both after §3 step 5, so the URLs exist.
+- **Hakit Dev**: local sign-in only. Webhooks **off**. Local webhook work replays signed fixtures (below). No tunnels.
+- **Hakit**: production. Webhooks go to the deployed worker.
 
-Under GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**:
+GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**:
 
 | Field | Hakit Dev | Hakit |
 |---|---|---|
-| Name (must be globally unique) | `Hakit Dev` | `Hakit` |
 | Homepage URL | `http://localhost:5173` | `https://<prod-host>` |
 | Callback URL | `http://localhost:5173/api/v1/auth/github/callback` | `https://<prod-host>/api/v1/auth/github/callback` |
 | Expire user authorization tokens | ✅ | ✅ |
-| Request user authorization (OAuth) during installation | ❌ | ❌ |
-| Enable Device Flow | ❌ | ❌ |
-| Setup URL | `http://localhost:5173/api/v1/auth/github/setup` | `https://<prod-host>/api/v1/auth/github/setup` |
-| Redirect on update | ✅ | ✅ |
-| Webhook active | ✅ | ✅ |
-| Webhook URL | `https://<preview-host>/webhooks/github` | `https://<prod-host>/webhooks/github` |
-| Webhook secret | `openssl rand -hex 32` | a different value |
+| Request user authorization during installation | ❌ | ❌ |
+| Setup URL (+ Redirect on update ✅) | `http://localhost:5173/api/v1/auth/github/setup` | `https://<prod-host>/api/v1/auth/github/setup` |
+| Webhook | Active ❌ | Active ✅, URL `https://<prod-host>/webhooks/github`, secret `openssl rand -hex 32` |
 | Where can it be installed | Any account | Any account |
 
-To sign in to the **preview** worker, add `https://<preview-host>/api/v1/auth/github/callback` as a second callback URL on Hakit Dev. GitHub allows several.
+**Permissions:** Repository: Contents, Metadata, Pull requests (all read). Account: Email addresses (read).
+**Events** (Hakit): Create, Delete, Pull request, Pull request review, Push, Repository.
 
-**Permissions** (everything else "No access"):
-- Repository: Contents (read), Metadata (read), Pull requests (read)
-- Account: Email addresses (read)
-
-**Events:** Create, Delete, Pull request, Pull request review, Push, Repository. Installation and Installation repositories events are always sent.
-
-After creating each app, from its settings page:
-1. Note the **App ID**, **Client ID** and **slug** (from `github.com/apps/<slug>`).
-2. **Generate a new client secret.** It is shown once.
-3. **Generate a private key** and convert it to PKCS#8 for WebCrypto:
-   ```bash
-   openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in <downloaded>.pem -out hakit.pkcs8.pem
-   ```
-4. Store everything in the password manager and delete the `.pem` files.
-
-Then set the secrets (from `apps/web`):
-
+For each app: note the App ID, Client ID and slug; generate a client secret (shown once); generate a private key and convert it to PKCS#8:
 ```bash
-# Hakit → production
-for s in GITHUB_APP_ID GITHUB_APP_SLUG GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GITHUB_WEBHOOK_SECRET; do npx wrangler secret put $s; done
-npx wrangler secret put GITHUB_APP_PRIVATE_KEY < hakit.pkcs8.pem
-# Hakit Dev → preview
-for s in GITHUB_APP_ID GITHUB_APP_SLUG GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GITHUB_WEBHOOK_SECRET; do npx wrangler secret put $s --env preview; done
-npx wrangler secret put GITHUB_APP_PRIVATE_KEY --env preview < hakit-dev.pkcs8.pem
+openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out <name>.pkcs8.pem
 ```
 
-**Local `.dev.vars`:** use the Hakit Dev values. Keep `APP_URL=http://localhost:5173`. The private key goes on one line with `\n` escapes: `awk '{printf "%s\\n", $0}' hakit-dev.pkcs8.pem`. The key loader must accept both escaped and real newlines.
+- **Hakit values → production:** `npx wrangler secret put` for `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, and `npx wrangler secret put GITHUB_APP_PRIVATE_KEY < hakit.pkcs8.pem`.
+- **Hakit Dev values → `apps/web/.dev.vars`.** Keep `APP_URL=http://localhost:5173`. Put the key on one line: `awk '{printf "%s\\n", $0}' hakit-dev.pkcs8.pem`. Pick any `GITHUB_WEBHOOK_SECRET` for fixture signing.
 
-**Testing webhooks without a tunnel:**
-- End to end: install Hakit Dev on a test repo, push, then check the app's Advanced → Recent Deliveries and `npx wrangler tail --env preview`.
-- Locally: save payloads from Recent Deliveries as fixtures and replay them signed:
-  ```bash
-  SIG=$(openssl dgst -sha256 -hmac "$GITHUB_WEBHOOK_SECRET" < push.json | sed 's/^.* //')
-  curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application/json" \
-    -H "X-GitHub-Event: push" -H "X-GitHub-Delivery: $(uuidgen)" -H "X-Hub-Signature-256: sha256=$SIG" \
-    --data-binary @push.json
-  ```
+**Local webhooks:** copy real payloads from the Hakit app's Advanced → Recent Deliveries into fixtures and replay them:
+```bash
+SIG=$(openssl dgst -sha256 -hmac "$GITHUB_WEBHOOK_SECRET" < push.json | sed 's/^.* //')
+curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: push" -H "X-GitHub-Delivery: $(uuidgen)" -H "X-Hub-Signature-256: sha256=$SIG" \
+  --data-binary @push.json
+```
 
 ## 5. AI providers (IN owner)
 

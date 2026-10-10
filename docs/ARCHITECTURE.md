@@ -108,7 +108,7 @@ hakit/
 
 **Secrets** (`wrangler secret put`): `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PKCS#8 — convert with `openssl pkcs8 -topk8 -nocrypt`), `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, `SESSION_SECRET`, `TOKEN_ENC_KEY` (AES-GCM 256, base64), `GEMINI_API_KEY`, `HF_TOKEN`, optional `AMD_LLM_BASE_URL`/`AMD_LLM_KEY`, optional `ELEVENLABS_API_KEY`.
 
-**Environments:** `local` (wrangler dev + Tiger fork or local Postgres with timescale/pgvector via Docker), `preview` (Tiger *fork* of prod — a Tiger feature worth showing), `production`. A **second GitHub App** ("Hakit Dev") for local sign-in, with webhooks delivered to the preview worker (no local tunnels; local webhook work replays signed fixtures).
+**Environments:** `local` (wrangler dev + Tiger fork or local Postgres with timescale/pgvector via Docker), `preview` (Tiger *fork* of prod — a Tiger feature worth showing), `production`. A **second GitHub App** ("Hakit Dev") for local sign-in only (webhooks off; local webhook work replays signed fixtures, no tunnels).
 
 ## 5. Data model (Postgres / Drizzle)
 
