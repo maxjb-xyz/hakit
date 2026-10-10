@@ -64,6 +64,7 @@ Status: **Planning draft v1.** Likelihood (L) and impact (I) are rated H/M/L.
 
 ## 4. Verify-list results
 *(to be filled at H0–2 per ARCHITECTURE §13 / T-008)*
+`GET /api/v1/health/deep` on the deployed worker answers the Hyperdrive/`time_bucket`, GitHub App and HF rows directly.
 
 | Item | Result | Date |
 |---|---|---|

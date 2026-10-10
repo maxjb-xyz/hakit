@@ -534,6 +534,8 @@ export const recommendations = pgTable(
     createdAt: createdAt(),
     resolvedAt: ts('resolved_at'),
     resolvedBy: uuid('resolved_by').references(() => users.id),
+    /** Free-text reason from dismiss (T-505); input for rule tuning. */
+    dismissReason: text('dismiss_reason'),
   },
   (t) => [
     uniqueIndex('recommendations_open_dedupe')

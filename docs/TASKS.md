@@ -23,15 +23,26 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | Task | Status | Remaining |
 |---|---|---|
 | T-001 Monorepo | ✅ done | – |
-| T-002 Bindings | 🟡 config written | Create the Hyperdrive config + queues; put the real Hyperdrive id in `wrangler.jsonc` (SETUP §4) |
+| T-002 Bindings | 🟡 config written | Create the Hyperdrive config + queues; put the real Hyperdrive id in `wrangler.jsonc` (SETUP §3) |
 | T-003 DB package | 🟡 schema + migrations written | Run them on Tiger dev. `0001_init.sql` passed on plain Postgres 16; `0002_timescale.sql` is untested on TimescaleDB |
 | T-004 Contracts v1 | ✅ done | Freeze at C1 after the team reviews it |
 | T-005 Seeds | 🟡 286 skills, 1,678 dependency mappings, Knight Hacks IX template | Taxonomy embeddings (embed.batch job); verify challenges on Devpost |
-| T-006 GitHub Apps | ⬜ manual | SETUP §3 |
-| T-007 CI/CD | 🟡 check job | Deploy job gated on `vars.DEPLOY_ENABLED` + Cloudflare secrets |
-| T-008 Deep health | 🟡 DO, DB, queue checks | GitHub JWT, Gemini and HF pings |
+| T-006 GitHub Apps | ⬜ manual | SETUP §4 |
+| T-007 CI/CD | 🟡 check, approval-gated migrate, deploy (no preview env, so no PR previews) | Add required reviewers + `DATABASE_URL` secret to the `migrations` environment |
+| T-008 Deep health | 🟡 DO, DB, queue, GitHub App JWT, Gemini, HF embed checks | Run against prod; record ARCHITECTURE §13 results in RISKS §4 |
 | T-101 Tokens | ✅ done | Sync Figma variables |
 | T-104 App shell | 🟡 functional skeleton + routes + placeholders | Real design, inspector, ⌘K |
+| T-201 Sign-in & sessions | ✅ OAuth + state cookie, AES-GCM tokens, lazy locked refresh, hashed sessions | Live test against the GitHub App |
+| T-202 Workspaces & invites | ✅ templates, invites (expiry, max uses), `requireMember`/`assertOwner` | – |
+| T-203 Profile & availability | ✅ GET/PATCH, window validation, `available_hours` | – |
+| T-302 API | ✅ hackathon, projects, constraints (challenge refs checked against the workspace template) | FE: S7 screen, fit meter |
+| T-308 Plan materialization | ✅ one transaction, HK numbers from the project counter, `embed.batch`, `board.changed` | Re-planning after acceptance (409 today) |
+| T-311 API | ✅ accept (locks win), manual assign + lock; board CRUD and cycle-checked dependencies | Solver proposals (T-309, IN) must be stored as `proposed` rows |
+| T-502 MC snapshot | ✅ measured progress, lanes (activity_hourly sparkline, agent sessions), blockers, recent activity, open recs | Schedule/health come from T-501 (IN); until then `SCHEDULE_PENDING` |
+| T-505 API | ✅ accept applies typed actions in one transaction (reassign, priority/cut, status, split, dependency); dismiss stores a reason | FE: RecommendationCard |
+| T-601 Agent tokens | ✅ create (shown once, SHA-256 stored), list/revoke own, `authenticateAgentToken` + `AGENT_RATE_LIMITER` | GH: call it from `/agent/events` (T-602) |
+| T-702 Security tests | ✅ authZ matrix over every endpoint (anonymous/non-member/member/owner), CSRF, webhook HMAC, token revocation, log grep + runtime capture; central route guard; log redaction | – |
+| T-701 E2E happy path | 🟡 Playwright spec + `POST /auth/test-login` (secret-gated, off in mock mode and on prod); mock mode runs in CI | Run real mode against a preview (`E2E_BASE_URL`, `E2E_LOGIN_SECRET`, `E2E_WEBHOOK_SECRET`, `E2E_REPO_ID`). Plan (T-305), solver (T-309) and recommendations (T-504) steps fall back or skip with a `pending` note until those merge |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 
@@ -60,7 +71,7 @@ Also in the scaffold:
 - AC: Drizzle schema for ARCHITECTURE §5; `drizzle-kit` migrations.
 - AC: raw SQL migration for the hypertable, the continuous aggregate with its refresh policy, and HNSW indexes.
 - AC: `pnpm --filter db migrate` is idempotent.
-- AC: a fork named `hakit-preview` exists.
+- AC (optional, demo snapshot): a fork named `hakit-preview` exists.
 
 **T-004 · Contracts v1** · P0 · PL+IN · 3h · T-001
 - AC: Zod schemas for every DTO named in ARCHITECTURE §6, plus `WsEvent`, `JobMessage`, `AgentHookEvent`.
@@ -79,12 +90,12 @@ Also in the scaffold:
 **T-006 · GitHub Apps registration** · P0 · GH · 1h · T-002
 - AC: two apps, "Hakit" and "Hakit Dev", with permissions and events per INTEGRATIONS §1.3.
 - AC: private key converted to PKCS#8 and stored as a secret.
-- AC: dev webhook goes through a cloudflared tunnel.
+- AC: prod webhooks reach the deployed worker; local webhook work replays signed fixtures (no tunnel).
 - AC: a test delivery reaches the Worker.
 
 **T-007 · CI/CD** · P0 · PL · 1h · T-001
 - AC: GitHub Actions runs typecheck, lint and test on PRs.
-- AC: deploy on `main`; preview version upload on PRs.
+- AC: deploy on `main`. ~~Preview version upload on PRs~~ (the preview env was removed).
 - AC: the migration step is gated on manual approval.
 
 **T-008 · Deep health & verify-list** · P0 · PL · 1h · T-002, T-003
@@ -224,18 +235,25 @@ Also in the scaffold:
 ## Phase 4 — GitHub & Activity
 
 **T-401 · Webhook endpoint** · P0 · GH · 2h · T-006, T-003
+- Status: implemented and locally tested (19 focused tests); live GitHub/DB/Queue verification, preview deployment and the under-1s latency check remain pending setup.
 - AC: HMAC verification on the raw body (constant time); delivery-ID dedupe; enqueue; 202 in under 1s.
 - AC: tests cover a bad signature (401), a duplicate delivery (200, no second job) and an unknown event (202, ignored).
+- Implementation: delivery claim and queue send run inside a DB transaction; queue failure rolls back the claim. Queue send and DB commit are not atomic across services, so T-403 must remain idempotent (including duplicate jobs after a commit failure).
 
 **T-402 · Installation & repo discovery** · P0 · GH · 3h · T-201, T-401
+- Status: implemented and locally tested (50 focused tests); live verification and preview deployment depend on T-006, T-201 and Platform bindings. See [GITHUB-VERIFICATION](GITHUB-VERIFICATION.md) for checks you can run without coding.
 - AC: install URL with state; Setup URL handler verifies the installation through `GET /user/installations`.
 - AC: repo list API; `installation*` and `repository` events keep tables in sync; connect-repo endpoint.
+- Implementation: short-lived signed state cookie bound to user/workspace; paginated user-token discovery; project-membership and GitHub-access checks before transactional connection; post-commit `github.backfill` enqueue (processor remains T-405). Lifecycle jobs synchronize metadata and detach revoked repos; activity fanout excludes detached/suspended installations. Uses the existing schema; AES-GCM token helpers document the T-201 storage envelope, and expired tokens require reauthentication until Platform adds lazy refresh. Repository picker UI remains T-407.
 
 **T-403 · Event normalization & attribution** · P0 · GH · 3h · T-401
+- Status: implemented and locally tested (50 focused tests); live GitHub/DB/Queue/DO verification and preview deployment remain pending setup.
 - AC: INTEGRATIONS §1.5 mapping; commits deduped by sha.
 - AC: author resolution (ID → noreply parse → alias → unknown).
 - AC: insert into the hypertable; DO broadcast `activity.created`.
 - AC: fixture-based tests for every event type.
+- Implementation: queue handler validates payloads, resolves authors, fans out only to connected projects, stores activity transactionally, broadcasts after commit and marks the delivery processed. Stable activity IDs allow notification retries without duplicate rows; clients may receive the same activity ID again. Commit dedupe uses a transaction-scoped project lock plus a SHA lookup because the existing hypertable index includes the timestamp. PR/review rows leave `sha` null to avoid that index collapsing distinct same-second events; their branch and PR number are retained.
+- The real activity endpoint returns the latest 100 events with project-membership checks. Pagination requires a future contract addition. Installation/repository events produce no activity; table synchronization is implemented in T-402. Explicit/semantic task linking remains T-406.
 
 **T-404 · ProjectRoom DO & WS client** · P0 · GH · 3h · T-004
 - AC: hibernation accept with membership-checked upgrade; `broadcast` RPC; sequence numbers with a 200-event replay buffer; presence.

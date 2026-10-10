@@ -11,8 +11,12 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    outputs:
+      migrations: ${{ steps.migrations.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -24,11 +28,50 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
+      # T-701 happy path in mock mode (real mode runs against a preview with E2E_LOGIN_SECRET; see e2e/support.ts).
+      - run: pnpm --filter @hakit/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @hakit/web test:e2e
+      - id: migrations
+        # Did this push add or change SQL migrations? Gates the approval-protected migrate job below.
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE^{commit}"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE" HEAD -- packages/db/drizzle; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  migrate:
+    # The `migrations` environment must have required reviewers (repo Settings → Environments): that is the
+    # manual approval gate. DATABASE_URL is the Tiger direct service URL, stored as an environment secret.
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true' &&
+      needs.check.outputs.migrations == 'true'
+    needs: check
+    runs-on: ubuntu-latest
+    environment: migrations
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   deploy:
-    # Enabled once CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID repo secrets exist (docs/SETUP.md §4).
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
-    needs: check
+    # Runs after migrate when there are migrations, otherwise straight after check.
+    if: >-
+      always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true' &&
+      needs.check.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+    needs: [check, migrate]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -39,7 +82,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm deploy
+      - run: pnpm run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

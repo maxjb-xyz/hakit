@@ -15,7 +15,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "00000000000000000000000000000000",
+      "id": "b6b5b8d17744423ebb81e50206d48a68",
       "localConnectionString": "postgres://hakit:hakit@127.0.0.1:5432/hakit",
     },
   ],
@@ -29,8 +29,12 @@
   },
   "triggers": { "crons": ["*/2 * * * *"] },
   "ai": { "binding": "AI" },
+  // Agent hook ingestion: 120 events per minute per token (T-601). Plugin sends at most ~1 per 10s per session.
+  "ratelimits": [
+    { "name": "AGENT_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
+  ],
   "vars": {
-    "APP_URL": "http://localhost:5173",
+    "APP_URL": "https://hakit.work",
     "HAKIT_MOCKS": "0",
     "GEMINI_MODEL_PLAN": "gemini-flash-latest",
     "GEMINI_MODEL_FAST": "gemini-flash-lite-latest",

@@ -22,12 +22,14 @@ Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 1. Create a **free** service at https://console.cloud.timescale.com. Copy the **direct service URL**: database `tsdb`, `sslmode=require`. Don't use the transaction pooler (`tsdb_transaction`).
 2. Write `packages/db/.env` (gitignored):
    ```
-   DATABASE_URL=postgres://tsdbadmin:…@….tsdb.cloud.timescale.com:…/tsdb?sslmode=require
+   DATABASE_URL=postgres://tsdbadmin:…@….tsdb.cloud.timescale.com:…/tsdb?uselibpqcompat=true&sslmode=require
    ```
+   Keep `uselibpqcompat=true&`. Without it, node's `pg` driver treats `sslmode=require` as full certificate verification, which Tiger's certificate chain fails (`SELF_SIGNED_CERT_IN_CHAIN`). `drizzle-kit migrate` hides that error and only prints `Exit status 1`. psql rejects the parameter, so drop it for psql and Hyperdrive: `psql "${DATABASE_URL/uselibpqcompat=true&/}"`.
+   If you `export`ed an older `DATABASE_URL` in your shell, `unset` it first: dotenv won't override a variable that's already set.
 3. Run `pnpm db:migrate && pnpm db:seed`.
-4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`. This migration has **not** been run against TimescaleDB yet, so fix it here first if it fails.
+4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`, and `timescaledb_information.continuous_aggregates` should list `activity_hourly`.
 5. Share the URL with the team **privately**: a password manager or DM, never the repo or chat logs.
-6. Create a **fork** named `hakit-preview` for preview deploys.
+6. Optional, later: fork the service as a demo snapshot (HACKATHON C5).
 
 **Each developer:** to run against the real database instead of mocks, set `HAKIT_MOCKS=0` in `.dev.vars` and export:
 
@@ -35,9 +37,32 @@ Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://…tiger dev URL…"
 ```
 
-## 3. GitHub Apps (GH owner)
+## 3. Cloudflare (PL owner)
 
-Create **two** apps under Settings → Developer settings → GitHub Apps: **Hakit** (production) and **Hakit Dev** (local).
+One worker (`hakit`), one database (the Tiger dev service from §2). Run every `wrangler` command from `apps/web`.
+
+1. `npx wrangler login`
+2. Create Hyperdrive with the Tiger URL **including the password** but **without** `uselibpqcompat=true&`, then paste the printed ID over the `000…0` in `wrangler.jsonc`:
+   ```bash
+   npx wrangler hyperdrive create hakit-db --connection-string="postgres://tsdbadmin:<password>@<host>:<port>/tsdb?sslmode=require"
+   ```
+3. Create the queues:
+   ```bash
+   npx wrangler queues create hakit-jobs
+   npx wrangler queues create hakit-dlq
+   ```
+4. `pnpm deploy`. Note the `https://hakit.<you>.workers.dev` URL, set it as `vars.APP_URL` in `wrangler.jsonc`, and deploy again.
+5. Secrets: `npx wrangler secret put <NAME>` for `SESSION_SECRET` and `TOKEN_ENC_KEY` (each `openssl rand -base64 32`), then the GitHub values from §4 and the AI keys from §5 as they arrive. Missing secrets only turn their `/api/v1/health/deep` items red.
+6. CI deploys: Cloudflare API token ("Edit Cloudflare Workers" template); GitHub repo → Environments → `production`; Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; Actions variable `DEPLOY_ENABLED=true`.
+
+**Plan:** Workers Free. Upgrade to Paid ($5) only if you hit the CPU, subrequest or queue limits (RISKS D-2).
+
+## 4. GitHub Apps (GH owner)
+
+- **Hakit Dev**: local sign-in only. Webhooks **off**. Local webhook work replays signed fixtures (below). No tunnels.
+- **Hakit**: production. Webhooks go to the deployed worker.
+
+GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**:
 
 | Field | Hakit Dev | Hakit |
 |---|---|---|
@@ -46,55 +71,27 @@ Create **two** apps under Settings → Developer settings → GitHub Apps: **Hak
 | Expire user authorization tokens | ✅ | ✅ |
 | Request user authorization during installation | ❌ | ❌ |
 | Setup URL (+ Redirect on update ✅) | `http://localhost:5173/api/v1/auth/github/setup` | `https://<prod-host>/api/v1/auth/github/setup` |
-| Webhook URL | your tunnel URL + `/webhooks/github` (see below) | `https://<prod-host>/webhooks/github` |
-| Webhook secret | `openssl rand -hex 32` | different value |
+| Webhook | Active ❌ | Active ✅, URL `https://<prod-host>/webhooks/github`, secret `openssl rand -hex 32` |
+| Where can it be installed | Any account | Any account |
 
-**Permissions:**
-- Repository: Metadata (read), Contents (read), Pull requests (read)
-- Account: Email addresses (read)
+**Permissions:** Repository: Contents, Metadata, Pull requests (all read). Account: Email addresses (read).
+**Events** (Hakit): Create, Delete, Pull request, Pull request review, Push, Repository.
 
-**Events:** Installation, Installation repositories, Repository, Push, Create, Delete, Pull request, Pull request review.
-
-**Where it can be installed:** any account.
-
-After creating each app:
-- Generate a private key, then convert it to PKCS#8 for WebCrypto:
-  ```bash
-  openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in hakit.private-key.pem -out hakit.pkcs8.pem
-  ```
-- Copy the App ID, slug, client ID and a new client secret.
-
-**Local webhooks:** `cloudflared tunnel --url http://localhost:5173` gives a public URL. Put it in the Hakit Dev webhook field. Quick tunnels change on restart; use a named tunnel for stability.
-
-## 4. Cloudflare (PL owner)
-
+For each app: note the App ID, Client ID and slug; generate a client secret (shown once); generate a private key and convert it to PKCS#8:
 ```bash
-npx wrangler login
-npx wrangler hyperdrive create hakit-db --connection-string="<Tiger direct URL>"   # put the id in wrangler.jsonc
-npx wrangler queues create hakit-jobs
-npx wrangler queues create hakit-dlq
+openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out <name>.pkcs8.pem
 ```
 
-Then set the production secrets, one `wrangler secret put` per name (run from `apps/web`):
+- **Hakit values → production:** `npx wrangler secret put` for `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, and `npx wrangler secret put GITHUB_APP_PRIVATE_KEY < hakit.pkcs8.pem`.
+- **Hakit Dev values → `apps/web/.dev.vars`.** Keep `APP_URL=http://localhost:5173`. Put the key on one line: `awk '{printf "%s\\n", $0}' hakit-dev.pkcs8.pem`. Pick any `GITHUB_WEBHOOK_SECRET` for fixture signing.
 
+**Local webhooks:** copy real payloads from the Hakit app's Advanced → Recent Deliveries into fixtures and replay them:
 ```bash
-for s in SESSION_SECRET TOKEN_ENC_KEY GITHUB_APP_ID GITHUB_APP_SLUG GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET \
-         GITHUB_WEBHOOK_SECRET GITHUB_APP_PRIVATE_KEY GEMINI_API_KEY HF_TOKEN; do npx wrangler secret put $s; done
+SIG=$(openssl dgst -sha256 -hmac "$GITHUB_WEBHOOK_SECRET" < push.json | sed 's/^.* //')
+curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: push" -H "X-GitHub-Delivery: $(uuidgen)" -H "X-Hub-Signature-256: sha256=$SIG" \
+  --data-binary @push.json
 ```
-
-Deploy:
-
-```bash
-pnpm deploy
-```
-
-Afterwards, update `APP_URL` in `wrangler.jsonc` vars, and update the production GitHub App URLs to match.
-
-**Plan:** start on Workers Free. Upgrade to Paid ($5) only if you hit the CPU (10 ms), subrequest (50) or queue (10k/day) limits (RISKS D-2).
-
-**CI deploys** need these GitHub repo secrets:
-- `CLOUDFLARE_API_TOKEN`, using the "Edit Cloudflare Workers" template
-- `CLOUDFLARE_ACCOUNT_ID`
 
 ## 5. AI providers (IN owner)
 
