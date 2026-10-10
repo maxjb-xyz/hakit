@@ -3,7 +3,7 @@ import type { ApiError } from '@hakit/contracts';
 import { API_PREFIX } from '@hakit/contracts';
 import type { AppEnv } from './lib/context';
 import { HttpError } from './lib/errors';
-import { base } from './middleware/base';
+import { base, type BaseOptions } from './middleware/base';
 import { requireMember, requireUser, session } from './middleware/auth';
 import { health } from './routes/health';
 import { authFlow } from './routes/auth-flow';
@@ -21,10 +21,10 @@ import { githubWebhook } from './webhooks/github';
 /** Routes that don't need a signed-in user. Everything else under /api/v1 does. */
 const PUBLIC = [/^\/health(\/deep)?$/, /^\/auth\//, /^\/invites\/[^/]+$/, /^\/agent\/events$/];
 
-export function createApp() {
+export function createApp(opts: BaseOptions = {}) {
   const app = new Hono<AppEnv>();
 
-  app.use('*', base);
+  app.use('*', base(opts));
 
   app.onError((err, c) => {
     const requestId = c.var.requestId;

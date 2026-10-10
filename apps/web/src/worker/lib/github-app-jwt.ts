@@ -2,11 +2,8 @@
  * GitHub App JWT (RS256) via WebCrypto. The key must be PKCS#8 PEM (docs/SETUP.md §4); `\n` escapes are accepted
  * because `.dev.vars` stores the key on one line. Shared by deep health (T-008) and installation tokens (T-402).
  */
-const b64url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+import { b64url } from './crypto';
+
 const b64urlJson = (v: unknown) => b64url(new TextEncoder().encode(JSON.stringify(v)));
 
 export async function githubAppJwt(appId: string, privateKeyPem: string, nowSec: number): Promise<string> {

@@ -22,7 +22,7 @@ health.get('/health/deep', async (c) => {
   const run = async (name: string, fn: () => Promise<unknown>) => {
     try {
       const r = await fn();
-      checks[name] = { ok: true, ...(r ? { detail: String(r) } : {}) };
+      checks[name] = { ok: true, ...(typeof r === 'string' ? { detail: r } : {}) };
     } catch (e) {
       checks[name] = { ok: false, detail: String(e) };
     }
