@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { ActivityEvent, WsPayload } from '@hakit/contracts';
 import { schema } from '@hakit/db';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import * as fx from '@hakit/contracts/fixtures';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
@@ -48,8 +48,12 @@ route(github, 'connectRepo', async ({ c, params, body }) => {
   await connectRepository(db, c.env, params.pid, c.var.user.id, repo, installation);
   return repo;
 });
-route(github, 'listActivity', async ({ c, params }) => {
-  if (c.var.mocks) return { items: fx.activity, nextCursor: null };
+route(github, 'listActivity', async ({ c, params, query }) => {
+  if (c.var.mocks)
+    return {
+      items: fx.activityFeed.filter((a) => !query.source || a.source === query.source),
+      nextCursor: null,
+    };
   if (!c.var.user) throw unauthorized();
   const db = c.var.db();
   await requireProjectMember(db, c.var.user.id, params.pid);
@@ -57,7 +61,12 @@ route(github, 'listActivity', async ({ c, params }) => {
   const rows = await db
     .select()
     .from(schema.activityEvents)
-    .where(eq(schema.activityEvents.projectId, params.pid))
+    .where(
+      and(
+        eq(schema.activityEvents.projectId, params.pid),
+        query.source ? eq(schema.activityEvents.source, query.source) : undefined,
+      ),
+    )
     .orderBy(desc(schema.activityEvents.ts), desc(schema.activityEvents.id))
     .limit(100);
   return {

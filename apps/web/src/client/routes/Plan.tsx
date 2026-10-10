@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Project } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
+import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill } from './page-states';
 import { AssignStep } from './plan/AssignStep';
@@ -27,10 +28,7 @@ type Step = (typeof STEPS)[number]['key'];
 
 export function Plan() {
   const { wid = '' } = useParams();
-  const projects = useQuery({
-    queryKey: qk('listProjects', { wid }),
-    queryFn: () => api('listProjects', { params: { wid } }),
-  });
+  const { project, query: projects } = useProject(wid);
 
   if (projects.isError)
     return (
@@ -44,15 +42,13 @@ export function Plan() {
         <LoadingBlocks label="Loading project" />
       </Frame>
     );
-  // One project per team for now; the first one is the team's project.
-  const project = projects.data[0];
   if (!project)
     return (
       <Frame>
         <CreateProject wid={wid} />
       </Frame>
     );
-  return <PlanFlow wid={wid} project={project} />;
+  return <PlanFlow key={project.id} wid={wid} project={project} />;
 }
 
 function Frame(props: { children: React.ReactNode; subtitle?: React.ReactNode; actions?: React.ReactNode }) {
@@ -198,6 +194,7 @@ function PlanFlow({ wid, project }: { wid: string; project: Project }) {
           <ConstraintsStep
             pid={pid}
             wid={wid}
+            hackathonSlug={workspace.data?.hackathonSlug}
             idea={idea}
             members={ms}
             onContinue={() => go({ step: 'plan' })}

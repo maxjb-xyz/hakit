@@ -6,10 +6,10 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ids } from '@hakit/contracts/fixtures';
 import type { CoverageLabel, Member, MemberSkill, SkillCategory, TeamCapability } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
+import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { useNow } from './mission-control/shared';
 
@@ -733,9 +733,12 @@ export function Team() {
   const now = useNow();
 
   const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me') });
+  // Team is workspace-wide; the project board only adds "working on" context when there is one.
+  const { pid } = useProject(wid);
   const board = useQuery({
-    queryKey: qk('getBoard', { pid: ids.project }),
-    queryFn: () => api('getBoard', { params: { pid: ids.project } }),
+    queryKey: qk('getBoard', { pid: pid ?? '' }),
+    queryFn: () => api('getBoard', { params: { pid: pid! } }),
+    enabled: !!pid,
   });
   const cap = useQuery({
     queryKey: qk('teamCapability', { wid }),

@@ -215,6 +215,24 @@ route(planning, 'getProject', async ({ c, params }) => {
   return toProject(p!);
 });
 
+route(planning, 'getConstraints', async ({ c, params }) => {
+  if (c.var.mocks) return fx.constraints;
+  await assertProjectMember(c, params.pid);
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.projectConstraints)
+    .where(eq(schema.projectConstraints.projectId, params.pid));
+  return {
+    constraints: rows.map((k) => ({
+      kind: k.kind,
+      refId: k.refId,
+      value: k.value,
+      weight: Number(k.weight),
+    })),
+  };
+});
+
 /** Replace the project's pinned constraints. Challenge refs must belong to the workspace's hackathon template. */
 route(planning, 'putConstraints', async ({ c, params, body }) => {
   if (c.var.mocks) return body;

@@ -112,9 +112,28 @@ describe('projects & constraints (T-302 API)', () => {
       { kind: 'required_tech', value: 'react', weight: 0.5 },
     ]);
     expect(ok.status).toBe(200);
+    const read = async () => {
+      const res = await h.call(`/projects/${pid}/constraints`, { token: owner.token });
+      expect(res.status).toBe(200);
+      return endpoints.getConstraints.response.parse(await res.json());
+    };
+    expect((await read()).constraints).toEqual(
+      expect.arrayContaining([
+        { kind: 'challenge', refId: mine!.id, value: 'Use HF', weight: 1 },
+        { kind: 'required_tech', refId: null, value: 'react', weight: 0.5 },
+      ]),
+    );
     expect((await put([{ kind: 'excluded_tech', value: 'php' }])).status).toBe(200);
     const rows = await h.db.select().from(schema.projectConstraints);
     expect(rows.map((r) => r.kind)).toEqual(['excluded_tech']);
+    expect((await read()).constraints).toEqual([
+      { kind: 'excluded_tech', refId: null, value: 'php', weight: 1 },
+    ]);
+    const out = await h.signIn(3);
+    expect((await h.call(`/projects/${pid}/constraints`, { token: out.token })).status).toBe(404);
+
+    const ws = await (await h.call(`/w/${wid}`, { token: owner.token })).json();
+    expect(endpoints.getWorkspace.response.parse(ws).hackathonSlug).toBe('kh');
 
     const hk = await (await h.call('/hackathons/kh', { token: owner.token })).json();
     expect(endpoints.getHackathon.response.safeParse(hk).success).toBe(true);

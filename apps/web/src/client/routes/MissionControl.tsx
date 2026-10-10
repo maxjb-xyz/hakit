@@ -10,6 +10,7 @@ import * as fx from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
+import { useProject } from '../lib/project';
 import { useProjectSocket } from '../lib/ws';
 import { ActivityFeed } from './mission-control/ActivityFeed';
 import { RecommendationList } from './mission-control/RecommendationList';
@@ -19,9 +20,7 @@ import { AgentList } from './mission-control/AgentList';
 import { MilestoneList, TeamLanes } from './mission-control/TeamLanes';
 import { useNow, type Lookup } from './mission-control/shared';
 import { AiGlyph } from './mission-control/RecommendationList';
-
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = fx.ids.project;
+import { ProjectGate } from './page-states';
 
 function Skeleton() {
   const box = 'animate-pulse rounded-md bg-raised';
@@ -88,6 +87,13 @@ export function MissionControl() {
   const { wid = '' } = useParams();
   const [search] = useSearchParams();
   const demo = search.get('demo') === '1';
+  const { pid, query } = useProject(wid);
+  if (demo) return <MissionControlScreen wid={wid} pid={fx.ids.project} demo />;
+  if (!pid) return <ProjectGate query={query} title="Mission Control" />;
+  return <MissionControlScreen key={pid} wid={wid} pid={pid} demo={false} />;
+}
+
+function MissionControlScreen({ wid, pid, demo }: { wid: string; pid: string; demo: boolean }) {
   const { state, presence, polling } = useProjectSocket(demo ? undefined : pid);
   const realNow = useNow();
   const tick = useNow(1000);

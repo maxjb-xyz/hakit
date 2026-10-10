@@ -6,26 +6,24 @@
 import { useMemo } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ids } from '@hakit/contracts/fixtures';
 import { CommandPalette, type CommandItem } from '@hakit/ui';
 import { api } from '../lib/api';
+import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { firstName, memberName } from '../routes/mission-control/shared';
 import { STATUS_LABEL, StatusIcon } from '../routes/tasks/meta';
 import { OPEN_SHORTCUTS } from './keys';
 import { NAV, SETTINGS } from './nav';
 
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
-
 export function CommandMenu(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { wid = '' } = useParams();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { pid } = useProject(wid);
   const board = useQuery({
-    queryKey: qk('getBoard', { pid }),
-    queryFn: () => api('getBoard', { params: { pid } }),
-    enabled: props.open,
+    queryKey: qk('getBoard', { pid: pid ?? '' }),
+    queryFn: () => api('getBoard', { params: { pid: pid! } }),
+    enabled: props.open && !!pid,
   });
   const members = useQuery({
     queryKey: qk('listMembers', { wid }),

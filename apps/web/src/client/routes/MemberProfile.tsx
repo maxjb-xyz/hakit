@@ -5,9 +5,9 @@
  */
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ids } from '@hakit/contracts/fixtures';
 import type { Assignment, MemberSkill, TaskStatus } from '@hakit/contracts';
 import { api } from '../lib/api';
+import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { useProjectSocket } from '../lib/ws';
 import { AGENT_NAME, SessionStatusPill, toolSummary } from './agents/meta';
@@ -17,9 +17,6 @@ import { AvailabilityEditor } from './people/AvailabilityEditor';
 import { EvidenceList, SkillReview, isInferred } from './people/SkillReview';
 import { CATEGORY_LABEL, Card, PersonAvatar, Tabs, isNotFound, tabPanelProps } from './people/shared';
 import { STATUS_LABEL, StatusIcon } from './tasks/meta';
-
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
 
 const TABS = ['skills', 'evidence', 'availability', 'assignments', 'agents'] as const;
 type Tab = (typeof TABS)[number];
@@ -86,7 +83,9 @@ export function MemberProfile() {
     ? (search.get('tab') as Tab)
     : 'skills';
   const now = useNow();
-  useProjectSocket(pid);
+  // A profile is workspace-wide; assignments and agent sessions come from the project in view.
+  const { pid } = useProject(wid);
+  useProjectSocket(pid ?? undefined);
 
   const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me') });
   const members = useQuery({
@@ -106,12 +105,14 @@ export function MemberProfile() {
     queryFn: () => api('getWorkspace', { params: { wid } }),
   });
   const board = useQuery({
-    queryKey: qk('getBoard', { pid }),
-    queryFn: () => api('getBoard', { params: { pid } }),
+    queryKey: qk('getBoard', { pid: pid ?? '' }),
+    queryFn: () => api('getBoard', { params: { pid: pid! } }),
+    enabled: !!pid,
   });
   const sessions = useQuery({
-    queryKey: qk('listAgentSessions', { pid }),
-    queryFn: () => api('listAgentSessions', { params: { pid } }),
+    queryKey: qk('listAgentSessions', { pid: pid ?? '' }),
+    queryFn: () => api('listAgentSessions', { params: { pid: pid! } }),
+    enabled: !!pid,
   });
 
   const member = members.data?.find((m) => m.user.id === uid);

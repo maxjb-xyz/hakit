@@ -35,7 +35,7 @@ route(agents, 'createAgentToken', async ({ c, params, body }) => {
 });
 
 route(agents, 'listAgentTokens', async ({ c, params }) => {
-  if (c.var.mocks) return [];
+  if (c.var.mocks) return fx.agentTokens;
   const rows = await c.var
     .db()
     .select()

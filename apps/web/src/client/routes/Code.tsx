@@ -6,15 +6,23 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ids } from '@hakit/contracts/fixtures';
 import type { ActivityEvent, ActivityKind, Member, Page, Task } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
+import { useProject } from '../lib/project';
 import { useProjectSocket } from '../lib/ws';
 import { Panel, ago, memberName, useNow } from './mission-control/shared';
 import { MemberAvatar, Picker } from './tasks/meta';
-import { EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill, TaskLinkChip } from './page-states';
+import {
+  EmptyBox,
+  ErrorBox,
+  LoadingBlocks,
+  PageHeader,
+  Pill,
+  ProjectGate,
+  TaskLinkChip,
+} from './page-states';
 import { RepoConnection } from './code/RepoConnection';
 import {
   NO_FILTERS,
@@ -33,11 +41,14 @@ import {
   type UnknownAuthor,
 } from './code/derive';
 
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
-
 export function Code() {
   const { wid = '' } = useParams();
+  const { pid, query } = useProject(wid);
+  if (!pid) return <ProjectGate query={query} title="Code" />;
+  return <CodeScreen key={pid} wid={wid} pid={pid} />;
+}
+
+function CodeScreen({ wid, pid }: { wid: string; pid: string }) {
   const now = useNow();
   const socket = useProjectSocket(pid);
   const [connecting, setConnecting] = useState(false);
