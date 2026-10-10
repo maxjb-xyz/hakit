@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:github": "vitest run github src/worker/jobs/index.test.ts --reporter=verbose",
+    "test:realtime": "vitest run project-socket ws.test realtime project-room --reporter=verbose",
     "cf-typegen": "wrangler types --include-runtime false"
   },
   "dependencies": {

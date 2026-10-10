@@ -49,11 +49,11 @@ export function Onboarding() {
 }
 export function MissionControl() {
   const pid = useProjectId();
-  const { state, presence } = useProjectSocket(pid);
+  const { state, presence, polling } = useProjectSocket(pid);
   return (
     <>
-      <p className="px-6 pt-4 text-caption text-subtle">
-        realtime: {state} · {presence.length} online
+      <p className="px-6 pt-4 text-caption text-subtle" role="status" aria-live="polite">
+        {state === 'open' ? `Live · ${presence.length} online` : polling ? 'Updating every 10 seconds · Reconnecting' : 'Reconnecting…'}
       </p>
       <Placeholder
         screen="S11"

@@ -8,7 +8,7 @@
  * - Presence = distinct user ids attached to sockets.
  */
 import { DurableObject } from 'cloudflare:workers';
-import { WsClientMessage, type WsEnvelope, type WsPayload } from '@hakit/contracts';
+import { Id, WsClientMessage, WsEnvelope, WsPayload } from '@hakit/contracts';
 import type { Env } from '../env';
 
 const REPLAY_LIMIT = 200;
@@ -28,19 +28,21 @@ export class ProjectRoom extends DurableObject<Env> {
     if (request.headers.get('Upgrade') !== 'websocket')
       return new Response('Expected WebSocket', { status: 426 });
     const userId = request.headers.get('x-hakit-user');
-    if (!userId) return new Response('Missing user', { status: 400 });
+    if (!Id.safeParse(userId).success) return new Response('Missing user', { status: 400 });
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     this.ctx.acceptWebSocket(server, [userId]);
-    await this.broadcastPresence();
+    // hello replays first, then broadcasts presence, preserving sequence order on reconnect.
     return new Response(null, { status: 101, webSocket: client });
   }
 
   /** RPC from routes/jobs/cron. */
   async broadcast(payload: WsPayload): Promise<number> {
-    const envelope = { v: 1, seq: ++this.seq, at: new Date().toISOString(), ...payload } as WsEnvelope;
+    const data = WsPayload.parse(payload);
+    const envelope = WsEnvelope.parse({ ...data, v: 1, seq: this.seq + 1, at: new Date().toISOString() });
     const body = JSON.stringify(envelope);
     this.ctx.storage.sql.exec(`INSERT INTO events (seq, body) VALUES (?, ?)`, envelope.seq, body);
+    this.seq = envelope.seq;
     this.ctx.storage.sql.exec(`DELETE FROM events WHERE seq <= ?`, envelope.seq - REPLAY_LIMIT);
     for (const ws of this.ctx.getWebSockets()) {
       try {
@@ -62,11 +64,14 @@ export class ProjectRoom extends DurableObject<Env> {
     }
     // hello: replay missed events (or nothing if lastSeq is null/current)
     const since = parsed.data.lastSeq;
-    if (since === null) return;
-    const rows = this.ctx.storage.sql
-      .exec<{ body: string }>(`SELECT body FROM events WHERE seq > ? ORDER BY seq`, since)
-      .toArray();
-    for (const r of rows) ws.send(r.body);
+    if (since !== null) {
+      if (since > this.seq) { ws.close(1012, 'Replay cursor reset'); return; }
+      const rows = this.ctx.storage.sql
+        .exec<{ body: string }>(`SELECT body FROM events WHERE seq > ? ORDER BY seq`, since)
+        .toArray();
+      for (const r of rows) ws.send(r.body);
+    }
+    await this.broadcastPresence();
   }
 
   override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
@@ -78,8 +83,13 @@ export class ProjectRoom extends DurableObject<Env> {
     await this.broadcastPresence();
   }
 
+  override async webSocketError(ws: WebSocket): Promise<void> {
+    try { ws.close(1011, 'Socket error'); } catch { /* already closed */ }
+    await this.broadcastPresence();
+  }
+
   private async broadcastPresence() {
-    const userIds = [...new Set(this.ctx.getWebSockets().flatMap((ws) => this.ctx.getTags(ws)))];
+    const userIds = [...new Set(this.ctx.getWebSockets().filter(ws => ws.readyState === 1).flatMap((ws) => this.ctx.getTags(ws)))];
     await this.broadcast({ type: 'presence', data: { userIds } });
   }
 }

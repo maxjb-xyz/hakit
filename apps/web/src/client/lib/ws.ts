@@ -1,74 +1,37 @@
-/**
- * Live project updates (ARCHITECTURE §7). Owner: GH (T-404). Mounted once per project screen.
- * Each WS event invalidates the queries that render it; after 15s disconnected, Mission Control polls.
- */
+/** React integration for the tested project connection/retry controller. Owner: GH (T-404). */
 import { useEffect, useRef, useState } from 'react';
-import { WsEnvelope, type WsEventType, type EndpointName } from '@hakit/contracts';
+import type { WsEnvelope, EndpointName } from '@hakit/contracts';
+import type { QueryClient } from '@tanstack/react-query';
 import { queryClient } from './query';
+import { connectProjectSocket, PROJECT_QUERIES, type ConnectionStatus } from './project-socket';
+export type { SocketState } from './project-socket';
 
-const INVALIDATES: Record<WsEventType, EndpointName[]> = {
-  'activity.created': ['listActivity', 'missionControl'],
-  'task.updated': ['getBoard', 'missionControl'],
-  'board.changed': ['getBoard', 'missionControl'],
-  'recommendation.created': ['listRecommendations', 'missionControl'],
-  'recommendation.resolved': ['listRecommendations', 'missionControl', 'getBoard'],
-  'agent_session.updated': ['listAgentSessions', 'missionControl'],
-  presence: [],
-  'plan.progress': [],
-  'health.updated': ['missionControl'],
-  'skills.import_progress': ['memberSkills'],
-  'member.joined': ['listMembers', 'teamCapability'],
-};
-
-export type SocketState = 'connecting' | 'open' | 'closed';
+export function invalidateProjectQueries(client: QueryClient, projectId: string, names: EndpointName[]) {
+  if (names.length === 0) return;
+  void client.invalidateQueries({ predicate: query => {
+    const name = query.queryKey[0] as EndpointName;
+    if (!names.includes(name)) return false;
+    if (!PROJECT_QUERIES.includes(name)) return true;
+    const params = query.queryKey[1];
+    return typeof params === 'object' && params !== null && 'pid' in params && params.pid === projectId;
+  } });
+}
 
 export function useProjectSocket(projectId: string | undefined, onEvent?: (e: WsEnvelope) => void) {
-  const [state, setState] = useState<SocketState>('connecting');
-  const [presence, setPresence] = useState<string[]>([]);
-  const lastSeq = useRef<number | null>(null);
+  const [connection, setConnection] = useState<ConnectionStatus & { projectId?: string }>({ state: 'connecting', polling: false, presence: [] });
   const onEventRef = useRef(onEvent);
-  useEffect(() => {
-    onEventRef.current = onEvent;
-  }, [onEvent]);
-
+  useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
   useEffect(() => {
     if (!projectId) return;
-    let ws: WebSocket | null = null;
-    let retry = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let stopped = false;
-
-    const connect = () => {
-      setState('connecting');
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      ws = new WebSocket(`${proto}://${location.host}/api/v1/projects/${projectId}/ws`);
-      ws.onopen = () => {
-        retry = 0;
-        setState('open');
-        ws?.send(JSON.stringify({ type: 'hello', lastSeq: lastSeq.current }));
-      };
-      ws.onmessage = (m) => {
-        const parsed = WsEnvelope.safeParse(JSON.parse(String(m.data)));
-        if (!parsed.success) return;
-        const e = parsed.data;
-        lastSeq.current = e.seq;
-        if (e.type === 'presence') setPresence(e.data.userIds);
-        for (const name of INVALIDATES[e.type]) void queryClient.invalidateQueries({ queryKey: [name] });
-        onEventRef.current?.(e);
-      };
-      ws.onclose = () => {
-        setState('closed');
-        if (stopped) return;
-        timer = setTimeout(connect, Math.min(15_000, 500 * 2 ** retry++));
-      };
-    };
-    connect();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      ws?.close();
-    };
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    return connectProjectSocket({
+      createSocket: () => new WebSocket(`${proto}://${location.host}/api/v1/projects/${encodeURIComponent(projectId)}/ws`),
+      status: status => setConnection({ ...status, projectId }),
+      invalidate: names => invalidateProjectQueries(queryClient, projectId, names),
+      onEvent: event => onEventRef.current?.(event),
+    });
   }, [projectId]);
-
-  return { state, presence };
+  if (!projectId) return { state: 'closed' as const, polling: false, presence: [] };
+  if (connection.projectId !== projectId) return { state: 'connecting' as const, polling: false, presence: [] };
+  return connection;
 }
