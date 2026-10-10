@@ -161,6 +161,7 @@ export function useTaskBoard(pid: string, wid: string) {
     loadError: board.isError ? message(board.error) : null,
     retry: () => void board.refetch(),
     tasks,
+    dependencies: live ? board.data.dependencies : fx.board.dependencies,
     members: members.isSuccess ? members.data : fx.members,
     activity: live ? (activity.data?.items ?? []) : fx.activity,
     labels,

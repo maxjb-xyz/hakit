@@ -19,11 +19,11 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
-  todo: 'text-subtle',
-  in_progress: 'text-warning',
-  in_review: 'text-info',
+  todo: 'text-level-4',
+  in_progress: 'text-default',
+  in_review: 'text-default',
   blocked: 'text-danger',
-  done: 'text-success',
+  done: 'text-accent-500',
   cut: 'text-disabled',
 };
 
@@ -31,17 +31,9 @@ const STATUS_COLOR: Record<TaskStatus, string> = {
 export function StatusIcon({ status, className }: { status: TaskStatus; className?: string }) {
   return (
     <svg viewBox="0 0 14 14" aria-hidden className={cn('size-3.5 shrink-0', STATUS_COLOR[status], className)}>
-      <circle
-        cx="7"
-        cy="7"
-        r="5.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeDasharray={status === 'todo' ? '2 1.6' : undefined}
-      />
-      {status === 'in_progress' && <path d="M7 3.5a3.5 3.5 0 0 1 0 7z" fill="currentColor" />}
-      {status === 'in_review' && <path d="M7 3.5A3.5 3.5 0 1 1 3.5 7H7z" fill="currentColor" />}
+      <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      {status === 'in_progress' && <path d="M7 3a4 4 0 0 1 0 8z" fill="currentColor" />}
+      {status === 'in_review' && <path d="M7 3A4 4 0 1 1 3 7H7z" fill="currentColor" />}
       {status === 'blocked' && <path d="M4.5 9.5l5-5" stroke="currentColor" strokeWidth="1.5" />}
       {status === 'done' && (
         <>
@@ -124,7 +116,7 @@ export function MemberAvatar({ member, className }: { member: Member | undefined
       title={name}
       aria-label={name}
       className={cn(
-        'grid size-5 shrink-0 place-items-center rounded-full text-caption font-semibold text-canvas',
+        'grid size-5 shrink-0 place-items-center rounded-full text-caption font-semibold text-on-light',
         className,
       )}
       style={{ background: `var(--color-member-${member.colorIndex})` }}

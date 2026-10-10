@@ -1,4 +1,4 @@
-/** S10 Tasks — list view grouped by status + inspector (DESIGN §8, T-312). Data: tasks/useTaskBoard. */
+/** S10 Tasks: board (default) or list grouped by status + inspector (DESIGN §8, T-312). Data: tasks/useTaskBoard. */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
@@ -6,6 +6,7 @@ import { ids } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
 import { LabelPill, MemberAvatar, STATUS_LABEL, STATUS_ORDER, StatusIcon, inferLabel } from './tasks/meta';
 import { NewTaskDialog } from './tasks/NewTaskDialog';
+import { Board } from './tasks/Board';
 import { TaskInspector } from './tasks/TaskInspector';
 import { useTaskBoard, type LabelOverrides } from './tasks/useTaskBoard';
 import { useProjectSocket } from '../lib/ws';
@@ -26,11 +27,11 @@ function TaskRow(props: {
         to={{ search: `?task=${task.key}` }}
         aria-current={props.selected || undefined}
         className={cn(
-          'flex items-center gap-3 border-b border-border px-6 py-2 text-body transition-colors duration-(--duration-instant) hover:bg-hover focus-visible:bg-hover max-sm:px-4',
-          props.selected && 'bg-accent-a12 hover:bg-accent-a12 focus-visible:bg-accent-a12',
+          'hover-light flex h-9 items-center gap-3 border-b border-hover px-6 text-body max-sm:px-4',
+          props.selected && 'bg-raised',
         )}
       >
-        <span className="w-12 shrink-0 font-mono text-label text-subtle">{task.key}</span>
+        <span className="w-12 shrink-0 text-label text-faint">{task.key}</span>
         <StatusIcon status={task.status} />
         <span className="sr-only">{STATUS_LABEL[task.status]}:</span>
         <span className={cn('min-w-0 flex-1 truncate text-default', task.status === 'cut' && 'line-through')}>
@@ -64,7 +65,7 @@ function StatusGroup(props: {
   const id = `group-${props.status}`;
   return (
     <section aria-labelledby={`${id}-h`}>
-      <h2 id={`${id}-h`} className="sticky top-0 z-10 border-b border-border bg-surface">
+      <h2 id={`${id}-h`} className="sticky top-0 z-10 border-b border-hover bg-canvas">
         <button
           type="button"
           aria-expanded={open}
@@ -197,9 +198,10 @@ export function Tasks() {
   const { wid = '' } = useParams();
   const b = useTaskBoard(pid, wid);
   useProjectSocket(b.live ? pid : undefined);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<TaskStatus | null>(null);
   const [search, setSearch] = useSearchParams();
   const selectedKey = search.get('task');
+  const view = search.get('view') === 'list' ? 'list' : 'board';
   const selected = b.tasks.find((t) => t.key === selectedKey);
   const now = useNow();
 
@@ -229,7 +231,7 @@ export function Tasks() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       e.preventDefault();
-      setCreating(true);
+      setCreating('todo');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -237,18 +239,41 @@ export function Tasks() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3 max-sm:px-4">
-        <h1 className="text-body font-medium text-strong">All tasks</h1>
-        {!b.loading && <span className="text-label text-subtle">{tasks.length}</span>}
+      <div className="flex h-12 items-center gap-3 border-b border-hover px-6 max-sm:px-4">
+        <div role="tablist" aria-label="Task views" className="flex items-center gap-1">
+          {(['board', 'list'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() =>
+                setSearch((p) => {
+                  if (v === 'board') p.delete('view');
+                  else p.set('view', v);
+                  return p;
+                })
+              }
+              className={cn(
+                'h-control-sm rounded-sm px-2.5 text-body capitalize',
+                view === v ? 'bg-hover text-strong' : 'text-subtle hover:bg-raised hover:text-strong',
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        {!b.loading && <span className="text-label text-subtle">{tasks.length} tasks</span>}
         <Button
-          variant="primary"
+          variant="secondary"
           size="sm"
           className="ml-auto"
-          onClick={() => setCreating(true)}
+          onClick={() => setCreating('todo')}
           disabled={b.loading}
           title="New task (C)"
         >
-          + New task
+          New task
+          <kbd className="ml-1 text-caption text-subtle">C</kbd>
         </Button>
       </div>
 
@@ -279,6 +304,16 @@ export function Tasks() {
 
       {b.loading ? (
         <ListSkeleton />
+      ) : view === 'board' ? (
+        <Board
+          tasks={tasks}
+          dependencies={b.dependencies}
+          members={members}
+          selectedKey={selectedKey}
+          now={now}
+          onMove={(t, status) => void b.update(t.id, { status }, `moved this to ${STATUS_LABEL[status]}`)}
+          onCreate={(status) => setCreating(status)}
+        />
       ) : (
         <TaskList tasks={tasks} members={members} labels={b.labels} selectedKey={selectedKey} />
       )}
@@ -300,8 +335,9 @@ export function Tasks() {
         />
       )}
       <NewTaskDialog
-        open={creating}
-        onClose={() => setCreating(false)}
+        open={creating !== null}
+        initialStatus={creating ?? undefined}
+        onClose={() => setCreating(null)}
         onCreate={(input) => void b.create(input)}
         members={members}
       />

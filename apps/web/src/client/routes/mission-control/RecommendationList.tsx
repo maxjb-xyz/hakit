@@ -5,10 +5,11 @@ import type { Recommendation, RecommendationAction } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { STATUS_LABEL } from '../tasks/meta';
-import { Panel, fmtHours, memberName, type Lookup } from './shared';
+import { duration, fmtHours, memberName, type Lookup } from './shared';
+import { SectionHead } from './TeamLanes';
 
 const SEVERITY = {
-  info: { label: 'Info', className: 'text-info' },
+  info: { label: 'Info', className: 'text-subtle' },
   warn: { label: 'Warning', className: 'text-warning' },
   critical: { label: 'Critical', className: 'text-danger' },
 } as const;
@@ -43,10 +44,44 @@ function impact(r: Recommendation) {
 
 type Resolution = 'accepted' | 'dismissed';
 
+const KIND_LABEL: Record<Recommendation['kind'], string> = {
+  reassign: 'Reassignment',
+  split_task: 'Split',
+  cut_scope: 'Scope cut',
+  unblock: 'Unblock',
+  rebalance: 'Rebalance',
+  add_dependency: 'Dependency',
+  check_in: 'Check-in',
+};
+
+/** Dashed diamond: AI-originated (handoff principle 4). Never a fill or badge. */
+export function AiGlyph({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'inline-block size-2 shrink-0 rotate-45 border-[1.5px] border-dashed border-ai',
+        className,
+      )}
+    />
+  );
+}
+
+const shortImpact = (r: Recommendation) =>
+  r.impact.criticalPathHoursSaved
+    ? `≈ −${fmtHours(r.impact.criticalPathHoursSaved)}`
+    : r.impact.hoursFreed
+      ? `frees ≈ ${fmtHours(r.impact.hoursFreed)}`
+      : r.impact.tasksUnblocked
+        ? `unblocks ${r.impact.tasksUnblocked}`
+        : '';
+
 function RecommendationCard(props: {
   rec: Recommendation;
   lookup: Lookup;
   demo: boolean;
+  expanded: boolean;
+  onExpand: () => void;
   onResolved: (r: Resolution) => void;
 }) {
   const { rec, lookup } = props;
@@ -61,43 +96,62 @@ function RecommendationCard(props: {
     onSuccess: (kind) => {
       props.onResolved(kind);
       void qc.invalidateQueries({ queryKey: ['getBoard'] });
+      void qc.invalidateQueries({ queryKey: ['missionControl'] });
     },
   });
   const sev = SEVERITY[rec.severity];
   const imp = impact(rec);
+  const age = Math.max(0, Math.round((lookup.now - Date.parse(rec.createdAt)) / 60_000));
+
+  if (!props.expanded)
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={props.onExpand}
+          className="hover-light flex h-10 w-full items-center gap-3 rounded-md border border-border bg-surface px-4 text-left"
+        >
+          <AiGlyph />
+          <span className="min-w-0 flex-1 truncate text-body text-default">{rec.headline}</span>
+          <span className="shrink-0 text-label text-subtle">{shortImpact(rec)}</span>
+        </button>
+      </li>
+    );
 
   return (
-    <li className="border-b border-l-2 border-b-border border-l-ai px-4 py-3 last:border-b-0">
-      <p className={cn('text-caption font-medium tracking-wide uppercase', sev.className)}>
-        {sev.label} · <span className="text-ai">Suggested</span>
+    <li className="rounded-md border border-border bg-surface p-4">
+      <p className="flex items-center gap-2 text-label text-subtle">
+        <AiGlyph />
+        {KIND_LABEL[rec.kind]}
+        {rec.severity !== 'info' && <span className={sev.className}>· {sev.label}</span>}
+        <span className="ml-auto">{duration(age)}</span>
       </p>
-      <p className="mt-1 text-body font-medium text-strong">{rec.headline}</p>
-      <p className="mt-1 text-body text-muted">{rec.rationale}</p>
+      <p className="mt-2 text-body-lg font-medium text-strong">{rec.headline}</p>
+      <p className="mt-1.5 text-body text-subtle">{rec.rationale}</p>
 
       <ul className="mt-2 space-y-0.5">
         {rec.actions.map((a, i) => (
-          <li key={i} className="text-label text-default">
-            <span aria-hidden className="text-subtle">
-              →{' '}
+          <li key={i} className="text-label text-muted">
+            <span aria-hidden className="text-faint">
+              ›{' '}
             </span>
             {describe(a, lookup)}
           </li>
         ))}
       </ul>
-      {imp && <p className="mt-1 text-label text-success">{imp}</p>}
 
-      {rec.signals.length > 0 && (
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-label">
+      {(rec.signals.length > 0 || imp) && (
+        <p className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-label">
           {rec.signals.map((sg) => (
-            <div key={sg.label} className="contents">
-              <dt className="text-subtle">{sg.label}</dt>
-              <dd className="font-mono text-muted">{sg.value}</dd>
-            </div>
+            <span key={sg.label} className="text-subtle">
+              <span className="text-default">{sg.value}</span> {sg.label}
+            </span>
           ))}
-        </dl>
+          {imp && <span className="text-subtle">{imp}</span>}
+        </p>
       )}
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2">
         <Button
           variant="primary"
           size="sm"
@@ -129,28 +183,33 @@ function RecommendationCard(props: {
 export function RecommendationList(props: { recs: Recommendation[]; lookup: Lookup; demo: boolean }) {
   // Hide resolved cards right away; the next snapshot (WS-driven) drops them server-side.
   const [resolved, setResolved] = useState<Record<string, Resolution>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
   const open = props.recs.filter((r) => r.status === 'open' && !resolved[r.id]).slice(0, 3);
+  const active = open.find((r) => r.id === expanded) ?? open[0];
   const last = Object.values(resolved).at(-1);
 
   return (
-    <Panel title="Recommendations" meta={open.length}>
+    <section>
+      <SectionHead title="Suggestions" meta={open.length} />
       {open.length === 0 ? (
-        <p className="px-4 py-6 text-body text-muted" role="status">
-          {last ? `Recommendation ${last}. ` : ''}Nothing needs attention right now.
+        <p className="text-body text-subtle" role="status">
+          {last ? `Suggestion ${last}. ` : ''}Nothing needs attention right now.
         </p>
       ) : (
-        <ul aria-live="polite">
+        <ul aria-live="polite" className="space-y-2.5">
           {open.map((r) => (
             <RecommendationCard
               key={r.id}
               rec={r}
               lookup={props.lookup}
               demo={props.demo}
+              expanded={r.id === active?.id}
+              onExpand={() => setExpanded(r.id)}
               onResolved={(k) => setResolved((m) => ({ ...m, [r.id]: k }))}
             />
           ))}
         </ul>
       )}
-    </Panel>
+    </section>
   );
 }

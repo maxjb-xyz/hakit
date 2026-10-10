@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@hakit/ui';
 
 /** Top-bar countdown (DESIGN §7). Warning < 6h, danger < 2h. Replace/extend in T-103. */
-export function Countdown({ deadlineAt, size = 'sm' }: { deadlineAt: string; size?: 'sm' | 'lg' }) {
+export function Countdown({ deadlineAt, size = 'sm' }: { deadlineAt: string; size?: 'sm' | 'lg' | 'hero' }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -16,9 +16,13 @@ export function Countdown({ deadlineAt, size = 'sm' }: { deadlineAt: string; siz
   return (
     <span
       className={cn(
-        'font-mono tabular-nums',
-        size === 'lg' ? 'text-display-lg font-semibold' : 'text-label',
-        h < 2 ? 'text-danger' : h < 6 ? 'text-warning' : size === 'lg' ? 'text-strong' : 'text-muted',
+        'tabular-nums',
+        size === 'hero'
+          ? 'text-hero font-medium'
+          : size === 'lg'
+            ? 'text-display-lg font-medium'
+            : 'text-label',
+        h < 2 ? 'text-danger' : h < 6 ? 'text-warning' : size === 'sm' ? 'text-muted' : 'text-strong',
       )}
       aria-label={`${h} hours ${m} minutes remaining`}
     >

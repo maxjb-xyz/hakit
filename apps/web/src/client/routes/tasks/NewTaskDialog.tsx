@@ -19,6 +19,7 @@ export function NewTaskDialog(props: {
   onClose: () => void;
   onCreate: (input: NewTaskInput) => void;
   members: Member[];
+  initialStatus?: NewTaskInput['status'];
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -29,10 +30,10 @@ export function NewTaskDialog(props: {
     const d = ref.current;
     if (!d) return;
     if (props.open && !d.open) {
-      setForm(EMPTY);
+      setForm({ ...EMPTY, status: props.initialStatus ?? EMPTY.status });
       d.showModal();
     } else if (!props.open && d.open) d.close();
-  }, [props.open]);
+  }, [props.open, props.initialStatus]);
 
   const canCreate = form.title.trim().length > 0;
   const submit = (e?: FormEvent) => {

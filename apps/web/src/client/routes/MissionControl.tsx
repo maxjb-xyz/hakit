@@ -15,39 +15,52 @@ import { BlockersStrip } from './mission-control/BlockersStrip';
 import { RecommendationList } from './mission-control/RecommendationList';
 import { StatusBand } from './mission-control/StatusBand';
 import { MilestoneList, TeamLanes } from './mission-control/TeamLanes';
-import { clock, useNow, type Lookup } from './mission-control/shared';
+import { useNow, type Lookup } from './mission-control/shared';
+import { AiGlyph } from './mission-control/RecommendationList';
 
 /** Until project selection exists (T-302), screens use the fixture project id. */
 const pid = fx.ids.project;
 
 function Skeleton() {
-  const box = 'animate-pulse rounded-md border border-border bg-surface';
+  const box = 'animate-pulse rounded-md bg-raised';
   return (
-    <div className="space-y-4 p-6 max-sm:p-4" aria-busy="true" aria-label="Loading Mission Control">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-7 p-7 max-sm:p-4" aria-busy="true" aria-label="Loading Mission Control">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className={cn(box, 'h-28')} />
+          <div key={i} className={cn(box, 'h-20')} />
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className={cn(box, 'h-80 lg:col-span-2')} />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_312px]">
+        <div className={cn(box, 'h-80')} />
         <div className={cn(box, 'h-80')} />
       </div>
     </div>
   );
 }
 
-function LiveChip({ demo, state }: { demo: boolean; state: 'connecting' | 'open' | 'closed' }) {
-  const [label, dot] = demo
-    ? ['Demo data', 'bg-ai']
-    : state === 'open'
-      ? ['Live', 'bg-success']
-      : ['Reconnecting…', 'bg-warning'];
-  return (
-    <span className="inline-flex h-control-sm items-center gap-1.5 rounded-full border border-border px-2 text-label text-muted">
-      <span aria-hidden className={cn('size-1.5 rounded-full', dot)} />
-      {label}
-    </span>
+function SyncChip({
+  demo,
+  state,
+  at,
+  now,
+}: {
+  demo: boolean;
+  state: 'connecting' | 'open' | 'closed';
+  at: string;
+  now: number;
+}) {
+  const secs = Math.max(0, Math.round((now - Date.parse(at)) / 1000));
+  const age = secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`;
+  if (demo)
+    return (
+      <span className="flex items-center gap-2 text-body text-subtle">
+        <AiGlyph /> Demo data
+      </span>
+    );
+  return state === 'open' ? (
+    <span className="text-body text-subtle">Synced {age} ago</span>
+  ) : (
+    <span className="text-body text-warning">Reconnecting · data {age} old</span>
   );
 }
 
@@ -57,6 +70,12 @@ export function MissionControl() {
   const demo = search.get('demo') === '1';
   const { state } = useProjectSocket(demo ? undefined : pid);
   const realNow = useNow();
+  const tick = useNow(1000);
+  const workspace = useQuery({
+    queryKey: qk('getWorkspace', { wid }),
+    queryFn: () => api('getWorkspace', { params: { wid } }),
+    enabled: !demo,
+  });
 
   const snap = useQuery({
     queryKey: qk('missionControl', { pid }),
@@ -93,43 +112,46 @@ export function MissionControl() {
   }, [demo, board.isError, board.data, members.isError, members.data, wid, now]);
 
   if (!s) return <Skeleton />;
+  const stale = !fallback && state !== 'open';
 
   return (
-    <div className="space-y-4 p-6 max-sm:p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="font-display text-display-sm text-strong">Mission Control</h1>
-        <LiveChip demo={fallback} state={state} />
-        <span className="text-label text-subtle">Updated {clock(s.generatedAt)}</span>
+    <div className="space-y-7 p-7 max-sm:p-4">
+      <div className="flex justify-end">
+        <SyncChip demo={fallback} state={state} at={s.generatedAt} now={tick} />
       </div>
 
       {snap.isError && !demo && (
         <div
           role="alert"
-          className="flex flex-wrap items-center gap-3 rounded-md border border-warning px-4 py-2 text-body text-default"
+          className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface px-4 py-2.5 text-body"
         >
-          <span>
-            Couldn't load live data ({snap.error.message}). Showing demo data; nothing has been lost.
-          </span>
+          <span className="text-default">Couldn't load live data.</span>
+          <span className="text-subtle">Showing demo data; nothing has been lost. {snap.error.message}</span>
           <Button size="sm" className="ml-auto" onClick={() => void snap.refetch()}>
             Retry
           </Button>
         </div>
       )}
 
-      <StatusBand s={s} lookup={lookup} />
+      <div className={cn('space-y-7 transition-opacity', stale && 'opacity-60')}>
+        <StatusBand s={s} lookup={lookup} />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <TeamLanes s={s} lookup={lookup} />
-          <MilestoneList s={s} />
-        </div>
-        <div className="min-w-0 space-y-4">
-          <RecommendationList recs={s.openRecommendations} lookup={lookup} demo={fallback} />
-          <ActivityFeed events={s.recentActivity} lookup={lookup} />
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_312px]">
+          <div className="min-w-0 space-y-7">
+            <TeamLanes s={s} lookup={lookup} />
+            <MilestoneList
+              s={s}
+              startsAt={workspace.data?.startsAt ?? (fallback ? fx.workspace.startsAt : null)}
+              now={now}
+            />
+            {s.blockers.length > 0 && <BlockersStrip s={s} lookup={lookup} />}
+          </div>
+          <div className="min-w-0 space-y-7">
+            <RecommendationList recs={s.openRecommendations} lookup={lookup} demo={fallback} />
+            <ActivityFeed events={s.recentActivity} lookup={lookup} />
+          </div>
         </div>
       </div>
-
-      <BlockersStrip s={s} lookup={lookup} />
     </div>
   );
 }
