@@ -4,11 +4,11 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { API_PREFIX } from '@hakit/contracts';
 import { schema } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
-import { notImplemented } from '../lib/errors';
 import { importEncKey, randomToken } from '../lib/crypto';
 import { storeGithubTokens } from '../lib/github-token';
 import { createSession, setSessionCookie } from '../lib/session';
 import { GithubAuthError } from '../services/github';
+import { installationSetup } from '../services/github/setup';
 
 export const authFlow = new Hono<AppEnv>();
 
@@ -78,8 +78,4 @@ authFlow.get('/auth/github/callback', async (c) => {
   return c.redirect(next);
 });
 
-authFlow.get('/auth/github/setup', (c) => {
-  if (c.var.mocks) return c.redirect('/');
-  // TODO(T-402): verify installation_id via services.github.userHasInstallation → upsert installation → redirect to repo picker
-  throw notImplemented('T-402');
-});
+authFlow.get('/auth/github/setup', installationSetup);

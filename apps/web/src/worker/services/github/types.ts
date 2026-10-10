@@ -1,7 +1,9 @@
 import type { RepoSummary } from '@hakit/contracts';
+import type { Installation } from './discovery';
 
 /** GitHub access used by routes/jobs (docs/INTEGRATIONS.md §1). Owner: GH (+ PL for OAuth). */
 export interface GithubService {
+  listInstallations(userAccessToken: string): Promise<Installation[]>;
   /** OAuth web flow (T-201). */
   authorizeUrl(state: string, redirectUri: string): string;
   exchangeCode(code: string, redirectUri: string): Promise<GithubTokenSet>;

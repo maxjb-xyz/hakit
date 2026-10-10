@@ -48,6 +48,7 @@ beforeEach(async () => {
     })),
     refreshToken: vi.fn(),
     getUser: vi.fn(async () => ({ id: 42, login: 'octo', name: 'Octo Cat', avatarUrl: null, email: null })),
+    listInstallations: vi.fn(),
     listInstallationRepos: vi.fn(),
     userHasInstallation: vi.fn(),
     verifyWebhook: vi.fn(),
