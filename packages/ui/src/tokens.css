@@ -96,6 +96,8 @@
   --spacing-sidebar: 224px;
   --spacing-rail: 56px;
   --spacing-inspector: 360px;
+  --spacing-palette: 420px; /* ⌘K result list max height */
+  --spacing-palette-offset: 12vh;
   --spacing-topbar: 48px;
   --spacing-row-compact: 34px;
   --spacing-dot: 7px;
@@ -154,6 +156,47 @@
     background: radial-gradient(120% 120% at 50% 0%, rgb(255 255 255 / 0.045), transparent 70%), #131316;
     border-color: var(--color-border-strong);
   }
+}
+
+/*
+ * Purposeful motion (DESIGN §5): (a) a new feed row slides in with a 1s accent tint fade;
+ * (b) a reassigned task slides into its new lane. Reduced motion collapses both (see base layer).
+ */
+@keyframes hk-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    background-color: var(--color-accent-a12);
+  }
+  20% {
+    opacity: 1;
+    transform: none;
+    background-color: var(--color-accent-a12);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes hk-reassign {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+    background-color: var(--color-accent-a12);
+  }
+  30% {
+    opacity: 1;
+    transform: none;
+    background-color: var(--color-accent-a12);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@utility animate-arrive {
+  animation: hk-arrive 1s var(--ease-enter) both;
+}
+@utility animate-reassign {
+  animation: hk-reassign 1.2s var(--ease-enter) both;
 }
 
 @layer base {

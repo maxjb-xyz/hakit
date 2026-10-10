@@ -1,9 +1,10 @@
 /** S11 main-right: live activity feed. Confirmed task links are solid, inferred ones dashed + confidence. */
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ActivityEvent } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { MemberAvatar } from '../tasks/meta';
-import { ago, firstName, midTruncate, type Lookup } from './shared';
+import { ago, firstName, midTruncate, taskHref, type Lookup } from './shared';
 import { SectionHead } from './TeamLanes';
 
 const VERB: Record<ActivityEvent['kind'], string> = {
@@ -31,7 +32,7 @@ function LinkChip({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
   const inferred = e.linkKind === 'inferred';
   return (
     <Link
-      to={`/w/${lookup.wid}/tasks?task=${task.key}`}
+      to={taskHref(task.key)}
       title={inferred ? 'Inferred link — not confirmed by a branch or commit reference' : 'Confirmed link'}
       className={cn(
         'inline-flex h-control-sm items-center gap-1 rounded-xs border px-1.5 font-mono text-caption hover:bg-hover',
@@ -135,7 +136,7 @@ function KindIcon({ kind }: { kind: ActivityEvent['kind'] }) {
   );
 }
 
-function FeedRow({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
+function FeedRow({ e, lookup, arrived }: { e: ActivityEvent; lookup: Lookup; arrived?: boolean }) {
   const member = lookup.member(e.actorUserId);
   const who = member ? firstName(member) : (e.actorRaw ?? 'Someone');
   const task = lookup.task(e.taskId);
@@ -143,14 +144,17 @@ function FeedRow({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
   const linked = task && e.linkKind !== 'none';
   const mins = Math.max(0, Math.round((lookup.now - Date.parse(e.ts)) / 60_000));
   return (
-    <li className="flex h-row-compact items-center gap-3 text-body" title={e.title}>
+    <li
+      className={cn(
+        'flex h-row-compact items-center gap-3 rounded-xs text-body',
+        arrived && 'animate-arrive',
+      )}
+      title={e.title}
+    >
       <KindIcon kind={e.kind} />
       <span className="min-w-0 flex-1 truncate text-subtle">
         {linked && (
-          <Link
-            to={`/w/${lookup.wid}/tasks?task=${task.key}`}
-            className="mr-1.5 rounded-xs text-default hover:text-strong"
-          >
+          <Link to={taskHref(task.key)} className="mr-1.5 rounded-xs text-default hover:text-strong">
             {task.key}
           </Link>
         )}
@@ -182,8 +186,31 @@ function FeedRow({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
   );
 }
 
+/**
+ * Ids of events that arrived after the first render, so only live additions animate (DESIGN §5a).
+ * The first batch is the baseline; everything already on screen stays still.
+ */
+function useArrivals(ids: string[]) {
+  const seen = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
+  const sig = ids.join(',');
+  useEffect(() => {
+    if (!seen.current) {
+      seen.current = new Set(ids);
+      return;
+    }
+    const added = ids.filter((id) => !seen.current!.has(id));
+    added.forEach((id) => seen.current!.add(id));
+    if (added.length) setFresh(new Set(added));
+    // `sig` captures ids by value; the array itself is new every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+  return fresh;
+}
+
 export function ActivityFeed({ events, lookup }: { events: ActivityEvent[]; lookup: Lookup }) {
   const sorted = [...events].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
+  const fresh = useArrivals(sorted.map((e) => e.id));
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <SectionHead title="Activity" meta="GitHub, agents" />
@@ -196,7 +223,7 @@ export function ActivityFeed({ events, lookup }: { events: ActivityEvent[]; look
           className="min-h-0 flex-1 overflow-auto max-lg:max-h-96"
         >
           {sorted.map((e) => (
-            <FeedRow key={e.id} e={e} lookup={lookup} />
+            <FeedRow key={e.id} e={e} lookup={lookup} arrived={fresh.has(e.id)} />
           ))}
         </ul>
       )}

@@ -1,5 +1,6 @@
 /** `?` opens a sheet listing keyboard shortcuts. Native <dialog>: focus trap and Esc for free. */
 import { useEffect, useRef } from 'react';
+import { isTyping, OPEN_SHORTCUTS } from './keys';
 
 const GROUPS: { title: string; keys: [string, string][] }[] = [
   {
@@ -7,6 +8,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
     keys: [
       ['?', 'Show this sheet'],
       ['⌘ K', 'Command palette'],
+      ['Esc', 'Close the inspector or a dialog'],
     ],
   },
   {
@@ -30,20 +32,25 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
   },
 ];
 
-const isTyping = (el: EventTarget | null) =>
-  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-
 export function Shortcuts() {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== '?' || e.metaKey || e.ctrlKey || isTyping(e.target)) return;
-      e.preventDefault();
+    const show = () => {
       const d = ref.current;
       if (d && !d.open) d.showModal();
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.metaKey || e.ctrlKey || isTyping(e.target)) return;
+      if (document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      show();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(OPEN_SHORTCUTS, show);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(OPEN_SHORTCUTS, show);
+    };
   }, []);
 
   return (

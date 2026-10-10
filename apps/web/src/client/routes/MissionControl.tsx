@@ -107,6 +107,13 @@ export function MissionControl() {
     queryFn: () => api('getBoard', { params: { pid } }),
     enabled: !demo,
   });
+  // Open suggestions come from their own endpoint (IN, T-504); the WS `recommendation.*` events
+  // invalidate it. The snapshot's copy is the fallback while it loads or if it fails.
+  const recs = useQuery({
+    queryKey: qk('listRecommendations', { pid }),
+    queryFn: () => api('listRecommendations', { params: { pid } }),
+    enabled: !demo,
+  });
   const members = useQuery({
     queryKey: qk('listMembers', { wid }),
     queryFn: () => api('listMembers', { params: { wid } }),
@@ -182,7 +189,13 @@ export function MissionControl() {
             <UpNext s={s} tasks={tasks} lookup={lookup} />
           </div>
           <div className="flex min-w-0 flex-col gap-7">
-            <RecommendationList recs={s.openRecommendations} lookup={lookup} demo={fallback} />
+            <RecommendationList
+              recs={fallback || !recs.data ? s.openRecommendations : recs.data}
+              lookup={lookup}
+              demo={fallback}
+              pid={pid}
+              unavailable={!fallback && recs.isError ? () => void recs.refetch() : null}
+            />
             <AgentList s={s} lookup={lookup} />
             <ActivityFeed events={s.recentActivity} lookup={lookup} />
           </div>

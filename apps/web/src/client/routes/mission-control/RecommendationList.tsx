@@ -1,9 +1,10 @@
 /** S11 main-right top: open recommendations (max 3) with Accept / Dismiss (T-505 UI). */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Recommendation, RecommendationAction } from '@hakit/contracts';
+import type { ProjectBoard, Recommendation, RecommendationAction } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
+import { qk } from '../../lib/query';
 import { STATUS_LABEL } from '../tasks/meta';
 import { KeyedText, duration, fmtHours, memberName, type Lookup } from './shared';
 import { SectionHead } from './TeamLanes';
@@ -80,7 +81,7 @@ const UNDO_MS = 8000;
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
-type Pending = { id: string; label: string; timer: ReturnType<typeof setTimeout> };
+type Pending = { id: string; label: string; timer: ReturnType<typeof setTimeout>; commit: () => void };
 
 /** The match figure, when the engine reported one as a signal (e.g. "Sam match" = 0.82). */
 function matchOf(r: Recommendation) {
@@ -311,7 +312,14 @@ function RecommendationCard(props: {
   );
 }
 
-export function RecommendationList(props: { recs: Recommendation[]; lookup: Lookup; demo: boolean }) {
+export function RecommendationList(props: {
+  recs: Recommendation[];
+  lookup: Lookup;
+  demo: boolean;
+  pid: string;
+  /** Set when `listRecommendations` failed: the list shows the snapshot's copy and offers a retry. */
+  unavailable?: (() => void) | null;
+}) {
   const qc = useQueryClient();
   // Resolved cards hide right away; the next snapshot (WS-driven) drops them server-side.
   const [resolved, setResolved] = useState<Record<string, true>>({});
@@ -324,9 +332,13 @@ export function RecommendationList(props: { recs: Recommendation[]; lookup: Look
     .slice(0, 3);
   const active = open.find((r) => r.id === expanded) ?? open[0];
 
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ['getBoard'] });
+  const refresh = (board?: ProjectBoard) => {
+    // Accept returns the updated board: show it now; the WS `recommendation.resolved` event and these
+    // invalidations bring every other client (and the snapshot) up to date.
+    if (board) qc.setQueryData(qk('getBoard', { pid: props.pid }), board);
+    else void qc.invalidateQueries({ queryKey: ['getBoard'] });
     void qc.invalidateQueries({ queryKey: ['missionControl'] });
+    void qc.invalidateQueries({ queryKey: ['listRecommendations'] });
   };
   const fail = (id: string, e: unknown) => {
     setResolved((m) => {
@@ -343,15 +355,18 @@ export function RecommendationList(props: { recs: Recommendation[]; lookup: Look
       (rec.actions[0]
         ? describe(rec.actions[0], props.lookup).replace(/^Reassign (\S+) to /, '$1 → ')
         : rec.headline);
-    const timer = setTimeout(() => {
-      setPending(null);
-      setResolved((m) => ({ ...m, [rec.id]: true }));
+    const commit = () => {
       if (props.demo) return;
       api('acceptRecommendation', { params: { rid: rec.id }, body: mods ? { modifications: mods } : {} })
         .then(refresh)
         .catch((e: unknown) => fail(rec.id, e));
+    };
+    const timer = setTimeout(() => {
+      setPending(null);
+      setResolved((m) => ({ ...m, [rec.id]: true }));
+      commit();
     }, UNDO_MS);
-    setPending({ id: rec.id, label: text, timer });
+    setPending({ id: rec.id, label: text, timer, commit });
     setMode('idle');
   };
   const dismiss = useMutation({
@@ -367,6 +382,21 @@ export function RecommendationList(props: { recs: Recommendation[]; lookup: Look
     },
     onError: (e, v) => fail(v.rec.id, e),
   });
+  // Leaving the page inside the undo window still applies the accept; only Undo cancels it.
+  const pendingRef = useRef(pending);
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
+  useEffect(
+    () => () => {
+      const p = pendingRef.current;
+      if (!p) return;
+      clearTimeout(p.timer);
+      p.commit();
+    },
+    [],
+  );
+
   const undo = () => {
     if (!pending) return;
     clearTimeout(pending.timer);
@@ -399,6 +429,14 @@ export function RecommendationList(props: { recs: Recommendation[]; lookup: Look
   return (
     <section aria-keyshortcuts="j k a m d">
       <SectionHead title="Suggestions" meta={open.length} />
+      {props.unavailable && (
+        <p role="alert" className="mb-2.5 flex flex-wrap items-center gap-2 text-label text-subtle">
+          <span className="text-warning">Couldn't refresh suggestions.</span> Showing the last snapshot.
+          <Button size="sm" variant="ghost" onClick={props.unavailable}>
+            Retry
+          </Button>
+        </p>
+      )}
       {pending && (
         <p
           role="status"

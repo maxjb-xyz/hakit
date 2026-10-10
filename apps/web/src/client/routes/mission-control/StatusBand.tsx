@@ -3,7 +3,7 @@ import type { HealthStatus, MissionControlSnapshot } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { Countdown } from '../../shell/Countdown';
 import { Link } from 'react-router';
-import { KeyedText, ago, clock, duration, type Lookup } from './shared';
+import { KeyedText, ago, clock, duration, taskHref, type Lookup } from './shared';
 
 const HEALTH: Record<HealthStatus, { label: string; tone: string }> = {
   on_track: { label: 'On track', tone: 'text-default' },
@@ -121,7 +121,7 @@ export function StatusBand({
                 {i > 0 && <span aria-hidden>›</span>}
                 {t ? (
                   <Link
-                    to={`/w/${lookup.wid}/tasks?task=${t.key}`}
+                    to={taskHref(t.key)}
                     title={`${t.title}${t.status === 'blocked' ? ' (blocked)' : stalled.has(id) ? ' (no recent activity)' : ''}`}
                     className={cn(
                       'rounded-xs hover:text-strong',

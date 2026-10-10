@@ -17,6 +17,12 @@ export type Lookup = {
   dependencies?: TaskDependency[];
 };
 
+/**
+ * Link target for a task: `?task=` on the current screen. Mission Control peeks in the shell inspector
+ * (with the assignment explanation); the Tasks screen opens its own full inspector for the same param.
+ */
+export const taskHref = (key: string) => ({ search: `?task=${encodeURIComponent(key)}` });
+
 /** Turns `HK-n` mentions in a sentence into links to the task panel. Unknown keys stay plain text. */
 export function KeyedText({ text, lookup, className }: { text: string; lookup: Lookup; className?: string }) {
   const parts = text.split(/(HK-\d+)/g);
@@ -27,7 +33,7 @@ export function KeyedText({ text, lookup, className }: { text: string; lookup: L
         return t ? (
           <Link
             key={i}
-            to={`/w/${lookup.wid}/tasks?task=${t.key}`}
+            to={taskHref(t.key)}
             className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
           >
             {p}
@@ -126,7 +132,7 @@ export function TaskRef(props: {
   if (!task) return <span className="text-subtle">Unknown task</span>;
   return (
     <Link
-      to={`/w/${props.lookup.wid}/tasks?task=${task.key}`}
+      to={taskHref(task.key)}
       className={cn(
         'inline-flex min-w-0 items-baseline gap-1.5 rounded-xs hover:text-strong',
         props.className,
