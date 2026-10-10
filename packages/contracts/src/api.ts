@@ -14,7 +14,16 @@ import {
 } from './identity';
 import { MemberSkill, Skill, TeamCapability, UpsertMemberSkill } from './capability';
 import { CreateProject, HackathonTemplate, Project, PutConstraints } from './hackathon';
-import { GenerateIdeas, GeneratePlan, Idea, Plan, PlanPatch, RefineIdea, SubmitIdea } from './planning';
+import {
+  GenerateIdeas,
+  GeneratePlan,
+  Idea,
+  Plan,
+  PlanPatch,
+  PlanSummary,
+  RefineIdea,
+  SubmitIdea,
+} from './planning';
 import { CreateTask, PutDependency, Task, TaskHistory, UpdateTask } from './tasks';
 import {
   AcceptAssignments,
@@ -183,6 +192,8 @@ export const endpoints = {
     kind: 'sse',
     owner: 'IN',
   },
+  /** Plan versions for the review screen's version switcher, newest first (additive, T-307). */
+  listPlans: { method: 'GET', path: '/projects/:pid/plans', response: z.array(PlanSummary), owner: 'IN' },
   getPlan: { method: 'GET', path: '/projects/:pid/plans/:planId', response: Plan, owner: 'IN' },
   patchPlan: {
     method: 'PATCH',

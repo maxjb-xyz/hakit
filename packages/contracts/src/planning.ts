@@ -157,6 +157,23 @@ export const Plan = z.object({
 });
 export type Plan = z.infer<typeof Plan>;
 
+/** One row of the plan version switcher (GET /projects/:pid/plans), newest version first. */
+export const PlanSummary = z.object({
+  id: Id,
+  projectId: Id,
+  version: z.number().int().positive(),
+  status: PlanStatus,
+  model: z.string(),
+  createdAt: Timestamp,
+  /** Retained (non-cut) task count. */
+  taskCount: z.number().int().nonnegative(),
+  feasibilityOk: z.boolean(),
+  requiredHours: z.number(),
+  availableEffectiveHours: z.number(),
+  cutTaskCount: z.number().int().nonnegative(),
+});
+export type PlanSummary = z.infer<typeof PlanSummary>;
+
 export const Idea = z.object({
   id: Id,
   projectId: Id,

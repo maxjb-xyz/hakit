@@ -39,6 +39,8 @@ export const ids = {
   rec: (n: number) => uid('90', n),
   session: (n: number) => uid('a0', n),
   plan: uid('b0', 1),
+  /** A newer draft version of the plan (mock plan-review demo). */
+  planDraft: uid('b0', 2),
   challenge: (n: number) => uid('c0', n),
   skill: (n: number) => uid('d0', n),
   evidence: (n: number) => uid('e0', n),
