@@ -1,10 +1,12 @@
 /** GitHub OAuth redirects + App Setup URL (browser navigations, not JSON). Owner: PL (T-201), GH (T-402). */
 import { Hono, type Context } from 'hono';
+import { z } from 'zod';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { API_PREFIX } from '@hakit/contracts';
 import { schema } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
-import { importEncKey, randomToken } from '../lib/crypto';
+import { importEncKey, randomToken, sha256Hex } from '../lib/crypto';
+import { HttpError } from '../lib/errors';
 import { storeGithubTokens } from '../lib/github-token';
 import { createSession, setSessionCookie } from '../lib/session';
 import { GithubAuthError } from '../services/github';
@@ -79,3 +81,40 @@ authFlow.get('/auth/github/callback', async (c) => {
 });
 
 authFlow.get('/auth/github/setup', installationSetup);
+
+/** Production origin (wrangler.jsonc vars). Test login refuses to run there even if the secret leaks into config. */
+const PROD_APP_URL = 'https://hakit.work';
+const testLoginBody = z.object({
+  githubUserId: z.number().int().positive(),
+  login: z.string().min(1).max(39),
+  name: z.string().max(100).optional(),
+});
+
+/**
+ * E2E sign-in (T-701): skips GitHub OAuth. Enabled only when E2E_LOGIN_SECRET (≥32 chars) is set, outside mock
+ * mode and off the production origin; the caller must send the secret in `x-e2e-secret`. Otherwise it 404s like
+ * any unknown route, so its existence isn't advertised. Not in the contract: it's test infrastructure, not API.
+ */
+authFlow.post('/auth/test-login', async (c) => {
+  const secret = c.env.E2E_LOGIN_SECRET;
+  if (!secret || secret.length < 32 || c.var.mocks || c.env.APP_URL === PROD_APP_URL) {
+    throw new HttpError(404, 'not_found', `No route POST ${c.req.path}`);
+  }
+  const given = c.req.header('x-e2e-secret') ?? '';
+  // Compare digests so the comparison time doesn't depend on how much of the secret matched.
+  if ((await sha256Hex(given)) !== (await sha256Hex(secret)))
+    throw new HttpError(401, 'unauthorized', 'Bad E2E secret');
+  const parsed = testLoginBody.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw new HttpError(400, 'validation_failed', 'Invalid test login body');
+  const { githubUserId, login, name } = parsed.data;
+  const now = new Date();
+  const db = c.var.db();
+  const profile = { githubLogin: login, name: name ?? null, lastSeenAt: now };
+  const [user] = await db
+    .insert(schema.users)
+    .values({ githubUserId, ...profile })
+    .onConflictDoUpdate({ target: schema.users.githubUserId, set: profile })
+    .returning({ id: schema.users.id });
+  setSessionCookie(c, await createSession(db, user!.id, c.req.header('user-agent') ?? null, now));
+  return c.json({ userId: user!.id });
+});

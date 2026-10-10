@@ -33,6 +33,8 @@ export interface Env {
   AMD_LLM_BASE_URL?: string;
   AMD_EMBED_BASE_URL?: string;
   AMD_LLM_KEY?: string;
+  /** E2E only (T-701): enables POST /auth/test-login. Set on preview/local runs, NEVER in production. */
+  E2E_LOGIN_SECRET?: string;
 }
 
 export const isMock = (env: Pick<Env, 'HAKIT_MOCKS'>) => env.HAKIT_MOCKS === '1';
