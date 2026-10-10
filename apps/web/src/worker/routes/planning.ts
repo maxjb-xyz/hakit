@@ -5,8 +5,9 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
   PlanDocument,
   IdeaStreamEvent,
+  Feasibility,
   Plan,
-  type Feasibility,
+  type PlanSummary,
   type HackathonTemplate,
   type PlanStreamEvent,
   type Project,
@@ -57,6 +58,84 @@ const mockPlan = () => ({
   feasibility: mockFeasibility,
   model: 'mock',
   createdAt: fx.project.createdAt,
+});
+
+/** Mock draft v2: more tasks than v1 and one optional task cut by the validator, so review has something to show. */
+const t1 = fx.planDocument.tasks[0]!;
+const mockDraftDoc: PlanDocument = {
+  ...fx.planDocument,
+  outline: {
+    ...fx.planDocument.outline,
+    epics: [
+      ...fx.planDocument.outline.epics,
+      { key: 'E2', title: 'Plan & assign', milestoneKey: 'M2', scopeTier: 'must', challengeKeys: ['C1'] },
+    ],
+  },
+  tasks: [
+    t1,
+    {
+      ...t1,
+      key: 'T2',
+      epicKey: 'E2',
+      title: 'Plan review screen',
+      description: 'Stream plan sections, feasibility banner, inline edits.',
+      acceptanceCriteria: ['Edits save as one new plan version'],
+      estimateHours: 4,
+      requiredSkills: [{ slug: 'react', level: 3, weight: 1 }],
+      dependsOn: ['T1'],
+    },
+    {
+      ...t1,
+      key: 'T3',
+      epicKey: 'E2',
+      title: 'Skill embeddings for matching',
+      description: 'Embed tasks and member evidence with an open-weight Hub model.',
+      acceptanceCriteria: ['Solver uses semantic fit'],
+      estimateHours: 3,
+      requiredSkills: [{ slug: 'embeddings', level: 3, weight: 1 }],
+      dependsOn: [],
+      priority: 'should',
+    },
+  ],
+};
+const mockDraftFeasibility: Feasibility = {
+  ok: true,
+  requiredHours: 74.1,
+  availableEffectiveHours: 79.8,
+  criticalPathHours: 9.1,
+  hoursUntilFinalMilestone: 30,
+  cutTaskKeys: ['T4'],
+  issues: [
+    {
+      code: 'OVER_CAPACITY',
+      severity: 'warn',
+      message: 'Optional task T4 (voice briefing) moved below the cut line to fit team capacity',
+      refs: ['T4'],
+    },
+  ],
+};
+const mockDraftPlan = (id: string = fx.ids.planDraft): Plan => ({
+  id,
+  projectId: fx.ids.project,
+  version: 2,
+  status: 'draft',
+  payload: mockDraftDoc,
+  feasibility: mockDraftFeasibility,
+  model: 'mock',
+  createdAt: '2026-10-10T10:30:00-04:00',
+});
+const summarize = (p: Plan): PlanSummary => ({
+  id: p.id,
+  projectId: p.projectId,
+  version: p.version,
+  status: p.status,
+  model: p.model,
+  createdAt: p.createdAt,
+  taskCount: p.payload.tasks.length,
+  feasibilityOk: p.feasibility.ok,
+  requiredHours: p.feasibility.requiredHours,
+  availableEffectiveHours: p.feasibility.availableEffectiveHours,
+  cutTaskCount: p.feasibility.cutTaskKeys.length,
 });
 
 const toProject = (p: typeof schema.projects.$inferSelect): Project => ({
@@ -282,17 +361,50 @@ sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
   }
   const events: PlanStreamEvent[] = [
     { type: 'stage', stage: 'outline', message: 'Drafting scope and architecture' },
-    { type: 'outline', outline: fx.planDocument.outline },
+    { type: 'outline', outline: mockDraftDoc.outline },
     { type: 'stage', stage: 'tasks', message: 'Breaking epics into tasks' },
-    { type: 'epic_tasks', epicKey: 'E1', tasks: fx.planDocument.tasks },
-    { type: 'validation', feasibility: mockFeasibility },
-    { type: 'done', planId: fx.ids.plan },
+    { type: 'epic_tasks', epicKey: 'E1', tasks: mockDraftDoc.tasks.filter((t) => t.epicKey === 'E1') },
+    { type: 'epic_tasks', epicKey: 'E2', tasks: mockDraftDoc.tasks.filter((t) => t.epicKey === 'E2') },
+    { type: 'stage', stage: 'validate', message: 'Checking capacity, skills and dependencies' },
+    { type: 'validation', feasibility: mockDraftFeasibility },
+    { type: 'done', planId: fx.ids.planDraft },
   ];
   for (const e of events) await send(e);
 });
 
+/** Version switcher: every plan version of the project, newest first. */
+route(planning, 'listPlans', async ({ c, params }) => {
+  if (c.var.mocks) return [summarize(mockDraftPlan()), summarize(mockPlan())];
+  await assertProjectMember(c, params.pid);
+  c.header('Cache-Control', 'no-store');
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.plans)
+    .where(eq(schema.plans.projectId, params.pid))
+    .orderBy(desc(schema.plans.version));
+  return rows.map((p) => {
+    // Older rows may predate validation (feasibility `{}`); summarize them as unchecked rather than failing.
+    const f = Feasibility.safeParse(p.feasibility);
+    const doc = PlanDocument.safeParse(p.payload);
+    return {
+      id: p.id,
+      projectId: p.projectId,
+      version: p.version,
+      status: p.status,
+      model: p.model,
+      createdAt: p.createdAt.toISOString(),
+      taskCount: doc.success ? doc.data.tasks.length : 0,
+      feasibilityOk: f.success && f.data.ok,
+      requiredHours: f.success ? f.data.requiredHours : 0,
+      availableEffectiveHours: f.success ? f.data.availableEffectiveHours : 0,
+      cutTaskCount: f.success ? f.data.cutTaskKeys.length : 0,
+    };
+  });
+});
+
 route(planning, 'getPlan', async ({ c, params }) => {
-  if (c.var.mocks) return mockPlan();
+  if (c.var.mocks) return params.planId === fx.ids.plan ? mockPlan() : mockDraftPlan(params.planId);
   await assertProjectMember(c, params.pid);
   const [plan] = await c.var
     .db()
@@ -309,7 +421,17 @@ route(planning, 'getPlan', async ({ c, params }) => {
  * feasibility banner's numbers are deterministic. Accepted or superseded plans are immutable (409).
  */
 route(planning, 'patchPlan', async ({ c, params, body }) => {
-  if (c.var.mocks) return { ...mockPlan(), status: 'draft' as const };
+  if (c.var.mocks) {
+    // Stateless mock: apply the edits to the demo draft so the review screen shows them saved as v3.
+    const base = params.planId === fx.ids.plan ? mockPlan() : mockDraftPlan();
+    return {
+      ...base,
+      id: params.planId,
+      version: 3,
+      status: 'draft' as const,
+      payload: applyPlanPatch(base.payload, body),
+    };
+  }
   await assertProjectMember(c, params.pid);
   const db = c.var.db();
   const saved = await db.transaction(async (tx) => {

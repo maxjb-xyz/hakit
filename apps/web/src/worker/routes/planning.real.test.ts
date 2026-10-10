@@ -327,6 +327,26 @@ describe('assignment API (T-311)', () => {
   });
 });
 
+describe('plan versions (listPlans)', () => {
+  it('lists versions newest first, tolerating unvalidated feasibility, and hides them from outsiders', async () => {
+    await draftPlan(1);
+    const v2 = await draftPlan(2);
+    const res = await h.call(`/projects/${pid}/plans`, { token: owner.token });
+    expect(res.status).toBe(200);
+    const list = endpoints.listPlans.response.parse(await res.json());
+    expect(list.map((p) => p.version)).toEqual([2, 1]);
+    expect(list[0]).toMatchObject({
+      id: v2,
+      status: 'draft',
+      taskCount: 3,
+      feasibilityOk: false,
+      cutTaskCount: 0,
+    });
+    const out = await h.signIn(2);
+    expect((await h.call(`/projects/${pid}/plans`, { token: out.token })).status).toBe(404);
+  });
+});
+
 describe('plan editing (T-307)', () => {
   const patch = (planId: string, ops: unknown[], token = owner.token) =>
     h.call(`/projects/${pid}/plans/${planId}`, { method: 'PATCH', token, json: { ops } });

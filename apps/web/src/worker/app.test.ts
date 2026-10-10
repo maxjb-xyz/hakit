@@ -94,6 +94,21 @@ describe('mock-mode API satisfies contracts', () => {
     expect(text).toContain('event: done');
   });
 
+  it('lists plan versions newest first, with a draft the review screen can edit', async () => {
+    const list = endpoints.listPlans.response.parse(
+      await (await call('GET', buildPath(endpoints.listPlans.path, params))).json(),
+    );
+    expect(list.map((p) => [p.version, p.status])).toEqual([
+      [2, 'draft'],
+      [1, 'accepted'],
+    ]);
+    const draft = endpoints.getPlan.response.parse(
+      await (await call('GET', buildPath(endpoints.getPlan.path, { ...params, planId: list[0]!.id }))).json(),
+    );
+    expect(draft.status).toBe('draft');
+    expect(draft.feasibility.cutTaskKeys.length).toBe(list[0]!.cutTaskCount);
+  });
+
   it('rejects invalid bodies with 400', async () => {
     const res = await call('POST', '/workspaces', { name: '' });
     expect(res.status).toBe(400);
