@@ -1,24 +1,15 @@
-/** S10 Tasks — list view grouped by status (DESIGN §8, T-312). Fixture data until getBoard is wired. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+/** S10 Tasks — list view grouped by status + inspector (DESIGN §8, T-312). Data: tasks/useTaskBoard. */
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
-import { activity, board, members } from '@hakit/contracts/fixtures';
+import { ids } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
-import {
-  LabelPill,
-  MemberAvatar,
-  STATUS_LABEL,
-  STATUS_ORDER,
-  StatusIcon,
-  inferLabel,
-  type TaskLabel,
-} from './tasks/meta';
-import { NewTaskDialog, type NewTaskInput } from './tasks/NewTaskDialog';
-import { TaskInspector, type HistoryEntry } from './tasks/TaskInspector';
+import { LabelPill, MemberAvatar, STATUS_LABEL, STATUS_ORDER, StatusIcon, inferLabel } from './tasks/meta';
+import { NewTaskDialog } from './tasks/NewTaskDialog';
+import { TaskInspector } from './tasks/TaskInspector';
+import { useTaskBoard, type LabelOverrides } from './tasks/useTaskBoard';
+import { useProjectSocket } from '../lib/ws';
 import { useNow, type Lookup } from './mission-control/shared';
-
-/** Labels set by a person (not in the contract yet), keyed by task id. Beats the inferred label. */
-type LabelOverrides = Record<string, TaskLabel | null>;
 
 function TaskRow(props: {
   task: Task;
@@ -159,44 +150,60 @@ export function TaskList({
   );
 }
 
-/** Local-only create until createTask is wired (step 5). Next key = highest HK-n + 1. */
-function draftTask(input: NewTaskInput, existing: Task[]): Task {
-  const next = Math.max(0, ...existing.map((t) => Number(t.key.slice(3)))) + 1;
-  const now = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    projectId: board.projectId,
-    key: `HK-${next}`,
-    milestoneId: null,
-    title: input.title,
-    description: input.description,
-    acceptanceCriteria: [],
-    status: input.status,
-    priority: 'should',
-    estimateHours: 2,
-    requiredSkills: [],
-    source: 'manual',
-    assigneeId: input.assigneeId,
-    startedAt: input.status === 'todo' ? null : now,
-    completedAt: input.status === 'done' ? now : null,
-    updatedAt: now,
-  };
-}
-
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
+/** Until project selection exists (T-302), screens use the fixture project id. */
+const pid = ids.project;
+
+function ListSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading tasks">
+      {[0, 1].map((g) => (
+        <div key={g}>
+          <div className="h-7 border-b border-border bg-surface" />
+          {[0, 1, 2].map((r) => (
+            <div key={r} className="flex items-center gap-3 border-b border-border px-6 py-2.5 max-sm:px-4">
+              <span className="h-3 w-10 animate-pulse rounded-xs bg-hover" />
+              <span className="h-3 flex-1 animate-pulse rounded-xs bg-hover" />
+              <span className="size-5 animate-pulse rounded-full bg-hover" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Banner(props: { tone: 'warning' | 'danger'; children: ReactNode; action?: ReactNode }) {
+  return (
+    <div
+      role="alert"
+      className={cn(
+        'flex flex-wrap items-center gap-3 border-b px-6 py-2 text-body text-default max-sm:px-4',
+        props.tone === 'danger' ? 'border-danger' : 'border-warning',
+      )}
+    >
+      <span className={props.tone === 'danger' ? 'text-danger' : 'text-warning'} aria-hidden>
+        {props.tone === 'danger' ? '✕' : '▲'}
+      </span>
+      <span className="min-w-0 flex-1">{props.children}</span>
+      {props.action}
+    </div>
+  );
+}
+
 export function Tasks() {
-  const [tasks, setTasks] = useState<Task[]>(board.tasks);
-  const [labels, setLabels] = useState<LabelOverrides>({});
-  const [creating, setCreating] = useState(false);
-  const [history, setHistory] = useState<Record<string, HistoryEntry[]>>({});
   const { wid = '' } = useParams();
+  const b = useTaskBoard(pid, wid);
+  useProjectSocket(b.live ? pid : undefined);
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useSearchParams();
   const selectedKey = search.get('task');
-  const selected = tasks.find((t) => t.key === selectedKey);
+  const selected = b.tasks.find((t) => t.key === selectedKey);
   const now = useNow();
 
+  const { tasks, members } = b;
   const lookup = useMemo<Lookup>(() => {
     const t = new Map(tasks.map((x) => [x.id, x]));
     const m = new Map(members.map((x) => [x.user.id, x]));
@@ -206,7 +213,7 @@ export function Tasks() {
       task: (id) => (id ? t.get(id) : undefined),
       member: (id) => (id ? m.get(id) : undefined),
     };
-  }, [tasks, wid, now]);
+  }, [tasks, members, wid, now]);
 
   const closeInspector = useCallback(
     () =>
@@ -216,14 +223,6 @@ export function Tasks() {
       }),
     [setSearch],
   );
-
-  /** Local-only edit until updateTask is wired (step 5); `note` goes into the task's activity. */
-  const update = (id: string, patch: Partial<Task>, note?: string) => {
-    const ts = new Date().toISOString();
-    setTasks((all) => all.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: ts } : t)));
-    if (note)
-      setHistory((h) => ({ ...h, [id]: [...(h[id] ?? []), { id: crypto.randomUUID(), ts, text: note }] }));
-  };
 
   // DESIGN §6/§8: `c` opens quick-create from anywhere on the list.
   useEffect(() => {
@@ -236,49 +235,76 @@ export function Tasks() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const create = (input: NewTaskInput) => {
-    const task = draftTask(input, tasks);
-    setTasks((ts) => [...ts, task]);
-    setLabels((ls) => ({ ...ls, [task.id]: input.label }));
-  };
-
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex items-center gap-3 border-b border-border px-6 py-3 max-sm:px-4">
         <h1 className="text-body font-medium text-strong">All tasks</h1>
-        <span className="text-label text-subtle">{tasks.length}</span>
+        {!b.loading && <span className="text-label text-subtle">{tasks.length}</span>}
         <Button
           variant="primary"
           size="sm"
           className="ml-auto"
           onClick={() => setCreating(true)}
+          disabled={b.loading}
           title="New task (C)"
         >
           + New task
         </Button>
       </div>
-      <TaskList tasks={tasks} members={members} labels={labels} selectedKey={selectedKey} />
-      {selectedKey && (
+
+      {b.loadError && (
+        <Banner
+          tone="warning"
+          action={
+            <Button size="sm" onClick={b.retry}>
+              Retry
+            </Button>
+          }
+        >
+          Couldn't load tasks ({b.loadError}). Showing demo data; changes won't be saved.
+        </Banner>
+      )}
+      {b.saveError && (
+        <Banner
+          tone="danger"
+          action={
+            <Button size="sm" variant="ghost" onClick={b.clearSaveError} aria-label="Dismiss error">
+              ✕
+            </Button>
+          }
+        >
+          {b.saveError}
+        </Banner>
+      )}
+
+      {b.loading ? (
+        <ListSkeleton />
+      ) : (
+        <TaskList tasks={tasks} members={members} labels={b.labels} selectedKey={selectedKey} />
+      )}
+
+      {selectedKey && !b.loading && (
         <TaskInspector
           key={selected?.id ?? selectedKey}
           taskKey={selectedKey}
           task={selected}
           members={members}
           lookup={lookup}
-          label={selected ? (selected.id in labels ? labels[selected.id]! : inferLabel(selected)) : null}
-          labelInferred={!selected || !(selected.id in labels)}
-          events={selected ? activity.filter((e) => e.taskId === selected.id) : []}
-          history={selected ? (history[selected.id] ?? []) : []}
-          onUpdate={(patch, note) => selected && update(selected.id, patch, note)}
-          onLabel={(l) => {
-            if (!selected) return;
-            setLabels((ls) => ({ ...ls, [selected.id]: l }));
-            update(selected.id, {}, l ? `set the label to ${l}` : 'removed the label');
-          }}
+          label={selected ? (selected.id in b.labels ? b.labels[selected.id]! : inferLabel(selected)) : null}
+          labelInferred={!selected || !(selected.id in b.labels)}
+          events={selected ? b.activity.filter((e) => e.taskId === selected.id) : []}
+          history={selected ? (b.history[selected.id] ?? []) : []}
+          onUpdate={(patch, note) => selected && void b.update(selected.id, patch, note)}
+          onLabel={(l) => selected && b.setLabel(selected.id, l)}
           onClose={closeInspector}
         />
       )}
-      <NewTaskDialog open={creating} onClose={() => setCreating(false)} onCreate={create} members={members} />
+      <NewTaskDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreate={(input) => void b.create(input)}
+        members={members}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { ActivityEvent, Member, Task, TaskStatus } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { ActivityItem } from '../mission-control/ActivityFeed';
+import type { TaskPatch } from './useTaskBoard';
 import { ago, fmtHours, memberName, type Lookup } from '../mission-control/shared';
 import {
   LABELS,
@@ -201,7 +202,7 @@ export function TaskInspector(props: {
   labelInferred: boolean;
   events: ActivityEvent[];
   history: HistoryEntry[];
-  onUpdate: (patch: Partial<Task>, note?: string) => void;
+  onUpdate: (patch: TaskPatch, note?: string) => void;
   onLabel: (label: TaskLabel | null) => void;
   onClose: () => void;
 }) {
@@ -382,6 +383,9 @@ export function TaskInspector(props: {
                   </option>
                 ))}
               </Picker>
+              {!props.labelInferred && (
+                <span className="text-caption text-subtle">Not saved yet: labels aren't in the API</span>
+              )}
               {props.label && props.labelInferred && (
                 <span className="flex items-center gap-1 text-caption text-subtle">
                   <LabelPill label={props.label} inferred /> from skills
