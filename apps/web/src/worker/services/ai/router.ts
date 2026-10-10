@@ -10,6 +10,7 @@ export function llmRouter(
   const now = opts.now ?? Date.now,
     sleep = opts.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const states = providers.map(() => ({ failures: [] as number[], openUntil: 0, probing: false }));
+  const lastErrorAt = providers.map((): number | null => null);
   let selected = providers[0]?.name ?? 'gemini';
   const eligible = (i: number) => {
     const state = states[i]!;
@@ -29,6 +30,7 @@ export function llmRouter(
       state.probing = false;
       return;
     }
+    lastErrorAt[i] = now();
     state.failures = state.failures.filter((time) => now() - time < 60_000);
     state.failures.push(now());
     if (state.probing || state.failures.length >= 3) state.openUntil = now() + 120_000;
@@ -38,6 +40,12 @@ export function llmRouter(
     get name() {
       return selected;
     },
+    health: () =>
+      providers.map((p, i) => ({
+        name: p.name,
+        healthy: states[i]!.openUntil <= now(),
+        lastErrorAt: lastErrorAt[i] == null ? null : new Date(lastErrorAt[i]!).toISOString(),
+      })),
     async generateStructured<T extends z.ZodType>(req: StructuredRequest<T>): Promise<z.output<T>> {
       let lastStatus: number | undefined;
       for (const [i, provider] of providers.entries()) {

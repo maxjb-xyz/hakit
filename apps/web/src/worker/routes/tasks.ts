@@ -25,9 +25,17 @@ const findTask = (tid: string) =>
     throw notFound('Task');
   })();
 
-/** Broadcast after commit without failing the request if the DO is unavailable. */
+/**
+ * Broadcast after commit without failing the request if the DO is unavailable. Every call here is a
+ * board change, so it also queues a recommendation re-evaluation (T-504).
+ */
 const notify = (c: Context<AppEnv>, projectId: string, payload: Parameters<typeof broadcast>[2]) =>
-  c.executionCtx.waitUntil(broadcast(c.env, projectId, payload).catch(() => {}));
+  c.executionCtx.waitUntil(
+    Promise.all([
+      broadcast(c.env, projectId, payload).catch(() => {}),
+      c.env.JOBS.send({ type: 'recs.evaluate', projectId, reason: 'board_change' }).catch(() => {}),
+    ]),
+  );
 
 async function activeAssignment(db: Pick<Db, 'select'>, taskId: string) {
   const [a] = await db

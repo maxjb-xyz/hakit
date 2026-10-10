@@ -1,18 +1,18 @@
 /** Mission Control snapshot + recommendations. Owners: PL (snapshot, accept), IN (rules). */
 import { Hono, type Context } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { Id, type RecommendationAction } from '@hakit/contracts';
 import { schema, type Db } from '@hakit/db';
 import * as fx from '@hakit/contracts/fixtures';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
-import { mockOr } from '../lib/mock';
 import { conflict, notFound } from '../lib/errors';
 import { loadBoard } from '../lib/board';
 import { broadcast } from '../lib/broadcast';
 import { buildSnapshot, toRecommendation } from '../lib/mission-control';
 import { applyActions, mergeActions } from '../lib/apply-recommendation';
 import { assertProjectMember } from '../middleware/auth';
+import { aiProviderStatus } from '../services/ai/status';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -67,7 +67,18 @@ const resolvedBroadcasts = (
       }
     })().catch(() => {}),
   );
-route(execution, 'listRecommendations', ({ c }) => mockOr(c, 'T-504', () => [fx.stallRecommendation]));
+/** Open recommendations, newest first. Resolved ones reach clients via `recommendation.resolved`. */
+route(execution, 'listRecommendations', async ({ c, params }) => {
+  if (c.var.mocks) return [fx.stallRecommendation];
+  await assertProjectMember(c, params.pid);
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.recommendations)
+    .where(and(eq(schema.recommendations.projectId, params.pid), eq(schema.recommendations.status, 'open')))
+    .orderBy(desc(schema.recommendations.createdAt), desc(schema.recommendations.id));
+  return rows.map(toRecommendation);
+});
 route(execution, 'acceptRecommendation', async ({ c, params, body }) => {
   if (c.var.mocks)
     return {
@@ -120,15 +131,23 @@ route(execution, 'dismissRecommendation', async ({ c, params, body }) => {
   resolvedBroadcasts(c, resolved, false);
   return toRecommendation(resolved);
 });
-route(execution, 'aiStatus', ({ c }) =>
-  mockOr(c, 'T-301', () => [
-    { provider: 'template' as const, role: 'plan' as const, model: 'mock', healthy: true, lastErrorAt: null },
-    {
-      provider: 'template' as const,
-      role: 'embeddings' as const,
-      model: 'mock-hash',
-      healthy: true,
-      lastErrorAt: null,
-    },
-  ]),
-);
+route(execution, 'aiStatus', ({ c }) => {
+  if (c.var.mocks)
+    return [
+      {
+        provider: 'template' as const,
+        role: 'plan' as const,
+        model: 'mock',
+        healthy: true,
+        lastErrorAt: null,
+      },
+      {
+        provider: 'template' as const,
+        role: 'embeddings' as const,
+        model: 'mock-hash',
+        healthy: true,
+        lastErrorAt: null,
+      },
+    ];
+  return aiProviderStatus(c.env, c.var.services);
+});
