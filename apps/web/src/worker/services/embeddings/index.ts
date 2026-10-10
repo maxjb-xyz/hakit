@@ -1,7 +1,7 @@
 import { EMBED_DIM } from '@hakit/db';
 import type { Env } from '../../env';
 import type { EmbeddingProvider } from '../ai/types';
-import { amdEmbeddings, EmbeddingError, hfEmbeddings, QWEN_MODEL, workersAiEmbeddings } from './providers';
+import { EmbeddingError, hfEmbeddings, QWEN_MODEL } from './providers';
 import { cachedEmbeddings, hyperdriveEmbeddingCache, type EmbeddingCache } from './cache';
 import { embeddingRouter } from './router';
 export * from './providers';
@@ -14,10 +14,7 @@ export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingPro
   let cached: EmbeddingProvider | undefined;
   return {
     get name() {
-      return (
-        cached?.name ??
-        (env.HF_TOKEN ? 'hf' : env.AMD_EMBED_BASE_URL && env.AMD_LLM_KEY ? 'amd' : 'workers_ai')
-      );
+      return cached?.name ?? 'hf';
     },
     model: env.EMBED_MODEL,
     dim: Number(env.EMBED_DIM),
@@ -31,26 +28,12 @@ export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingPro
         let router = routers.get(env);
         if (!router) {
           const dim = Number(env.EMBED_DIM);
-          const providers: EmbeddingProvider[] = [];
-          if (env.HF_TOKEN)
-            providers.push(hfEmbeddings({ token: env.HF_TOKEN, model: env.EMBED_MODEL, dim }));
-          if (env.AMD_EMBED_BASE_URL && env.AMD_LLM_KEY) {
-            const baseUrl = env.AMD_EMBED_BASE_URL;
-            const token = env.AMD_LLM_KEY;
-            providers.push({
-              name: 'amd',
-              model: env.EMBED_MODEL,
-              dim,
-              embed: (texts, kind) =>
-                amdEmbeddings({
-                  baseUrl,
-                  token,
-                  model: env.EMBED_MODEL,
-                  dim,
-                }).embed(texts, kind),
-            });
-          }
-          providers.push(workersAiEmbeddings(env.AI, env.WORKERS_AI_EMBED_MODEL, dim, env.EMBED_MODEL));
+          // Hugging Face is the only embedding API; without it callers fall back to keyword matching.
+          if (!env.HF_TOKEN)
+            throw new EmbeddingError('configuration', 'HF_TOKEN is not set; embeddings are unavailable');
+          const providers: EmbeddingProvider[] = [
+            hfEmbeddings({ token: env.HF_TOKEN, model: env.EMBED_MODEL, dim }),
+          ];
           router = embeddingRouter(providers);
           routers.set(env, router);
         }

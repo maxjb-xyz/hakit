@@ -23,7 +23,7 @@ interface LlmProvider {
 interface EmbeddingProvider { embed(texts: string[], kind: 'query'|'document'): Promise<Float32Array[]>; model: string; dim: number }
 ```
 
-The implementations are `GeminiProvider` (primary), `OpenAICompatProvider` (an AMD vLLM endpoint or any OpenAI-compatible server), `HfEmbeddingProvider`, `WorkersAiEmbeddingProvider` and `KeywordFallback`. Each call is logged with the task name, model, latency, token counts, a hash of the input, and whether validation passed.
+The implementations are `GeminiProvider` (the only LLM API), `HfEmbeddingProvider` (the only embedding API) and `KeywordFallback`. Hakit uses Gemini and Hugging Face and no other AI providers (decision D-8). Each call is logged with the task name, model, latency, token counts, a hash of the input, and whether validation passed.
 
 ---
 
@@ -123,7 +123,7 @@ Splitting the plan into an outline plus per-epic task calls keeps each JSON resp
 8. **Required deliverables.** The plan template always includes the tasks *Repo setup and deploy pipeline*, *Demo script and video*, *Devpost submission* and *README*. Knight Hacks requires Devpost and GitHub.
 
 ### B.4 Fallbacks
-- Gemini unavailable or rate-limited: exponential backoff (1s, 2s, 4s). Then an optional `OpenAICompatProvider` (AMD-hosted Qwen instruct model) if configured. Then **template plans**: three curated archetypes (web app + API, ML-powered app, hardware/embedded), parameterized by the selected stack, plus manual editing.
+- Gemini unavailable or rate-limited: exponential backoff (1s, 2s, 4s). Then **template plans**: three curated archetypes (web app + API, ML-powered app, hardware/embedded), parameterized by the selected stack, plus manual editing.
 - Cache: identical `prompt_hash` returns the stored result (useful for demo reliability).
 
 ### B.5 Prompting conventions
@@ -222,8 +222,8 @@ The Gemini Flash-Lite call is optional and only phrases the headline and rationa
 
 | Purpose | Model | Serving |
 |---|---|---|
-| **Embeddings** (skills, tasks, members, activity text) | **`Qwen/Qwen3-Embedding-0.6B`** (1024-dim, instruction-aware, handles code-ish text well, Apache-2.0) | HF Inference Providers router (DeepInfra) → AMD vLLM `--runner pooling` (optional) → Workers AI `@cf/qwen/qwen3-embedding-0.6b` |
-| Alt. low-latency embeddings | `BAAI/bge-small-en-v1.5` (384-dim) | HF `hf-inference` (CPU serverless) and Workers AI. Use this **only if** Qwen3 on the router proves unreliable; it requires changing `EMBED_DIM` before seeding (D-7) |
+| **Embeddings** (skills, tasks, members, activity text) | **`Qwen/Qwen3-Embedding-0.6B`** (1024-dim, instruction-aware, handles code-ish text well, Apache-2.0) | HF Inference Providers router (DeepInfra) → keyword/alias matching |
+| Alt. low-latency embeddings | `BAAI/bge-small-en-v1.5` (384-dim) | HF `hf-inference` (CPU serverless). Use this **only if** Qwen3 on the router proves unreliable; it requires changing `EMBED_DIM` before seeding (D-7) |
 | Zero-shot categorization (fallback only) | `facebook/bart-large-mnli` | HF `hf-inference` |
 | Instruction for queries | Qwen3 query prefix: `Instruct: Given a software task, retrieve developers whose skills match\nQuery: …` | documents embedded without the instruction |
 
@@ -233,16 +233,16 @@ The Gemini Flash-Lite call is optional and only phrases the headline and rationa
 
 **Cost and volume:** about 250 taxonomy skills + 6 members × 3 + 60 tasks + a few hundred activity texts, well under 100k tokens per event. Caching is by content hash (`embedding_cache(hash, model, vector)`).
 
-### 2.3 AMD (optional, sponsor showcase)
-If AMD Developer Cloud credits are approved in time: one MI300X droplet running vLLM with (a) `Qwen/Qwen3-Embedding-0.6B --runner pooling` on port 8001 and (b) a small instruct model (e.g. `Qwen/Qwen3-4B-Instruct` class) on port 8000, behind a token-protected OpenAI-compatible endpoint. Hakit routes **embeddings** and the **explanation and recommendation phrasing** (fast tier) to AMD when `AMD_LLM_BASE_URL` is set, and shows the provider in the AI status panel. Gemini remains the planner. See INTEGRATIONS §4.
+### 2.3 Providers in use
+Gemini (planning, prose) and Hugging Face (embeddings) only. The earlier optional AMD MI300X / vLLM path and the Cloudflare Workers AI embedding fallback were dropped (D-8): fewer accounts, keys and failure modes during the event. When an API is down, Hakit degrades to deterministic templates and keyword matching rather than to another provider.
 
 ### 2.4 Provider routing table (`services/ai/router.ts`)
 
 | Task | Primary | Fallback 1 | Fallback 2 |
 |---|---|---|---|
-| ideas / plan / tasks / repair | Gemini plan model | AMD instruct (if configured) | template plan |
-| explanations / rec phrasing / summaries | Gemini fast | AMD instruct | deterministic templates |
-| embeddings | HF router Qwen3-Embedding | AMD vLLM Qwen3-Embedding | Workers AI Qwen3-Embedding → keyword/alias matching |
+| ideas / plan / tasks / repair | Gemini plan model | template plan | – |
+| explanations / rec phrasing / summaries | Gemini fast | deterministic templates | – |
+| embeddings | HF router Qwen3-Embedding | keyword/alias matching | – |
 
 A circuit breaker per provider: 3 failures in 60s opens it for 2 min.
 

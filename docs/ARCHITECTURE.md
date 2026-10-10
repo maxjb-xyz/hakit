@@ -17,7 +17,7 @@ Status: **Planning draft v1.** Research date 2026-10-10. Items marked **(verify)
 | Background work | **Cloudflare Queues** (one queue `hakit-jobs`, typed messages; same Worker produces + consumes) | Webhook ACK < 1s, then process. Skill import, embeddings, plan post-processing. 15-min consumer wall time. Available on Free since Feb 2026; we use Paid for headroom. |
 | Periodic jobs | **Cron Trigger** `*/2 * * * *` → adaptive-engine tick + GitHub failed-delivery redelivery sweep | Simple; no Workflows needed for MVP. |
 | AI planning | **Gemini** via `@google/genai` (fetch-based) with JSON-schema structured output, streamed to the client | See AI.md / INTEGRATIONS.md. |
-| Embeddings | **Qwen3-Embedding-0.6B** (open-weight, HF Hub) served via **HF Inference Providers** (primary) → optional **AMD MI300X vLLM** → **Workers AI `@cf/qwen/qwen3-embedding-0.6b`** fallback → keyword fallback | Same model/dimension on both paths so vectors stay comparable (see AI.md §2.4). |
+| Embeddings | **Qwen3-Embedding-0.6B** (open-weight, HF Hub) served via **HF Inference Providers** → keyword fallback | Same model/dimension on both paths so vectors stay comparable (see AI.md §2.4). |
 | Object storage | **R2 — not used in MVP.** Introduced only for P2 (ElevenLabs audio briefings, plan exports). | Don't add services that don't serve P0. |
 | Auth | **GitHub App** user-to-server OAuth web flow; Hakit session cookie | One app for sign-in + installation + webhooks; fine-grained permissions; expiring tokens. |
 | Secrets | `wrangler secret put` per environment; `.dev.vars` locally (gitignored) | |
@@ -41,14 +41,14 @@ Status: **Planning draft v1.** Research date 2026-10-10. Items marked **(verify)
    │                │   ├─ scheduled() cron (adaptive tick, redelivery sweep)              │
    │                │   └─ DO ProjectRoom (per project; WS hibernation; broadcast)         │
    │                │        ▲ RPC broadcast(evt) from handlers / consumer / cron          │
-   │                │   Hyperdrive ──────────────────────────────┐   Workers AI (fallback)│
+   │                │   Hyperdrive ──────────────────────────────┐                        │
    │                └────────────────────────────────────────────┼─────────────────────────┘
    │                                                             ▼
    │                                              Tiger Cloud Postgres (Timescale + pgvector)
    │
  GitHub ──webhooks──► /webhooks/github        Gemini API ◄── planning/recommendation calls
  GitHub REST/GraphQL ◄── installation & user tokens     HF Inference Providers ◄── embeddings/classification
- Claude Code hooks (dev laptops) ──HTTPS──► /api/agent/events   (AMD MI300X vLLM endpoint: optional, see INTEGRATIONS §4)
+ Claude Code hooks (dev laptops) ──HTTPS──► /api/agent/events
 ```
 
 ## 3. Repository layout
@@ -105,7 +105,7 @@ hakit/
 }
 ```
 
-**Secrets** (`wrangler secret put`): `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PKCS#8 — convert with `openssl pkcs8 -topk8 -nocrypt`), `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, `SESSION_SECRET`, `TOKEN_ENC_KEY` (AES-GCM 256, base64), `GEMINI_API_KEY`, `HF_TOKEN`, optional `AMD_LLM_BASE_URL`/`AMD_LLM_KEY`, optional `ELEVENLABS_API_KEY`.
+**Secrets** (`wrangler secret put`): `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PKCS#8 — convert with `openssl pkcs8 -topk8 -nocrypt`), `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, `SESSION_SECRET`, `TOKEN_ENC_KEY` (AES-GCM 256, base64), `GEMINI_API_KEY`, `HF_TOKEN`, optional `ELEVENLABS_API_KEY`.
 
 **Environments:** `local` (wrangler dev + Tiger fork or local Postgres with timescale/pgvector via Docker), `preview` (Tiger *fork* of prod — a Tiger feature worth showing), `production`. A **second GitHub App** ("Hakit Dev") for local sign-in only (webhooks off; local webhook work replays signed fixtures, no tunnels).
 

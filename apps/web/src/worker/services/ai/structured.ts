@@ -26,7 +26,8 @@ export interface CallRecord {
 }
 export interface TransportOptions {
   fetch?: typeof fetch;
-  timeoutMs?: number;
+  /** One limit for both tiers, or per tier. Defaults: plan 120 s (long reasoning), fast 30 s. */
+  timeoutMs?: number | { plan?: number; fast?: number };
   log?: (record: CallRecord) => void;
 }
 export interface WireResult {
@@ -100,8 +101,12 @@ export function json(value: string): unknown {
 }
 export function structuredProvider(wire: Wire, opts: TransportOptions = {}): LlmProvider {
   const send = opts.fetch ?? fetch,
-    timeoutMs = opts.timeoutMs ?? 30_000;
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new LlmError('configuration');
+    limits =
+      typeof opts.timeoutMs === 'number'
+        ? { plan: opts.timeoutMs, fast: opts.timeoutMs }
+        : { plan: 120_000, fast: 30_000, ...opts.timeoutMs };
+  if (Object.values(limits).some((ms) => !Number.isFinite(ms) || ms <= 0))
+    throw new LlmError('configuration');
   const log = opts.log ?? ((record: CallRecord) => console.info('ai.call', record));
   async function* attempt(
     req: StructuredRequest<z.ZodType>,
@@ -130,7 +135,7 @@ export function structuredProvider(wire: Wire, opts: TransportOptions = {}): Llm
       .join('');
     const started = Date.now(),
       controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), limits[req.tier]);
     let text = '',
       complete = false,
       inputTokens = 0,

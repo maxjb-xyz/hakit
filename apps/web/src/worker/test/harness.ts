@@ -41,7 +41,6 @@ export async function createHarness() {
     TOKEN_ENC_KEY,
     EMBED_DIM: '1024',
     EMBED_MODEL: 'x',
-    WORKERS_AI_EMBED_MODEL: 'x',
     GEMINI_MODEL_PLAN: 'x',
     GEMINI_MODEL_FAST: 'x',
     JOBS: jobs,

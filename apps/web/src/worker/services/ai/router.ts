@@ -21,8 +21,14 @@ export function llmRouter(
     states[i] = { failures: [], openUntil: 0, probing: false };
     selected = providers[i]!.name;
   };
-  const failure = (i: number) => {
+  const failure = (i: number, error: unknown) => {
     const state = states[i]!;
+    // Output that fails the schema after the repair attempt is a bad answer, not an outage: don't let
+    // it switch the provider off for everyone. Only transport failures count toward the breaker.
+    if (error instanceof LlmError && error.code === 'validation') {
+      state.probing = false;
+      return;
+    }
     state.failures = state.failures.filter((time) => now() - time < 60_000);
     state.failures.push(now());
     if (state.probing || state.failures.length >= 3) state.openUntil = now() + 120_000;
@@ -48,7 +54,7 @@ export function llmRouter(
               await sleep(1000 * 2 ** retry);
               continue;
             }
-            failure(i);
+            failure(i, error);
             break;
           }
         }
@@ -90,7 +96,7 @@ export function llmRouter(
               await sleep(1000 * 2 ** retry);
               continue;
             }
-            failure(i);
+            failure(i, error);
             // Never append a second provider's JSON to an already visible partial document.
             if (emitted) throw new LlmError('response');
             break;

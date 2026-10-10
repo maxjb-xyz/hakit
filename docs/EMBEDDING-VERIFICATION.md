@@ -24,8 +24,7 @@ An embedding is a list of numbers representing text. Comparing those lists helps
 ## What was implemented
 
 - HF primary: `Qwen/Qwen3-Embedding-0.6B` through HF's DeepInfra router.
-- Optional AMD: OpenAI-compatible embeddings at your configured HTTPS `/v1` base URL.
-- Workers AI fallback: `@cf/qwen/qwen3-embedding-0.6b`.
+- No other embedding provider. Without `HF_TOKEN`, or when HF is down, the service returns a typed error and matching falls back to keywords.
 - Finite, nonzero, 1024-dimensional vectors, normalized consistently; incorrect models/dimensions fail safely.
 - Query-only instruction prefix; document descriptions are embedded without it.
 - Content-hash cache in the existing `embedding_cache` table. Query/document kind, actual instructed text, model, dimension, and format version affect the hash. Only misses are sent to providers; identical concurrent batches share a request within one service instance.
@@ -63,9 +62,6 @@ This needs Node with TypeScript stripping support (Node 22.6+). It prints the mo
 4. Coordinate PR review and later test realistic team scenarios, especially beginners, skill gaps, and limited availability.
 5. Keep a demo story you can explain: repository evidence informs skills; embeddings compare meanings; tested rules check feasibility and constrain assignments.
 
-AMD deployment requires a separate endpoint and credentials; HF credits alone do not establish AMD technology usage. Configure `AMD_EMBED_BASE_URL` as the HTTPS OpenAI-compatible base including `/v1`, and `AMD_LLM_KEY` as its bearer key. HF, AMD, and Workers AI must serve the same model and dimensions.
-
-The repository's Cloudflare binding and Qwen model vars already exist. Local live Workers AI calls require Platform's Cloudflare setup and remote-binding access; AMD/Workers AI have only been tested through stubs here. Production Tiger/Queue behavior remains an integration check.
 
 If all model providers fail, the service returns a typed unavailable error. Calling matching code can then use deterministic keyword/alias matching or retry. It never fabricates vectors and labels them as Qwen output. Input is limited to 32 nonempty strings of 16000 characters per service call; use summaries, not raw source code.
 
@@ -80,4 +76,4 @@ If all model providers fail, the service returns a typed unavailable error. Call
 
 These paths are under `apps/web/src/worker`, except the script under `apps/web/scripts`.
 
-Provider shapes follow the [official HF DeepInfra adapter](https://github.com/huggingface/huggingface.js/blob/main/packages/inference/src/providers/deepinfra.ts) and [Workers AI Qwen documentation](https://developers.cloudflare.com/workers-ai/models/qwen3-embedding-0.6b/).
+Provider shapes follow the [official HF DeepInfra adapter](https://github.com/huggingface/huggingface.js/blob/main/packages/inference/src/providers/deepinfra.ts).

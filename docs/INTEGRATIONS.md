@@ -16,7 +16,7 @@ Status: **Planning draft v1.** Research date 2026-10-10. Confidence tags: **[con
 | 2025 precedent: AMD ran "Best use of AMD Hardware/Software" ($7,240, 3 winners) | [secondary] |
 
 **Implications:**
-1. The highest-value sponsor targets are probably **Hugging Face, AMD and GitHub**, plus MLH Gemini and ElevenLabs if they are listed. **Codex** is a sponsor, which raises the priority of Codex hook support (P1 → consider for the demo).
+1. The highest-value sponsor targets are probably **Hugging Face and GitHub** (AMD skipped, D-8), plus MLH Gemini and ElevenLabs if they are listed. **Codex** is a sponsor, which raises the priority of Codex hook support (P1 → consider for the demo).
 2. TigerData and Cloudflare are chosen on **technical merit**, not prize eligibility. Keep them, since they're the right tools, but don't build features just to "use" them.
 3. **The event is in progress today (Oct 10).** See RISKS R-0 and decision D-1.
 
@@ -110,20 +110,9 @@ Hakit can also push initial scaffolding (README with the plan, a `.github/pull_r
 - **Rate limits:** per project; the free tier is a few to about 15 RPM for Flash [secondary]. The plan fan-out (1 outline + about 5 epic calls) fits, but use a paid key for the demo (D-6).
 - **MLH "Best Use of Gemini API"** is eligible if offered at Knight Hacks IX [verify on Devpost].
 
-## 4. AMD (P1 sponsor showcase; optional for the MVP)
+## 4. AMD (not used)
 
-- **Reality check:** Cloudflare Workers have no GPU/ROCm execution. AMD compute must be an external endpoint.
-- **Access:** the AMD AI Developer Program gives about $100 credits (about 50h of one MI300X at $1.99/h). A card is required, and approval was instant for some and took 2–3 days for others [secondary]. **Apply immediately** (D-8).
-- **Setup (about 30 min):** an AMD Developer Cloud GPU droplet with the "vLLM Quick Start" image, then:
-  ```bash
-  docker exec -it rocm bash
-  vllm serve Qwen/Qwen3-Embedding-0.6B --runner pooling --port 8001 &
-  vllm serve Qwen/Qwen3-4B-Instruct-2507 --port 8000 --api-key $KEY &   # or similar small instruct model
-  ```
-  Front it with Caddy for TLS and a bearer token, or a Cloudflare Tunnel (`cloudflared`) so the Worker reaches it via a hostname. Alternative embedding server: HF TEI `rocm-latest` image (MI200/MI300 supported). Avoid TGI (maintenance mode).
-- **Hakit usage:** set `AMD_LLM_BASE_URL`. The embedding router prefers AMD, and fast-tier prose (explanations, recommendation phrasing) uses the AMD instruct model. Mission Control's AI status shows "Embeddings: Qwen3-Embedding-0.6B on AMD Instinct MI300X".
-- **Same model on AMD, the HF router and Workers AI** means vectors stay compatible and fallback is seamless. This is genuine use, not decoration.
-- **Cost control:** stop the droplet when not demoing. Health check before the demo (pre-demo checklist).
+AMD is an event sponsor, but Hakit does not run on AMD hardware: no AMD endpoint, keys or code path (D-8). The AI stack is Gemini and Hugging Face only.
 
 ## 5. TigerData / Tiger Cloud (P0, primary DB)
 
@@ -189,7 +178,6 @@ Codex has a hooks system (SessionStart, UserPromptSubmit, PreToolUse, Permission
 | Durable Objects (SQLite, WS hibernation) | ProjectRoom real-time | ✅ |
 | Queues | Webhook, agent and import jobs | ✅ |
 | Cron Triggers | Adaptive tick, redelivery sweep | ✅ |
-| Workers AI | Embedding fallback (same Qwen3 model) | ✅ (fallback) |
 | R2 | Audio briefings and exports | P2 |
 | Workers Rate Limiting binding | Agent endpoint rate limit | ✅ (small) |
 | KV, D1, Vectorize, Workflows, Pages | not used | – |

@@ -69,7 +69,7 @@ You are the Intelligence (IN) owner on Hakit. Read CLAUDE.md, docs/AI.md (all of
 Order:
 1. T-309 + T-310: the assignment solver and explanations in packages/engine/src/assign/. Pure functions, deterministic, under 200 ms for 6×60. Property tests for capacity, locks, avoid lists and determinism. Build against the fixtures in @hakit/contracts/fixtures.
 2. T-306: plan validators in packages/engine/src/planning/validate.ts (topoSort already exists).
-3. T-204 / T-205: skill inference in packages/engine/src/capability/infer.ts (dep-map.ts is done), the skills.import job, and the embedding router (HF → AMD → Workers AI, all Qwen3-Embedding-0.6B at 1024 dimensions).
+3. T-204 / T-205: skill inference in packages/engine/src/capability/infer.ts (dep-map.ts is done), the skills.import job, and the embedding router (HF Qwen3-Embedding-0.6B at 1024 dimensions, keyword fallback).
 4. T-301 → T-303 → T-305: the Gemini provider in services/ai/gemini.ts (responseJsonSchema via toGeminiSchema, thinkingLevel, re-validate with Zod, one repair retry), then ideas and the plan pipeline over SSE.
 5. T-501 → T-504: critical path, health, and adaptive rules v1 (stall → reassign is demo-critical).
 

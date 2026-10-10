@@ -3,7 +3,6 @@ import type { EmbeddingProvider } from '../ai/types';
 
 export const QWEN_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
 export const QWEN_DIM = 1024;
-export const WORKERS_QWEN_MODEL = '@cf/qwen/qwen3-embedding-0.6b';
 export const QUERY_INSTRUCTION =
   'Instruct: Given a software task, retrieve developers whose skills match\nQuery: ';
 export const MAX_BATCH = 32;
@@ -92,7 +91,7 @@ export async function withTimeout<T>(
 }
 
 function httpProvider(opts: {
-  name: 'hf' | 'amd';
+  name: 'hf';
   url: string;
   token: string;
   model: string;
@@ -145,54 +144,4 @@ export function hfEmbeddings(opts: {
     name: 'hf',
     url: 'https://router.huggingface.co/deepinfra/v1/openai/embeddings',
   });
-}
-export function amdEmbeddings(opts: {
-  baseUrl: string;
-  token: string;
-  model: string;
-  dim: number;
-  fetch?: typeof fetch;
-  timeoutMs?: number;
-}): EmbeddingProvider {
-  const url = new URL(opts.baseUrl);
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash)
-    throw new EmbeddingError(
-      'configuration',
-      'AMD embedding base URL must be HTTPS without embedded credentials, query or fragment',
-    );
-  url.pathname = url.pathname.replace(/\/$/, '') + '/embeddings';
-  return httpProvider({ ...opts, name: 'amd', url: url.toString() });
-}
-export function workersAiEmbeddings(
-  ai: Ai,
-  servingModel: string,
-  dim: number,
-  model = QWEN_MODEL,
-): EmbeddingProvider {
-  return {
-    name: 'workers_ai',
-    model,
-    dim,
-    async embed(texts, kind) {
-      const text = prepareTexts(texts, kind);
-      if (!text.length) return [];
-      if (model !== QWEN_MODEL || servingModel !== WORKERS_QWEN_MODEL || dim !== QWEN_DIM)
-        throw new EmbeddingError(
-          'configuration',
-          'Workers AI fallback must use the configured Qwen3 model and 1024 dimensions',
-        );
-      try {
-        const value = await withTimeout(() =>
-          ai.run(servingModel as Parameters<Ai['run']>[0], { text } as never),
-        );
-        const parsed = z.object({ data: z.unknown() }).safeParse(value);
-        if (!parsed.success)
-          throw new EmbeddingError('invalid_output', 'Invalid Workers AI embedding response');
-        return validateVectors(parsed.data.data, text.length, dim);
-      } catch (error) {
-        if (error instanceof EmbeddingError) throw error;
-        throw new EmbeddingError('provider_failed', 'Workers AI embedding request failed');
-      }
-    },
-  };
 }

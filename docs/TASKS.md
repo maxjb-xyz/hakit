@@ -155,8 +155,8 @@ Also in the scaffold:
 - AC: unit tests on the mappers and aggregation with fixtures; an import completes in under 30s for 40 repos.
 
 **T-205 · Embedding service** · P0 · IN · 2h · T-004
-- Status: implemented with provider, cache, fallback/breaker, batch-job and health-probe tests. Live HF Qwen3 1024-dimensional embedding and a small semantic matching example verified; live AMD/Workers AI and Tiger/Queue deployment verification remain pending. See `docs/EMBEDDING-VERIFICATION.md`.
-- AC: `EmbeddingProvider` implementations for the HF router, OpenAI-compatible (AMD) and Workers AI, all using the same model and dimension.
+- Status: implemented with provider, cache, fallback/breaker, batch-job and health-probe tests. Live HF Qwen3 1024-dimensional embedding and a small semantic matching example verified; live Tiger/Queue deployment verification remains pending. AMD and Workers AI providers removed (D-8). See `docs/EMBEDDING-VERIFICATION.md`.
+- AC: `EmbeddingProvider` for the HF router (Qwen3-Embedding-0.6B, 1024d); typed error so callers fall back to keyword matching. (AMD/Workers AI dropped, D-8.)
 - AC: content-hash cache, circuit breaker, Qwen3 query instruction prefix.
 - AC: test that the fallback produces 1024-dim vectors.
 
@@ -181,10 +181,10 @@ Also in the scaffold:
 ## Phase 3 — Planning & Assignment
 
 **T-301 · LLM provider layer** · P0 · IN · 2h · T-004
-- Status: Gemini REST generation/streaming, Zod revalidation with one repair retry, optional AMD JSON-schema provider, cached provider router with circuit breakers/backoff and safe metadata logging implemented. 37 fake-provider tests; opt-in live Gemini generation/streaming check passed with the locally configured model/key. Live AMD and full planning-schema verification remain pending. See `docs/LLM-VERIFICATION.md`.
+- Status: Gemini REST generation/streaming, Zod revalidation with one repair retry, cached provider router with circuit breakers/backoff and safe metadata logging implemented. 37 fake-provider tests; opt-in live Gemini generation/streaming check passed with the locally configured model/key. Full planning-schema verification remains pending. Gemini is the only LLM provider (D-8). See `docs/LLM-VERIFICATION.md`.
 - AC: `GeminiProvider.generateStructured` with `responseJsonSchema`, `thinkingLevel` and streaming.
 - AC: Zod re-validation with one repair retry.
-- AC: OpenAI-compatible provider; router with circuit breakers; call logging.
+- AC: router with circuit breakers; call logging. (OpenAI-compatible/AMD provider dropped, D-8.)
 - AC: mock provider for tests.
 
 **T-302 · Constraint selection (S7) + API** · P0 · PL+FE · 3h · T-005, T-104

@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import type { AiProviderStatus, AiTaskName } from '@hakit/contracts';
 
-/** Provider-agnostic LLM interface (docs/AI.md intro). Implementations: gemini, openai-compat (AMD), mock. */
+/** Provider-agnostic LLM interface (docs/AI.md intro). Implementations: gemini, mock. */
 export interface StructuredRequest<T extends z.ZodType> {
   task: AiTaskName;
   system: string;
