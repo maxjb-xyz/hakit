@@ -20,6 +20,9 @@
     "test:capability": "vitest run src/worker/routes/capability.test.ts --reporter=verbose",
     "test:ai": "vitest run src/worker/services/ai --reporter=verbose",
     "check:gemini": "vitest run --config scripts/gemini.live.config.ts",
+    "test:evals": "vitest run src/worker/services/ai/evals --reporter=verbose",
+    "eval:planning": "vitest run --config scripts/planning.live.config.ts",
+    "demo": "pnpm --filter @hakit/db exec tsx ../../apps/web/scripts/demo/cli.ts",
     "test:ideas": "vitest run src/worker/routes/ideas.real.test.ts --reporter=verbose"
   },
   "dependencies": {

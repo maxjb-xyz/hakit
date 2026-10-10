@@ -24,3 +24,5 @@ Start with [`CLAUDE.md`](./CLAUDE.md) (conventions and ownership) and [`docs/SET
 | [TASKS](docs/TASKS.md)               | Executable tasks with acceptance criteria                               |
 | [HACKATHON](docs/HACKATHON.md)       | 36-hour schedule, checkpoints, demo script, fallbacks                   |
 | [RISKS](docs/RISKS.md)               | Risks, mitigations, decisions awaiting approval                         |
+| [DEMO](docs/DEMO.md)                 | Demo click-path, real-mode seed/swap/stall, fallbacks                   |
+| [SUBMISSION](docs/SUBMISSION.md)     | Devpost write-up, built-with, capture checklist                         |
