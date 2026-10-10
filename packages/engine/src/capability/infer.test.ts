@@ -119,6 +119,12 @@ it('parses Maven, Gradle, Python and .NET dependency declarations', () => {
   expect(
     dependencies('pyproject.toml', '[project]\ndescription = "torch"\ndependencies = ["numpy>=2", "torch"]'),
   ).toEqual(['numpy', 'torch']);
+  expect(
+    dependencies(
+      'pyproject.toml',
+      '[project]\ndependencies = [\n  "fastapi[all]>=0.1",\n  "uvicorn",\n]\n[tool.x]\nother = ["nope"]',
+    ),
+  ).toEqual(['fastapi', 'uvicorn']);
   expect(dependencies('Cargo.toml', '[package]\nname="tokio"\n[dependencies]\nserde="1"')).toEqual(['serde']);
   expect(
     dependencies('example.csproj', '<PackageReference Include="Newtonsoft.Json" Version="1" />'),

@@ -50,7 +50,8 @@ route(capability, 'upsertSkill', async ({ c, params, body }) => {
   if (!c.var.user) throw unauthorized();
   const result = await editSkill(c.var.db(), c.var.user.id, params.slug, body);
   await refreshEmbeddings(c, c.var.user.id);
-  return result!;
+  if (!result) throw notFound('Skill');
+  return result;
 });
 route(capability, 'removeSkill', async ({ c, params }) => {
   if (c.var.mocks) return { ok: true as const };
