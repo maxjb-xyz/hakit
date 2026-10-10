@@ -42,6 +42,7 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-505 API | ✅ accept applies typed actions in one transaction (reassign, priority/cut, status, split, dependency); dismiss stores a reason | FE: RecommendationCard |
 | T-601 Agent tokens | ✅ create (shown once, SHA-256 stored), list/revoke own, `authenticateAgentToken` + `AGENT_RATE_LIMITER` | GH: call it from `/agent/events` (T-602) |
 | T-702 Security tests | ✅ authZ matrix over every endpoint (anonymous/non-member/member/owner), CSRF, webhook HMAC, token revocation, log grep + runtime capture; central route guard; log redaction | – |
+| T-701 E2E happy path | 🟡 Playwright spec + `POST /auth/test-login` (secret-gated, off in mock mode and on prod); mock mode runs in CI | Run real mode against a preview (`E2E_BASE_URL`, `E2E_LOGIN_SECRET`, `E2E_WEBHOOK_SECRET`, `E2E_REPO_ID`). Plan (T-305), solver (T-309) and recommendations (T-504) steps fall back or skip with a `pending` note until those merge |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 

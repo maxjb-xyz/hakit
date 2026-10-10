@@ -23,5 +23,8 @@ AMD_LLM_BASE_URL=
 AMD_EMBED_BASE_URL=
 AMD_LLM_KEY=
 
+# E2E only (T-701): enables POST /api/v1/auth/test-login. Never set in production.
+# E2E_LOGIN_SECRET=
+
 # DB scripts read DATABASE_URL from packages/db/.env (see packages/db/.env.example).
 # Real mode locally: export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (docs/SETUP.md §3).

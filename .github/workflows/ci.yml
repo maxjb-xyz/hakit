@@ -28,6 +28,9 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
+      # T-701 happy path in mock mode (real mode runs against a preview with E2E_LOGIN_SECRET; see e2e/support.ts).
+      - run: pnpm --filter @hakit/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @hakit/web test:e2e
       - id: migrations
         # Did this push add or change SQL migrations? Gates the approval-protected migrate job below.
         if: github.event_name == 'push'
