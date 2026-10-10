@@ -53,11 +53,15 @@ function TopbarStatus({ children }: { children: React.ReactNode }) {
 function SyncChip({
   demo,
   state,
+  online,
+  polling,
   at,
   now,
 }: {
   demo: boolean;
   state: 'connecting' | 'open' | 'closed';
+  online: number;
+  polling: boolean;
   at: string;
   now: number;
 }) {
@@ -70,9 +74,13 @@ function SyncChip({
       </span>
     );
   return state === 'open' ? (
-    <span className="text-body text-subtle">Synced {age} ago</span>
+    <span className="text-body text-subtle" role="status">
+      Live · {online} online · synced {age} ago
+    </span>
   ) : (
-    <span className="text-body text-warning">Reconnecting · data {age} old</span>
+    <span className="text-body text-warning" role="status">
+      {polling ? 'Reconnecting · updating every 10s' : 'Reconnecting'} · data {age} old
+    </span>
   );
 }
 
@@ -80,7 +88,7 @@ export function MissionControl() {
   const { wid = '' } = useParams();
   const [search] = useSearchParams();
   const demo = search.get('demo') === '1';
-  const { state } = useProjectSocket(demo ? undefined : pid);
+  const { state, presence, polling } = useProjectSocket(demo ? undefined : pid);
   const realNow = useNow();
   const tick = useNow(1000);
   const workspace = useQuery({
@@ -136,7 +144,14 @@ export function MissionControl() {
   return (
     <div className="flex min-h-full flex-col gap-7 p-7 max-sm:p-4">
       <TopbarStatus>
-        <SyncChip demo={fallback} state={state} at={s.generatedAt} now={tick} />
+        <SyncChip
+          demo={fallback}
+          state={state}
+          online={presence.length}
+          polling={polling}
+          at={s.generatedAt}
+          now={tick}
+        />
       </TopbarStatus>
 
       {snap.isError && !demo && (
