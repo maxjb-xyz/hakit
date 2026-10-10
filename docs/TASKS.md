@@ -60,7 +60,7 @@ Also in the scaffold:
 - AC: Drizzle schema for ARCHITECTURE §5; `drizzle-kit` migrations.
 - AC: raw SQL migration for the hypertable, the continuous aggregate with its refresh policy, and HNSW indexes.
 - AC: `pnpm --filter db migrate` is idempotent.
-- AC: a fork named `hakit-preview` exists.
+- AC (optional, demo snapshot): a fork named `hakit-preview` exists.
 
 **T-004 · Contracts v1** · P0 · PL+IN · 3h · T-001
 - AC: Zod schemas for every DTO named in ARCHITECTURE §6, plus `WsEvent`, `JobMessage`, `AgentHookEvent`.
@@ -79,7 +79,7 @@ Also in the scaffold:
 **T-006 · GitHub Apps registration** · P0 · GH · 1h · T-002
 - AC: two apps, "Hakit" and "Hakit Dev", with permissions and events per INTEGRATIONS §1.3.
 - AC: private key converted to PKCS#8 and stored as a secret.
-- AC: Hakit Dev webhooks reach the preview worker; local webhook work replays signed fixtures (no tunnel).
+- AC: prod webhooks reach the deployed worker; local webhook work replays signed fixtures (no tunnel).
 - AC: a test delivery reaches the Worker.
 
 **T-007 · CI/CD** · P0 · PL · 1h · T-001

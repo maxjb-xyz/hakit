@@ -17,8 +17,7 @@
     "db:generate": "pnpm --filter @hakit/db generate",
     "db:migrate": "pnpm --filter @hakit/db migrate",
     "db:seed": "pnpm --filter @hakit/db seed",
-    "deploy": "pnpm --filter @hakit/web deploy",
-    "deploy:preview": "pnpm --filter @hakit/web deploy:preview"
+    "deploy": "pnpm --filter @hakit/web deploy"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
