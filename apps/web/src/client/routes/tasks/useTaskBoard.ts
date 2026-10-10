@@ -21,7 +21,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : 'Unknown error
 
 /** Placeholder row shown until the server returns the real task (and its HK key). */
 function draftTask(input: NewTaskInput, existing: Task[], projectId: string): Task {
-  const next = Math.max(0, ...existing.map((t) => Number(t.key.slice(3)))) + 1;
+  const next = Math.max(0, ...existing.map((t) => Number(t.key.slice(3)) || 0)) + 1;
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
@@ -85,7 +85,7 @@ export function useTaskBoard(pid: string, wid: string) {
   };
 
   async function create(input: NewTaskInput) {
-    const draft = draftTask(input, tasks, fx.board.projectId);
+    const draft = draftTask(input, tasks, pid);
     setSaveError(null);
     setTasks((ts) => [...ts, draft]);
     setLabels((ls) => ({ ...ls, [draft.id]: input.label }));
