@@ -21,7 +21,12 @@ export type Lookup = {
  * Link target for a task: `?task=` on the current screen. Mission Control peeks in the shell inspector
  * (with the assignment explanation); the Tasks screen opens its own full inspector for the same param.
  */
-export const taskHref = (key: string) => ({ search: `?task=${encodeURIComponent(key)}` });
+/** Opens the task panel in place, keeping the page's other query params (`demo`, `view`). */
+export function taskHref(key: string) {
+  const search = new URLSearchParams(location.search);
+  search.set('task', key);
+  return { search: `?${search.toString()}` };
+}
 
 /** Turns `HK-n` mentions in a sentence into links to the task panel. Unknown keys stay plain text. */
 export function KeyedText({ text, lookup, className }: { text: string; lookup: Lookup; className?: string }) {
