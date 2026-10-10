@@ -192,6 +192,7 @@ Also in the scaffold:
 - AC: template-plan fallback when the provider is unavailable.
 
 **T-306 · Plan validators** · P0 · IN · 3h · T-004
+- Status: implemented with 37 focused tests and 100% validator branch coverage. Pipeline integration remains T-305; verification and contract assumptions are documented in `docs/PLAN-VALIDATION.md`.
 - AC: AI.md §B.3 checks 1–8 as pure functions returning `Feasibility` (issues with codes and the numbers involved) and automatic cut-line adjustment.
 - AC: 100% branch coverage on the cycle, capacity and coverage checks.
 
