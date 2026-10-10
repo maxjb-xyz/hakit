@@ -5,7 +5,6 @@
 import { JobMessage, type JobType } from '@hakit/contracts';
 import type { Env } from '../env';
 import { getServices } from '../services';
-import { githubWebhookJob } from './github-webhook';
 
 export interface JobContext {
   env: Env;
@@ -24,7 +23,7 @@ const todo =
 
 /** Owners replace their entry with a real handler in jobs/<name>.ts. */
 export const handlers: { [T in JobType]: Handler<T> } = {
-  'github.webhook': githubWebhookJob, // GH
+  'github.webhook': todo('T-403'), // GH
   'github.backfill': todo('T-405'), // GH
   'skills.import': todo('T-204'), // IN
   'embed.batch': todo('T-205'), // IN
