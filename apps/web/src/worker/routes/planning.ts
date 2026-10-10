@@ -4,6 +4,7 @@ import * as fx from '@hakit/contracts/fixtures';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import {
   PlanDocument,
+  IdeaStreamEvent,
   type Feasibility,
   type HackathonTemplate,
   type PlanStreamEvent,
@@ -19,6 +20,7 @@ import { broadcast } from '../lib/broadcast';
 import { planRows } from '../lib/materialize';
 import { redact } from '../lib/redact';
 import { assertProjectMember } from '../middleware/auth';
+import * as ideas from '../services/ideas';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
@@ -158,19 +160,68 @@ route(planning, 'putConstraints', async ({ c, params, body }) => {
   return body;
 });
 
-route(planning, 'listIdeas', ({ c }) => mockOr(c, 'T-303', () => [mockIdea()]));
-route(planning, 'submitIdea', ({ c }) =>
-  mockOr(c, 'T-303', () => ({ ...mockIdea(), source: 'user' as const })),
+route(planning, 'listIdeas', ({ c, params }) => {
+  if (c.var.mocks) return [mockIdea()];
+  c.header('Cache-Control', 'no-store');
+  return ideas.listIdeas(c.var.db(), params.pid);
+});
+route(planning, 'submitIdea', ({ c, params, body }) =>
+  c.var.mocks
+    ? { ...mockIdea(), source: 'user' as const }
+    : ideas.submitIdea(c.var.db(), params.pid, c.var.user!.id, body),
 );
 
-sseRoute(planning, 'generateIdeas', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-303');
+sseRoute(planning, 'generateIdeas', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    const emit = (event: IdeaStreamEvent) => send(IdeaStreamEvent.parse(event));
+    try {
+      await ideas.generateIdeas(
+        c.var.db(),
+        c.var.services.llm,
+        params.pid,
+        c.var.user!.id,
+        body,
+        emit,
+        new Date(),
+      );
+    } catch (error) {
+      await ideas.ideaError(emit, error);
+    }
+    return;
+  }
   await send({ type: 'stage', message: 'Reading team capability' });
-  await send({ type: 'idea', idea: mockIdea() });
+  for (let i = 0; i < body.count; i++) {
+    const idea = mockIdea();
+    await send({
+      type: 'idea',
+      idea: {
+        ...idea,
+        id: idea.id.replace(/[0-9a-f]{12}$/i, String(i + 1).padStart(12, '0')),
+        candidate: { ...idea.candidate, title: `${idea.candidate.title} ${i + 1}` },
+      },
+    });
+  }
   await send({ type: 'done' });
 });
-sseRoute(planning, 'refineIdea', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-303');
+sseRoute(planning, 'refineIdea', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    const emit = (event: IdeaStreamEvent) => send(IdeaStreamEvent.parse(event));
+    try {
+      await ideas.refineIdea(
+        c.var.db(),
+        c.var.services.llm,
+        params.pid,
+        params.iid,
+        c.var.user!.id,
+        body,
+        emit,
+        new Date(),
+      );
+    } catch (error) {
+      await ideas.ideaError(emit, error);
+    }
+    return;
+  }
   await send({ type: 'idea', idea: mockIdea() });
   await send({ type: 'done' });
 });

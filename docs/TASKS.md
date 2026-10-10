@@ -192,6 +192,7 @@ Also in the scaffold:
 - AC: pinned constraints panel; fit meter (deterministic coverage of the required tech).
 
 **T-303 · Idea generation & refinement** · P0 · IN · 3h · T-301, T-206
+- Status: implemented on `t-303-idea-generation` in an isolated checkout. Pseudonymized server context, remaining availability, deterministic stack coverage, saved manual/generated/refined ideas and validated SSE events tested without live providers. 22 API/context tests and 6 engine tests; Frontend/live idea-quality verification remain pending. See `docs/IDEA-VERIFICATION.md`.
 - AC: `PlanningContext` builder with pseudonymized members.
 - AC: SSE endpoint streams 3 `IdeaCandidate`s; deterministic `team_fit` = coverage of the idea's stack skills.
 - AC: refine endpoint; ideas persisted.
