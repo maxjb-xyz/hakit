@@ -22,10 +22,12 @@ Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 1. Create a **free** service at https://console.cloud.timescale.com. Copy the **direct service URL**: database `tsdb`, `sslmode=require`. Don't use the transaction pooler (`tsdb_transaction`).
 2. Write `packages/db/.env` (gitignored):
    ```
-   DATABASE_URL=postgres://tsdbadmin:…@….tsdb.cloud.timescale.com:…/tsdb?sslmode=require
+   DATABASE_URL=postgres://tsdbadmin:…@….tsdb.cloud.timescale.com:…/tsdb?uselibpqcompat=true&sslmode=require
    ```
+   Keep `uselibpqcompat=true&`. Without it, node's `pg` driver treats `sslmode=require` as full certificate verification, which Tiger's certificate chain fails (`SELF_SIGNED_CERT_IN_CHAIN`). `drizzle-kit migrate` hides that error and only prints `Exit status 1`. psql rejects the parameter, so drop it for psql and Hyperdrive: `psql "${DATABASE_URL/uselibpqcompat=true&/}"`.
+   If you `export`ed an older `DATABASE_URL` in your shell, `unset` it first: dotenv won't override a variable that's already set.
 3. Run `pnpm db:migrate && pnpm db:seed`.
-4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`. This migration has **not** been run against TimescaleDB yet, so fix it here first if it fails.
+4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`, and `timescaledb_information.continuous_aggregates` should list `activity_hourly`.
 5. Share the URL with the team **privately**: a password manager or DM, never the repo or chat logs.
 6. Create a **fork** named `hakit-preview` for preview deploys.
 
