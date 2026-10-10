@@ -35,6 +35,8 @@ export interface EngineTask extends Pick<
 > {
   /** Completion timestamp supplies measured rolling velocity when known. */
   completedAt?: string | null;
+  /** Pinned finish target (currently the task's milestone target), never a moving forecast. */
+  plannedFinishAt?: string | null;
   embedding: number[] | null;
 }
 
@@ -43,6 +45,7 @@ export interface ProjectState {
   deadlineAt: Date;
   /** Beginning of observed execution; allows a zero-completion window to signal a stall. */
   executionStartedAt?: Date;
+  agentSessions?: Array<{ id: string; userId: string; status: string; lastEventAt: Date }>;
   /** Hours reserved before the deadline for submission (default 3). */
   submissionBufferHours: number;
   members: EngineMember[];

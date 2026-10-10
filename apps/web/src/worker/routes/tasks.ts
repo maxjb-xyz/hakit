@@ -27,7 +27,12 @@ const findTask = (tid: string) =>
 
 /** Broadcast after commit without failing the request if the DO is unavailable. */
 const notify = (c: Context<AppEnv>, projectId: string, payload: Parameters<typeof broadcast>[2]) =>
-  c.executionCtx.waitUntil(broadcast(c.env, projectId, payload).catch(() => {}));
+  c.executionCtx.waitUntil(
+    Promise.allSettled([
+      broadcast(c.env, projectId, payload),
+      c.env.JOBS.send({ type: 'recs.evaluate', projectId, reason: 'board_change' }),
+    ]),
+  );
 
 async function activeAssignment(db: Pick<Db, 'select'>, taskId: string) {
   const [a] = await db

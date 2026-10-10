@@ -6,12 +6,20 @@
  */
 import type { Env } from '../env';
 import { isMock } from '../env';
+import { createDb } from '@hakit/db';
+import { enqueueActiveProjects } from '../jobs/recs-evaluate';
 
 export async function handleScheduled(controller: ScheduledController, env: Env): Promise<void> {
   if (isMock(env)) return;
   const tick = Math.floor(controller.scheduledTime / 120_000);
   console.log(JSON.stringify({ level: 'info', msg: 'cron tick', tick, cron: controller.cron }));
-  // TODO(T-504): select active projects → env.JOBS.sendBatch(recs.evaluate…)
+  const handle = createDb(env.HYPERDRIVE.connectionString);
+  try {
+    await handle.ready;
+    await enqueueActiveProjects(handle.db, env, new Date(controller.scheduledTime));
+  } finally {
+    await handle.close();
+  }
   // TODO(T-408): if (tick % 10 === 0) redelivery sweep
   // TODO(T-602): mark agent sessions idle (>10m) / ended (>2h)
 }

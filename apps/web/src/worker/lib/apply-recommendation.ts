@@ -36,7 +36,17 @@ export async function applyActions(
     return t;
   };
   const setStatus = async (taskId: string, from: string, to: typeof schema.tasks.$inferSelect.status) => {
-    await tx.update(schema.tasks).set({ status: to, updatedAt: ctx.now }).where(eq(schema.tasks.id, taskId));
+    const t = await task(taskId);
+    await tx
+      .update(schema.tasks)
+      .set({
+        status: to,
+        updatedAt: ctx.now,
+        ...(['in_progress', 'in_review', 'done'].includes(to) && !t.startedAt ? { startedAt: ctx.now } : {}),
+        ...(to === 'done' && from !== 'done' ? { completedAt: ctx.now } : {}),
+        ...(from === 'done' && to !== 'done' ? { completedAt: null } : {}),
+      })
+      .where(eq(schema.tasks.id, taskId));
     await tx
       .insert(schema.taskEvents)
       .values({ taskId, actorUserId: ctx.actorId, kind: 'status', fromValue: from, toValue: to });
@@ -45,7 +55,13 @@ export async function applyActions(
   for (const a of actions) {
     switch (a.op) {
       case 'reassign': {
-        await task(a.taskId);
+        const t = await task(a.taskId);
+        if (t.status === 'done' || t.status === 'cut')
+          throw new HttpError(
+            409,
+            'stale_recommendation',
+            'Completed or cut work cannot be reassigned by this recommendation',
+          );
         const login = await memberLogin(tx, ctx.workspaceId, a.toUserId);
         // An explicit human accept may move a locked task; the new assignment is unlocked.
         await assignTask(tx, {
@@ -60,8 +76,15 @@ export async function applyActions(
       }
       case 'set_priority': {
         const t = await task(a.taskId);
-        if (a.priority === 'cut') await setStatus(t.id, t.status, 'cut');
-        else
+        if (a.priority === 'cut') {
+          if (t.status === 'done' || t.status === 'cut' || t.priority === 'must')
+            throw new HttpError(
+              409,
+              'stale_recommendation',
+              'This scope-cut recommendation no longer applies to the task',
+            );
+          await setStatus(t.id, t.status, 'cut');
+        } else
           await tx
             .update(schema.tasks)
             .set({ priority: a.priority, updatedAt: ctx.now })
@@ -75,6 +98,12 @@ export async function applyActions(
       }
       case 'split': {
         const t = await task(a.taskId);
+        if (t.status === 'done' || t.status === 'cut')
+          throw new HttpError(
+            409,
+            'stale_recommendation',
+            'Completed or cut work cannot be split by this recommendation',
+          );
         const first = await allocateTaskNumbers(tx, ctx.projectId, a.parts.length);
         const parts = await tx
           .insert(schema.tasks)

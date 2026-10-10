@@ -1,5 +1,5 @@
 /** Real-mode PL planning/board tests (T-302 API, T-308, T-311 API) on in-memory PGlite. */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { endpoints, type ProjectBoard } from '@hakit/contracts';
 import { planDocument } from '@hakit/contracts/fixtures';
@@ -23,6 +23,9 @@ const doc = {
   ],
 };
 
+afterEach(async () => {
+  await h?.close();
+});
 beforeEach(async () => {
   h = await createHarness();
   owner = await h.signIn(1);

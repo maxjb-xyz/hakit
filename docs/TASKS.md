@@ -299,6 +299,7 @@ Also in the scaffold:
 - AC: replaces the static mock with live data; feed animation; lanes show the current task and last activity; blockers strip; reconnect state.
 
 **T-504 · Adaptive rules v1** · P0 · IN · 4h · T-501, T-309
+- Status: Pure stall, imbalance and scope-cut rules, validated/serialized recommendation persistence, dedupe/expiry/cooldown, real list API, two-minute cron and post-commit board triggers implemented with scenario and isolated database tests. See `docs/ADAPTIVE-VERIFICATION.md`; deployed and frontend verification remain pending.
 - AC: stalled task, workload imbalance and critical-path slip (cut scope) rules as pure functions with dedupe keys.
 - AC: `recs.evaluate` job on cron and on board change; recommendations expire when their signal clears.
 - AC: scenario tests.
@@ -311,6 +312,7 @@ Also in the scaffold:
 - AC: linked PR opened → in review; linked PR merged → done (auto, with undo toast).
 
 **T-507 · Adaptive rules v2** · P1 · IN · 2h · T-504
+- Status: Blocked/overdue dependency chain, unavailable critical owner and agent-awaiting-input rules implemented. Uses pinned milestone targets for overdue detection and last agent event time for the waiting threshold; see `docs/ADAPTIVE-VERIFICATION.md` for limits and scenario tests.
 - AC: blocked chain, unavailable owner and agent awaiting input rules.
 
 ## Phase 6 — Agents (P1)

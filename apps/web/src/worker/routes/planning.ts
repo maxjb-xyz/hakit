@@ -406,9 +406,10 @@ route(planning, 'acceptPlan', async ({ c, params }) => {
     );
   }
   c.executionCtx.waitUntil(
-    broadcast(c.env, params.pid, { type: 'board.changed', data: { reason: 'plan_accepted' } }).catch(
-      () => {},
-    ),
+    Promise.allSettled([
+      broadcast(c.env, params.pid, { type: 'board.changed', data: { reason: 'plan_accepted' } }),
+      c.env.JOBS.send({ type: 'recs.evaluate', projectId: params.pid, reason: 'board_change' }),
+    ]),
   );
   return loadBoard(db, params.pid);
 });

@@ -1,7 +1,7 @@
 /** Mission Control snapshot + recommendations. Owners: PL (snapshot, accept), IN (rules). */
 import { Hono, type Context } from 'hono';
-import { eq } from 'drizzle-orm';
-import { Id, type RecommendationAction } from '@hakit/contracts';
+import { and, desc, eq } from 'drizzle-orm';
+import { Id, RecommendationAction } from '@hakit/contracts';
 import { schema, type Db } from '@hakit/db';
 import * as fx from '@hakit/contracts/fixtures';
 import type { AppEnv } from '../lib/context';
@@ -43,6 +43,7 @@ async function lockOpen(tx: Tx, rid: string) {
     .from(schema.recommendations)
     .where(eq(schema.recommendations.id, rid))
     .for('update');
+  if (!r) throw notFound('Recommendation');
   if (r!.status !== 'open') throw conflict(`Recommendation is already ${r!.status}`);
   return r!;
 }
@@ -53,21 +54,35 @@ const resolvedBroadcasts = (
   boardChanged: boolean,
 ) =>
   c.executionCtx.waitUntil(
-    (async () => {
-      await broadcast(c.env, r.projectId, {
+    Promise.allSettled([
+      broadcast(c.env, r.projectId, {
         type: 'recommendation.resolved',
         data: { recommendation: toRecommendation(r) },
-      });
-      if (boardChanged) {
-        await broadcast(c.env, r.projectId, {
-          type: 'board.changed',
-          data: { reason: 'recommendation_accepted' },
-        });
-        await c.env.JOBS.send({ type: 'recs.evaluate', projectId: r.projectId, reason: 'board_change' });
-      }
-    })().catch(() => {}),
+      }),
+      ...(boardChanged
+        ? [
+            broadcast(c.env, r.projectId, {
+              type: 'board.changed',
+              data: { reason: 'recommendation_accepted' },
+            }),
+            c.env.JOBS.send({ type: 'recs.evaluate', projectId: r.projectId, reason: 'board_change' }),
+          ]
+        : []),
+    ]),
   );
-route(execution, 'listRecommendations', ({ c }) => mockOr(c, 'T-504', () => [fx.stallRecommendation]));
+route(execution, 'listRecommendations', async ({ c, params }) => {
+  if (c.var.mocks) return [fx.stallRecommendation];
+  await assertProjectMember(c, params.pid);
+  c.header('Cache-Control', 'no-store');
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.recommendations)
+    .where(and(eq(schema.recommendations.projectId, params.pid), eq(schema.recommendations.status, 'open')))
+    .orderBy(desc(schema.recommendations.createdAt), schema.recommendations.id)
+    .limit(100);
+  return rows.map(toRecommendation);
+});
 route(execution, 'acceptRecommendation', async ({ c, params, body }) => {
   if (c.var.mocks)
     return {
@@ -76,12 +91,14 @@ route(execution, 'acceptRecommendation', async ({ c, params, body }) => {
         t.id === fx.ids.task(4) ? { ...t, assigneeId: fx.ids.users.sam } : t,
       ),
     };
-  const { workspaceId } = await assertRecommendationMember(c, params.rid);
+  const { workspaceId, projectId } = await assertRecommendationMember(c, params.rid);
   const db = c.var.db();
   const now = new Date();
   const resolved = await db.transaction(async (tx) => {
+    // Use the same project→recommendation lock order as evaluation to avoid deadlocks.
+    await tx.select().from(schema.projects).where(eq(schema.projects.id, projectId)).for('update');
     const r = await lockOpen(tx, params.rid);
-    const actions = mergeActions(r.actions as RecommendationAction[], body.modifications);
+    const actions = mergeActions(RecommendationAction.array().parse(r.actions), body.modifications);
     await applyActions(tx, { projectId: r.projectId, workspaceId, actorId: c.var.user!.id, now }, actions);
     const [done] = await tx
       .update(schema.recommendations)

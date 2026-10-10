@@ -7,6 +7,7 @@ export * from './capability/dep-map';
 export * from './planning/validate';
 export * from './planning/idea-fit';
 export * from './schedule/cpm';
+export * from './schedule/availability';
 export * from './assign/solve';
 export * from './assign/explain';
 export * from './adaptive/rules';

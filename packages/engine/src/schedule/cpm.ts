@@ -11,6 +11,8 @@ export interface ScheduleResult {
   remainingCriticalHours: number;
   slackHours: number;
   slackByTask: Record<string, number>;
+  /** Estimated resource-schedule finishes, used to validate proposed handoffs. */
+  finishByTask?: Record<string, Date>;
   forecastFinishAt: Date | null;
   velocityHoursPerHour: number | null;
   measuredDone: number;
@@ -116,6 +118,9 @@ export function computeSchedule(state: ProjectState): ScheduleResult {
     criticalPathTaskIds,
     remainingCriticalHours,
     slackByTask,
+    finishByTask: Object.fromEntries(
+      [...finish].map(([id, hours]) => [id, new Date(state.now.getTime() + hours * HOUR)]),
+    ),
     slackHours: remainingWindow - remainingCriticalHours,
     forecastFinishAt: forecastHours === null ? null : new Date(state.now.getTime() + forecastHours * HOUR),
     velocityHoursPerHour: velocity > 0 ? velocity : null,

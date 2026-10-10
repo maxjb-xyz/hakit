@@ -1,5 +1,5 @@
 /** Real-mode Mission Control (T-502), recommendation accept/dismiss (T-505) and agent tokens (T-601). */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   endpoints,
@@ -25,6 +25,9 @@ const doc = {
   tasks: [t1, { ...t1, key: 'T2', dependsOn: ['T1'] }, { ...t1, key: 'T3', dependsOn: ['T2'] }],
 };
 
+afterEach(async () => {
+  await h?.close();
+});
 beforeEach(async () => {
   h = await createHarness();
   owner = await h.signIn(1, 'priya');

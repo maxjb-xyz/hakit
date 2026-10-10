@@ -42,6 +42,3 @@ describe('topoSort', () => {
 describe('cosine', () => {
   it('is 1 for identical vectors', () => expect(cosine([1, 2], [1, 2])).toBeCloseTo(1));
 });
-
-// Contract-level todos for IN (each becomes real tests in its task).
-describe.todo('T-504 adaptive rules v1 on fixture scenarios');

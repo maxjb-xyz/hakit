@@ -16,7 +16,7 @@ export const GHR = `ghr_${'Z9y8X7w6V5'.repeat(8).slice(0, 76)}`;
 export const TOKEN_ENC_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
 
 export async function createHarness(services: Partial<Services> = {}) {
-  const { db } = await createTestDb();
+  const { db, pg } = await createTestDb();
   const github: GithubService = {
     authorizeUrl: (state, redirect) =>
       `https://github.test/authorize?state=${state}&redirect_uri=${redirect}`,
@@ -77,5 +77,5 @@ export async function createHarness(services: Partial<Services> = {}) {
     return { id: u!.id, token: await createSession(db, u!.id, null, new Date()) };
   }
 
-  return { db: db as Db, github, jobs, broadcasts, env, call, signIn };
+  return { db: db as Db, github, jobs, broadcasts, env, call, signIn, close: () => pg.close() };
 }
