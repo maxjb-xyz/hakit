@@ -1,67 +1,69 @@
 /**
- * S13 Agents (DESIGN §8). One card per coding-agent session (Claude Code, Codex…) plus an activity log.
- * Click a card to filter the log to that session.
- * Uses FAKE data from mocks/agents.ts + mocks/plan.ts + mocks/team.ts until the backend is connected.
+ * S13 Agents (DESIGN §8, T-604). One card per coding-agent session (Claude Code, Codex…) plus the agent
+ * activity log; click "View log" to filter the log to one session. Sessions come from `listAgentSessions`
+ * and stay live through the project socket (`agent_session.updated` / `activity.created` invalidate them).
+ * Task links show confirmed vs inferred; the session owner (or a workspace owner) can confirm an inferred
+ * link or relink the session to another task with `linkAgentSession`, which pins the link.
  */
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
-import type { ActivityEvent, AgentSession, AgentSessionStatus, Member, Task } from '@hakit/contracts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ids } from '@hakit/contracts/fixtures';
+import type { ActivityEvent, AgentSession, Member, Task } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
-import { MOCK_NOW } from '../mocks/fake';
-import { fetchAgentActivity, fetchAgentSessions } from '../mocks/agents';
-import { fetchBoard } from '../mocks/plan';
-import { fetchMembers } from '../mocks/team';
-import { Panel, ago, duration, memberName, minutesSince } from './mission-control/shared';
+import { api } from '../lib/api';
+import { qk } from '../lib/query';
+import { useProjectSocket } from '../lib/ws';
+import { AGENT_NAME, SESSION_ORDER, SessionStatusPill, toolSummary } from './agents/meta';
+import { Panel, ago, duration, memberName, minutesSince, useNow } from './mission-control/shared';
 import { MemberAvatar } from './tasks/meta';
-import { EmptyBox, ErrorBox, LoadingBlocks, MockChip, PageHeader, Pill } from './page-states';
+import { EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill, TaskLinkChip } from './page-states';
 
-/* ----------------------------- status ----------------------------- */
-
-/** How each backend status looks. The dot colour is always paired with a word. */
-const STATUS: Record<
-  AgentSessionStatus,
-  { label: string; dot: string; tone: 'success' | 'warning' | 'danger' | 'muted' }
-> = {
-  active: { label: 'Running', dot: 'bg-success', tone: 'success' },
-  awaiting_input: { label: 'Needs input', dot: 'bg-warning', tone: 'warning' },
-  idle: { label: 'Idle', dot: 'bg-disabled', tone: 'muted' },
-  error: { label: 'Error', dot: 'bg-danger', tone: 'danger' },
-  ended: { label: 'Done', dot: 'bg-disabled', tone: 'muted' },
-};
-
-/** Sessions that need a human come first, finished ones last. */
-const STATUS_ORDER: AgentSessionStatus[] = ['awaiting_input', 'error', 'active', 'idle', 'ended'];
-
-const AGENT_NAME: Record<AgentSession['agent'], string> = {
-  claude_code: 'Claude Code',
-  codex: 'Codex',
-  other: 'Agent',
-};
+/** Until project selection exists (T-302), screens use the fixture project id. */
+const pid = ids.project;
 
 /* ----------------------------- page ----------------------------- */
 
 export function Agents() {
-  // TODO: replace with api call. queryFns become `() => api('listAgentSessions', …)` and
-  // `() => api('listActivity', …)`. Also swap MOCK_NOW for `useNow()` from mission-control/shared.
-  const sessions = useQuery({ queryKey: ['mock', 'agentSessions'], queryFn: fetchAgentSessions });
-  const activity = useQuery({ queryKey: ['mock', 'agentActivity'], queryFn: fetchAgentActivity });
-  const board = useQuery({ queryKey: ['mock', 'board'], queryFn: fetchBoard });
-  const members = useQuery({ queryKey: ['mock', 'members'], queryFn: fetchMembers });
   const { wid = '' } = useParams();
-  const now = MOCK_NOW;
+  const now = useNow();
+  const { state } = useProjectSocket(pid);
+
+  const sessions = useQuery({
+    queryKey: qk('listAgentSessions', { pid }),
+    queryFn: () => api('listAgentSessions', { params: { pid } }),
+  });
+  const activity = useQuery({
+    queryKey: qk('listActivity', { pid }),
+    queryFn: () => api('listActivity', { params: { pid } }),
+    select: (page) => page.items.filter((e) => e.source === 'agent'),
+  });
+  const board = useQuery({
+    queryKey: qk('getBoard', { pid }),
+    queryFn: () => api('getBoard', { params: { pid } }),
+  });
+  const members = useQuery({
+    queryKey: qk('listMembers', { wid }),
+    queryFn: () => api('listMembers', { params: { wid } }),
+  });
+  const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me') });
 
   // Which session's log to show. null = all sessions.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const memberOf = (id: string) => members.data?.find((m) => m.user.id === id);
-  const taskOf = (id: string | null) => board.data?.tasks.find((t) => t.id === id);
+  const taskOf = (id: string | null) => (id ? board.data?.tasks.find((t) => t.id === id) : undefined);
+  const myId = me.data?.user.id;
+  const iAmOwner = me.data?.memberships.some((m) => m.workspaceId === wid && m.role === 'owner') ?? false;
 
   const list = [...(sessions.data ?? [])].sort(
-    (a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status),
+    (a, b) =>
+      SESSION_ORDER.indexOf(a.status) - SESSION_ORDER.indexOf(b.status) ||
+      b.lastEventAt.localeCompare(a.lastEventAt),
   );
   const runningCount = list.filter((x) => x.status === 'active').length;
   const needsInputCount = list.filter((x) => x.status === 'awaiting_input').length;
+  const inferredCount = list.filter((x) => x.linkKind === 'inferred').length;
   const selected = list.find((x) => x.id === selectedId);
   const log = (activity.data ?? []).filter((e) => !selectedId || e.agentSessionId === selectedId);
 
@@ -69,7 +71,11 @@ export function Agents() {
     <div className="space-y-4 p-6 max-sm:p-4">
       <PageHeader
         title="Agents"
-        subtitle={sessions.data ? `${list.length} sessions from coding agents on this project` : undefined}
+        subtitle={
+          sessions.data
+            ? `${list.length} session${list.length === 1 ? '' : 's'} from coding agents on this project`
+            : undefined
+        }
       >
         {sessions.data && (
           <>
@@ -83,9 +89,18 @@ export function Agents() {
                 {needsInputCount} need input
               </Pill>
             )}
+            {inferredCount > 0 && (
+              <Pill className="border-dashed border-border-strong">
+                {inferredCount} inferred link{inferredCount === 1 ? '' : 's'} to check
+              </Pill>
+            )}
           </>
         )}
-        <MockChip />
+        {state === 'closed' && (
+          <span role="status" className="text-label text-warning">
+            Reconnecting · may be out of date
+          </span>
+        )}
       </PageHeader>
 
       {sessions.isError && (
@@ -96,8 +111,18 @@ export function Agents() {
         <div className="min-w-0 lg:col-span-3">
           {sessions.isPending ? (
             <LoadingBlocks label="Loading agent sessions" />
-          ) : list.length === 0 ? (
-            <EmptyBox message="No agent sessions yet. Install the Hakit plugin for Claude Code from Settings to see your agents here." />
+          ) : sessions.isError ? null : list.length === 0 ? (
+            <EmptyBox
+              message="No agent sessions yet. Agent telemetry is opt-in: create a token in Settings and install the Hakit plugin for Claude Code."
+              action={
+                <Link
+                  to={`/w/${wid}/settings`}
+                  className="inline-flex h-control-md items-center rounded-sm border border-border bg-raised px-3 text-body text-default hover:bg-hover"
+                >
+                  Open Settings
+                </Link>
+              }
+            />
           ) : (
             <ul className="grid gap-3 md:grid-cols-2">
               {list.map((x) => (
@@ -106,7 +131,8 @@ export function Agents() {
                   session={x}
                   member={memberOf(x.userId)}
                   task={taskOf(x.taskId)}
-                  wid={wid}
+                  tasks={board.data?.tasks ?? []}
+                  canRelink={x.userId === myId || iAmOwner}
                   now={now}
                   selected={x.id === selectedId}
                   onSelect={() => setSelectedId(x.id === selectedId ? null : x.id)}
@@ -142,9 +168,11 @@ export function Agents() {
                   onRetry={() => void activity.refetch()}
                 />
               ) : log.length === 0 ? (
-                <EmptyBox message="Nothing logged for this session yet." />
+                <EmptyBox
+                  message={selected ? 'Nothing logged for this session yet.' : 'No agent activity yet.'}
+                />
               ) : (
-                <ol className="divide-y divide-border">
+                <ol className="divide-y divide-border" aria-live="polite">
                   {log.map((e) => (
                     <LogRow
                       key={e.id}
@@ -163,38 +191,90 @@ export function Agents() {
   );
 }
 
-/* ----------------------------- one session ----------------------------- */
+/* ----------------------------- relink ----------------------------- */
 
-/** Turns `{ Edit: 12, Bash: 5 }` into "12 edits · 5 commands". Tool names come from Claude Code hooks. */
-function toolSummary(counts: Record<string, number>) {
-  const words: Record<string, [string, string]> = {
-    Edit: ['edit', 'edits'],
-    Write: ['file written', 'files written'],
-    Read: ['file read', 'files read'],
-    Bash: ['command', 'commands'],
-  };
-  const parts = Object.entries(counts).map(([tool, n]) => {
-    const w = words[tool];
-    return w ? `${n} ${n === 1 ? w[0] : w[1]}` : `${n} × ${tool}`;
+/** Pins the session to a task (or to none). Writes the answer into the cached list so the card updates at once. */
+function useLinkSession(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string | null) =>
+      api('linkAgentSession', { params: { id: sessionId }, body: { taskId } }),
+    onSuccess: (updated) => {
+      qc.setQueryData<AgentSession[]>(qk('listAgentSessions', { pid }), (old) =>
+        old?.map((s) => (s.id === updated.id ? updated : s)),
+      );
+      void qc.invalidateQueries({ queryKey: qk('listAgentSessions', { pid }) });
+      void qc.invalidateQueries({ queryKey: qk('missionControl', { pid }) });
+    },
   });
-  return parts.length ? parts.join(' · ') : 'No tool use yet';
 }
+
+function RelinkForm(props: {
+  session: AgentSession;
+  tasks: Task[];
+  onDone: () => void;
+  link: ReturnType<typeof useLinkSession>;
+}) {
+  const id = useId();
+  const [taskId, setTaskId] = useState(props.session.taskId ?? '');
+  const options = props.tasks
+    .filter((t) => t.status !== 'cut' && t.status !== 'done')
+    .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2 rounded-sm border border-border bg-sunken p-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        props.link.mutate(taskId || null, { onSuccess: props.onDone });
+      }}
+    >
+      <label htmlFor={id} className="w-full text-label text-subtle">
+        Link this session to
+      </label>
+      <select
+        id={id}
+        autoFocus
+        value={taskId}
+        onChange={(e) => setTaskId(e.target.value)}
+        className="h-control-sm min-w-0 flex-1 rounded-xs border border-border-strong bg-surface px-2 text-label text-default"
+      >
+        <option value="">No task</option>
+        {options.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.key} · {t.title}
+          </option>
+        ))}
+      </select>
+      <Button size="sm" variant="primary" type="submit" loading={props.link.isPending}>
+        Save
+      </Button>
+      <Button size="sm" variant="ghost" type="button" onClick={props.onDone}>
+        Cancel
+      </Button>
+    </form>
+  );
+}
+
+/* ----------------------------- one session ----------------------------- */
 
 function SessionCard(props: {
   session: AgentSession;
   member: Member | undefined;
   task: Task | undefined;
-  wid: string;
+  tasks: Task[];
+  canRelink: boolean;
   now: number;
   selected: boolean;
   onSelect: () => void;
 }) {
   const { session: x, task } = props;
-  const status = STATUS[x.status];
+  const [relinking, setRelinking] = useState(false);
+  const link = useLinkSession(x.id);
   // Finished sessions stop the clock at endedAt; running ones count up to now.
   const end = x.endedAt ? Date.parse(x.endedAt) : props.now;
   const runtime = minutesSince(x.startedAt, end) ?? 0;
   const waitingFor = minutesSince(x.summary.awaitingSince, props.now);
+  const inferred = x.linkKind === 'inferred' && !!task;
 
   return (
     <li
@@ -211,10 +291,7 @@ function SessionCard(props: {
           <p className="truncate text-body font-medium text-strong">{AGENT_NAME[x.agent]}</p>
           <p className="truncate text-label text-subtle">{memberName(props.member)}</p>
         </div>
-        <Pill tone={status.tone}>
-          <span aria-hidden className={cn('size-1.5 rounded-full', status.dot)} />
-          {status.label}
-        </Pill>
+        <SessionStatusPill status={x.status} />
       </div>
 
       {x.status === 'awaiting_input' && waitingFor !== null && (
@@ -222,26 +299,42 @@ function SessionCard(props: {
       )}
 
       {/* Where it's working */}
-      <div className="space-y-1">
+      <div className="space-y-2">
         <p className="truncate font-mono text-label text-muted">
           {x.repoFullName ?? 'Unknown repo'}
           {x.branch && <span className="text-subtle"> · {x.branch}</span>}
         </p>
-        {task && x.linkKind !== 'none' ? (
-          <p className="flex min-w-0 items-baseline gap-1.5 text-label">
-            <Link
-              to={`/w/${props.wid}/tasks?task=${task.key}`}
-              className="inline-flex min-w-0 items-baseline gap-1.5 hover:text-strong"
-            >
-              <span className="shrink-0 font-mono text-subtle">{task.key}</span>
-              <span className="truncate text-default">{task.title}</span>
-            </Link>
-            <span className={cn('shrink-0', x.linkKind === 'inferred' ? 'text-warning' : 'text-subtle')}>
-              {x.linkKind}
-            </span>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-label">
+          <TaskLinkChip task={task} linkKind={task ? x.linkKind : 'none'} />
+          {task && x.linkKind !== 'none' && (
+            <span className="min-w-0 flex-1 truncate text-default">{task.title}</span>
+          )}
+          {task && x.linkKind === 'confirmed' && <span className="text-subtle">confirmed</span>}
+        </div>
+        {props.canRelink && !relinking && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {inferred && (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={link.isPending}
+                onClick={() => link.mutate(x.taskId)}
+              >
+                Confirm {task.key}
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setRelinking(true)} disabled={link.isPending}>
+              {task && x.linkKind !== 'none' ? 'Change task' : 'Link to a task'}
+            </Button>
+          </div>
+        )}
+        {relinking && (
+          <RelinkForm session={x} tasks={props.tasks} link={link} onDone={() => setRelinking(false)} />
+        )}
+        {link.isError && (
+          <p role="alert" className="text-label text-danger">
+            Couldn't update the link: {link.error.message}
           </p>
-        ) : (
-          <p className="text-label text-subtle">No linked task</p>
         )}
       </div>
 
