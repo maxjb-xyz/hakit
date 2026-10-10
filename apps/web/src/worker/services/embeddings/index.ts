@@ -18,6 +18,8 @@ export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingPro
     },
     model: env.EMBED_MODEL,
     dim: Number(env.EMBED_DIM),
+    // The router exists only after the first embed in this isolate; before that nothing has failed.
+    health: () => routers.get(env)?.health?.() ?? [],
     async embed(texts, kind) {
       if (env.EMBED_MODEL !== QWEN_MODEL || Number(env.EMBED_DIM) !== EMBED_DIM)
         throw new EmbeddingError(

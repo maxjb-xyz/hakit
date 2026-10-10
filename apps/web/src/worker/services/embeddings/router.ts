@@ -16,6 +16,7 @@ export function embeddingRouter(
     );
   }
   const state = providers.map(() => ({ failures: [] as number[], openUntil: 0, probing: false }));
+  const lastErrorAt = providers.map((): number | null => null);
   let selected = providers[0]!.name;
   return {
     get name() {
@@ -23,6 +24,12 @@ export function embeddingRouter(
     },
     model: providers[0]!.model,
     dim: providers[0]!.dim,
+    health: () =>
+      providers.map((p, i) => ({
+        name: p.name,
+        healthy: state[i]!.openUntil <= now(),
+        lastErrorAt: lastErrorAt[i] == null ? null : new Date(lastErrorAt[i]!).toISOString(),
+      })),
     async embed(texts, kind) {
       validateTexts(texts, kind);
       if (!texts.length) return [];
@@ -43,6 +50,7 @@ export function embeddingRouter(
           selected = provider.name;
           return vectors;
         } catch {
+          lastErrorAt[i] = now();
           breaker.failures = breaker.failures.filter((failure) => now() - failure < 60_000);
           breaker.failures.push(now());
           if (probe || breaker.failures.length >= 3) breaker.openUntil = now() + 120_000;

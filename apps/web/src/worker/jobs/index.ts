@@ -9,6 +9,7 @@ import { getServices } from '../services';
 import { githubWebhookJob } from './github-webhook';
 import { embedBatchJob } from './embed-batch';
 import { skillsImportJob } from './skills-import';
+import { recsEvaluateJob } from './recs-evaluate';
 
 export interface JobContext {
   env: Env;
@@ -33,7 +34,7 @@ export const handlers: { [T in JobType]: Handler<T> } = {
   'embed.batch': embedBatchJob, // IN
   'activity.link': todo('T-406'), // GH + IN
   'agent.event': todo('T-602'), // GH
-  'recs.evaluate': todo('T-504'), // IN
+  'recs.evaluate': recsEvaluateJob, // IN
 };
 
 export async function handleQueue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
