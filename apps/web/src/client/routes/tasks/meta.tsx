@@ -1,9 +1,13 @@
 /** Display metadata for S10: status order/labels/icons, derived label pills, member avatars. */
+import type { ReactNode } from 'react';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 
 /** Group order on the list: active work first, finished/cut last. */
 export const STATUS_ORDER: TaskStatus[] = ['in_progress', 'in_review', 'blocked', 'todo', 'done', 'cut'];
+
+/** Statuses a person can pick (cut happens via recommendations). */
+export const STATUSES: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'blocked', 'done'];
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   todo: 'Todo',
@@ -127,5 +131,34 @@ export function MemberAvatar({ member, className }: { member: Member | undefined
     >
       {initials(name)}
     </span>
+  );
+}
+
+/* ----------------------------- pickers ----------------------------- */
+
+/** Pill-shaped native <select>: keyboard and screen-reader support for free. */
+export function Picker(props: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="relative inline-flex">
+      <span className="sr-only">{props.label}</span>
+      <select
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        className="h-control-sm cursor-pointer appearance-none rounded-full border border-border bg-raised pr-6 pl-2.5 text-label text-default hover:bg-hover"
+      >
+        {props.children}
+      </select>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-caption text-subtle"
+      >
+        ▾
+      </span>
+    </label>
   );
 }

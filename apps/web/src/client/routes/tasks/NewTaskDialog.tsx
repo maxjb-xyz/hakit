@@ -1,8 +1,8 @@
 /** S10 quick-create (DESIGN §8 "Quick-create task (c)"). Native <dialog>: focus trap, Esc and scrim built in. */
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { Member, TaskStatus } from '@hakit/contracts';
 import { Button } from '@hakit/ui';
-import { LABELS, STATUS_LABEL, type TaskLabel } from './meta';
+import { LABELS, Picker, STATUS_LABEL, STATUSES, type TaskLabel } from './meta';
 
 export type NewTaskInput = {
   title: string;
@@ -12,29 +12,7 @@ export type NewTaskInput = {
   label: TaskLabel | null;
 };
 
-const STATUSES: TaskStatus[] = ['todo', 'in_progress', 'in_review', 'blocked', 'done'];
 const EMPTY: NewTaskInput = { title: '', description: '', status: 'todo', assigneeId: null, label: null };
-
-function Picker(props: { label: string; value: string; onChange: (v: string) => void; children: ReactNode }) {
-  return (
-    <label className="relative inline-flex">
-      <span className="sr-only">{props.label}</span>
-      <select
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        className="h-control-sm cursor-pointer appearance-none rounded-full border border-border bg-raised pr-6 pl-2.5 text-label text-default hover:bg-hover"
-      >
-        {props.children}
-      </select>
-      <span
-        aria-hidden
-        className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-caption text-subtle"
-      >
-        ▾
-      </span>
-    </label>
-  );
-}
 
 export function NewTaskDialog(props: {
   open: boolean;

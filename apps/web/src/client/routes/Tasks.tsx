@@ -1,8 +1,8 @@
 /** S10 Tasks — list view grouped by status (DESIGN §8, T-312). Fixture data until getBoard is wired. */
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
-import { board, members } from '@hakit/contracts/fixtures';
+import { activity, board, members } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
 import {
   LabelPill,
@@ -14,11 +14,18 @@ import {
   type TaskLabel,
 } from './tasks/meta';
 import { NewTaskDialog, type NewTaskInput } from './tasks/NewTaskDialog';
+import { TaskInspector, type HistoryEntry } from './tasks/TaskInspector';
+import { useNow, type Lookup } from './mission-control/shared';
 
 /** Labels set by a person (not in the contract yet), keyed by task id. Beats the inferred label. */
 type LabelOverrides = Record<string, TaskLabel | null>;
 
-function TaskRow(props: { task: Task; assignee: Member | undefined; labels: LabelOverrides }) {
+function TaskRow(props: {
+  task: Task;
+  assignee: Member | undefined;
+  labels: LabelOverrides;
+  selected: boolean;
+}) {
   const { task, assignee } = props;
   const set = task.id in props.labels;
   const label = set ? props.labels[task.id] : inferLabel(task);
@@ -26,7 +33,11 @@ function TaskRow(props: { task: Task; assignee: Member | undefined; labels: Labe
     <li>
       <Link
         to={{ search: `?task=${task.key}` }}
-        className="flex items-center gap-3 border-b border-border px-6 py-2 text-body transition-colors duration-(--duration-instant) hover:bg-hover focus-visible:bg-hover max-sm:px-4"
+        aria-current={props.selected || undefined}
+        className={cn(
+          'flex items-center gap-3 border-b border-border px-6 py-2 text-body transition-colors duration-(--duration-instant) hover:bg-hover focus-visible:bg-hover max-sm:px-4',
+          props.selected && 'bg-accent-a12 hover:bg-accent-a12 focus-visible:bg-accent-a12',
+        )}
       >
         <span className="w-12 shrink-0 font-mono text-label text-subtle">{task.key}</span>
         <StatusIcon status={task.status} />
@@ -56,6 +67,7 @@ function StatusGroup(props: {
   tasks: Task[];
   memberById: Map<string, Member>;
   labels: LabelOverrides;
+  selectedKey: string | null;
 }) {
   const [open, setOpen] = useState(true);
   const id = `group-${props.status}`;
@@ -91,6 +103,7 @@ function StatusGroup(props: {
               task={t}
               assignee={t.assigneeId ? props.memberById.get(t.assigneeId) : undefined}
               labels={props.labels}
+              selected={t.key === props.selectedKey}
             />
           ))}
         </ul>
@@ -103,10 +116,12 @@ export function TaskList({
   tasks,
   members,
   labels = {},
+  selectedKey = null,
 }: {
   tasks: Task[];
   members: Member[];
   labels?: LabelOverrides;
+  selectedKey?: string | null;
 }) {
   const memberById = useMemo(() => new Map(members.map((m) => [m.user.id, m])), [members]);
   const groups = useMemo(
@@ -137,6 +152,7 @@ export function TaskList({
           tasks={g.tasks}
           memberById={memberById}
           labels={labels}
+          selectedKey={selectedKey}
         />
       ))}
     </div>
@@ -174,6 +190,40 @@ export function Tasks() {
   const [tasks, setTasks] = useState<Task[]>(board.tasks);
   const [labels, setLabels] = useState<LabelOverrides>({});
   const [creating, setCreating] = useState(false);
+  const [history, setHistory] = useState<Record<string, HistoryEntry[]>>({});
+  const { wid = '' } = useParams();
+  const [search, setSearch] = useSearchParams();
+  const selectedKey = search.get('task');
+  const selected = tasks.find((t) => t.key === selectedKey);
+  const now = useNow();
+
+  const lookup = useMemo<Lookup>(() => {
+    const t = new Map(tasks.map((x) => [x.id, x]));
+    const m = new Map(members.map((x) => [x.user.id, x]));
+    return {
+      wid,
+      now,
+      task: (id) => (id ? t.get(id) : undefined),
+      member: (id) => (id ? m.get(id) : undefined),
+    };
+  }, [tasks, wid, now]);
+
+  const closeInspector = useCallback(
+    () =>
+      setSearch((p) => {
+        p.delete('task');
+        return p;
+      }),
+    [setSearch],
+  );
+
+  /** Local-only edit until updateTask is wired (step 5); `note` goes into the task's activity. */
+  const update = (id: string, patch: Partial<Task>, note?: string) => {
+    const ts = new Date().toISOString();
+    setTasks((all) => all.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: ts } : t)));
+    if (note)
+      setHistory((h) => ({ ...h, [id]: [...(h[id] ?? []), { id: crypto.randomUUID(), ts, text: note }] }));
+  };
 
   // DESIGN §6/§8: `c` opens quick-create from anywhere on the list.
   useEffect(() => {
@@ -207,7 +257,27 @@ export function Tasks() {
           + New task
         </Button>
       </div>
-      <TaskList tasks={tasks} members={members} labels={labels} />
+      <TaskList tasks={tasks} members={members} labels={labels} selectedKey={selectedKey} />
+      {selectedKey && (
+        <TaskInspector
+          key={selected?.id ?? selectedKey}
+          taskKey={selectedKey}
+          task={selected}
+          members={members}
+          lookup={lookup}
+          label={selected ? (selected.id in labels ? labels[selected.id]! : inferLabel(selected)) : null}
+          labelInferred={!selected || !(selected.id in labels)}
+          events={selected ? activity.filter((e) => e.taskId === selected.id) : []}
+          history={selected ? (history[selected.id] ?? []) : []}
+          onUpdate={(patch, note) => selected && update(selected.id, patch, note)}
+          onLabel={(l) => {
+            if (!selected) return;
+            setLabels((ls) => ({ ...ls, [selected.id]: l }));
+            update(selected.id, {}, l ? `set the label to ${l}` : 'removed the label');
+          }}
+          onClose={closeInspector}
+        />
+      )}
       <NewTaskDialog open={creating} onClose={() => setCreating(false)} onCreate={create} members={members} />
     </div>
   );

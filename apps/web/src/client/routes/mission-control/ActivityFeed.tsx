@@ -47,6 +47,44 @@ function LinkChip({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
   );
 }
 
+/** One feed row; `showTask={false}` inside a task's own activity list. */
+export function ActivityItem({
+  e,
+  lookup,
+  showTask = true,
+}: {
+  e: ActivityEvent;
+  lookup: Lookup;
+  showTask?: boolean;
+}) {
+  const member = lookup.member(e.actorUserId);
+  const who = member ? firstName(member) : (e.actorRaw ?? 'Someone');
+  const verb = VERB[e.kind];
+  return (
+    <li className="flex gap-3 border-b border-border px-4 py-2.5 last:border-b-0">
+      <MemberAvatar member={member} className="mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <p className="text-label text-muted">
+          <span className="font-medium text-default">{who}</span>
+          {verb.startsWith("'") ? verb : ` ${verb}`}
+          <span className="text-subtle"> · {ago(e.ts, lookup.now)}</span>
+        </p>
+        <p className="truncate text-body text-default">{e.title}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {showTask && <LinkChip e={e} lookup={lookup} />}
+          {e.ref && <span className="truncate font-mono text-caption text-subtle">{e.ref}</span>}
+          {e.additions !== null && (
+            <span className="font-mono text-caption">
+              <span className="text-success">+{e.additions}</span>{' '}
+              <span className="text-danger">−{e.deletions ?? 0}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export function ActivityFeed({ events, lookup }: { events: ActivityEvent[]; lookup: Lookup }) {
   const sorted = [...events].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   return (
@@ -55,34 +93,9 @@ export function ActivityFeed({ events, lookup }: { events: ActivityEvent[]; look
         <p className="px-4 py-6 text-body text-muted">No activity yet. Connect a repo on the Code page.</p>
       ) : (
         <ul aria-live="polite" aria-relevant="additions" className="max-h-96 overflow-auto">
-          {sorted.map((e) => {
-            const member = lookup.member(e.actorUserId);
-            const who = member ? firstName(member) : (e.actorRaw ?? 'Someone');
-            const verb = VERB[e.kind];
-            return (
-              <li key={e.id} className="flex gap-3 border-b border-border px-4 py-2.5 last:border-b-0">
-                <MemberAvatar member={member} className="mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-label text-muted">
-                    <span className="font-medium text-default">{who}</span>
-                    {verb.startsWith("'") ? verb : ` ${verb}`}
-                    <span className="text-subtle"> · {ago(e.ts, lookup.now)}</span>
-                  </p>
-                  <p className="truncate text-body text-default">{e.title}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <LinkChip e={e} lookup={lookup} />
-                    {e.ref && <span className="truncate font-mono text-caption text-subtle">{e.ref}</span>}
-                    {e.additions !== null && (
-                      <span className="font-mono text-caption">
-                        <span className="text-success">+{e.additions}</span>{' '}
-                        <span className="text-danger">−{e.deletions ?? 0}</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
+          {sorted.map((e) => (
+            <ActivityItem key={e.id} e={e} lookup={lookup} />
+          ))}
         </ul>
       )}
     </Panel>
