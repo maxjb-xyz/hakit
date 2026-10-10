@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import { API_PREFIX } from '@hakit/contracts';
 import { schema, type Db } from '@hakit/db';
 import { createApp } from '../app';
+import type { Services } from '../services';
 import type { Env } from '../env';
 import { createSession } from '../lib/session';
 import type { GithubService } from '../services/github';
@@ -14,7 +15,7 @@ export const GHR = `ghr_${'Z9y8X7w6V5'.repeat(8).slice(0, 76)}`;
 
 export const TOKEN_ENC_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
 
-export async function createHarness() {
+export async function createHarness(services: Partial<Services> = {}) {
   const { db } = await createTestDb();
   const github: GithubService = {
     authorizeUrl: (state, redirect) =>
@@ -55,7 +56,7 @@ export async function createHarness() {
     passThroughOnException: () => {},
     props: {},
   } as unknown as ExecutionContext;
-  const app = createApp({ db, services: { github } });
+  const app = createApp({ db, services: { github, ...services } });
 
   async function call(
     path: string,

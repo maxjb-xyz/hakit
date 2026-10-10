@@ -33,12 +33,16 @@ export interface EngineTask extends Pick<
   Task,
   'id' | 'key' | 'status' | 'priority' | 'estimateHours' | 'requiredSkills' | 'startedAt'
 > {
+  /** Completion timestamp supplies measured rolling velocity when known. */
+  completedAt?: string | null;
   embedding: number[] | null;
 }
 
 export interface ProjectState {
   now: Date;
   deadlineAt: Date;
+  /** Beginning of observed execution; allows a zero-completion window to signal a stall. */
+  executionStartedAt?: Date;
   /** Hours reserved before the deadline for submission (default 3). */
   submissionBufferHours: number;
   members: EngineMember[];

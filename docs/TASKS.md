@@ -202,6 +202,7 @@ Also in the scaffold:
 - AC: pick, refine and regenerate one.
 
 **T-305 · Plan generation pipeline** · P0 · IN · 4h · T-303
+- Status: Streamed outline + epic calls (concurrency 3), injected deliverables, validation/repair, editable template fallback, and versioned draft persistence implemented; see `docs/INTELLIGENCE-IMPLEMENTATION.md`.
 - AC: outline call, then per-epic task calls in parallel (concurrency 3), streamed as `PlanStreamEvent`s.
 - AC: required-deliverable tasks injected; plan versioned and stored.
 - AC: template-plan fallback when the provider is unavailable.
@@ -220,11 +221,13 @@ Also in the scaffold:
 - AC: `embed.batch` enqueued; board returned; DO broadcasts `board.changed`.
 
 **T-309 · Assignment solver** · P0 · IN · 4h · T-206, T-004
+- Status: Deterministic skill/embedding scoring, capacity and calendar constraints, preserved manual/locked work, greedy + bounded moves/swaps, alternatives and warnings implemented with invariant and 6×60 performance tests.
 - AC: AI.md §C.1–C.2: relevance, hard constraints, greedy plus local search, top-2 alternatives, reason codes.
 - AC: deterministic for the same input; under 200ms for 6×60.
 - AC: property tests: no capacity violation, locks respected, avoid list honoured.
 
 **T-310 · Explanations** · P0 · IN · 1.5h · T-309, T-301
+- Status: Fact-only templates, manual override score deltas, and optional background batch phrasing implemented. Model output selects vetted prose variants; arbitrary factual additions are disallowed.
 - AC: deterministic templates from reason codes.
 - AC: optional batch polish (fast model) constrained to the facts, with the deterministic fallback.
 
@@ -284,6 +287,7 @@ Also in the scaffold:
 ## Phase 5 — Mission Control & Adaptive
 
 **T-501 · Engine: critical path, velocity, health** · P0 · IN · 3h · T-004
+- Status: Resource-constrained CPM, calendar windows, task slack, measured completion velocity, forecast, and reason-coded health implemented and connected to Mission Control.
 - AC: CPM over the DAG with parallelism capped at team size; slack per task.
 - AC: rolling velocity; forecast finish (labelled as an estimate).
 - AC: health classification with a reason code; unit tests.

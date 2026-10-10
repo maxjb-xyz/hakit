@@ -44,6 +44,4 @@ describe('cosine', () => {
 });
 
 // Contract-level todos for IN (each becomes real tests in its task).
-describe.todo('T-309 solveAssignments invariants (capacity, locks, avoid, determinism, <200ms for 6×60)');
-describe.todo('T-501 computeSchedule / classifyHealth');
 describe.todo('T-504 adaptive rules v1 on fixture scenarios');
