@@ -103,7 +103,7 @@ export function AppShell() {
           <span aria-hidden className="text-faint">
             ›
           </span>
-          <span className="text-body font-medium text-strong">{current?.label ?? ''}</span>
+          <h1 className="text-body font-medium text-strong">{current?.label ?? ''}</h1>
           <div className="ml-auto flex items-center gap-3">
             {/* Pages portal live status (e.g. "Synced 4s ago") here. */}
             <div id="topbar-status" className="flex items-center" />
