@@ -3,72 +3,22 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { API_PREFIX, endpoints } from '@hakit/contracts';
+import { endpoints } from '@hakit/contracts';
 import { schema, type Db } from '@hakit/db';
-import { createApp } from '../app';
-import type { Env } from '../env';
-import { createSession } from '../lib/session';
 import { importEncKey } from '../lib/crypto';
 import { getGithubAccessToken, storeGithubTokens } from '../lib/github-token';
 import { GithubAuthError, type GithubService } from '../services/github';
-import { createTestDb } from '../test/pglite';
-
-const TOKEN_ENC_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
-const env = {
-  HAKIT_MOCKS: '0',
-  APP_URL: 'https://hakit.test',
-  TOKEN_ENC_KEY,
-  EMBED_DIM: '1024',
-  EMBED_MODEL: 'x',
-  WORKERS_AI_EMBED_MODEL: 'x',
-  GEMINI_MODEL_PLAN: 'x',
-  GEMINI_MODEL_FAST: 'x',
-} as unknown as Env;
-const ctx = {
-  waitUntil: () => {},
-  passThroughOnException: () => {},
-  props: {},
-} as unknown as ExecutionContext;
+import { createHarness, TOKEN_ENC_KEY } from '../test/harness';
 
 let db: Db;
 let github: GithubService;
-let app: ReturnType<typeof createApp>;
+let call: Harness['call'];
+let signIn: Harness['signIn'];
+type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 beforeEach(async () => {
-  ({ db } = await createTestDb());
-  github = {
-    authorizeUrl: (state, redirect) =>
-      `https://github.test/authorize?state=${state}&redirect_uri=${redirect}`,
-    installUrl: () => '',
-    exchangeCode: vi.fn(async () => ({
-      accessToken: 'gho_access',
-      refreshToken: 'ghr_refresh',
-      expiresIn: 8 * 3600,
-      refreshTokenExpiresIn: 180 * 86400,
-    })),
-    refreshToken: vi.fn(),
-    getUser: vi.fn(async () => ({ id: 42, login: 'octo', name: 'Octo Cat', avatarUrl: null, email: null })),
-    listInstallations: vi.fn(),
-    listInstallationRepos: vi.fn(),
-    userHasInstallation: vi.fn(),
-    verifyWebhook: vi.fn(),
-  };
-  app = createApp({ db, services: { github } });
+  ({ db, github, call, signIn } = await createHarness());
 }, 30_000);
-
-function call(path: string, init: RequestInit & { token?: string; json?: unknown } = {}) {
-  const headers = new Headers(init.headers);
-  if (init.token) headers.set('cookie', `hakit_session=${init.token}`);
-  if (init.json !== undefined) headers.set('content-type', 'application/json');
-  if (init.method && init.method !== 'GET') headers.set('x-requested-with', 'hakit');
-  const body = init.json !== undefined ? JSON.stringify(init.json) : init.body;
-  return app.request(`${API_PREFIX}${path}`, { ...init, headers, body }, env, ctx);
-}
-
-async function signIn(githubUserId: number, login = `user${githubUserId}`) {
-  const [u] = await db.insert(schema.users).values({ githubUserId, githubLogin: login }).returning();
-  return { id: u!.id, token: await createSession(db, u!.id, null, new Date()) };
-}
 
 async function newWorkspace(token: string, extra: Record<string, unknown> = {}) {
   const res = await call('/workspaces', {
