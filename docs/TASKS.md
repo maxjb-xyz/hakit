@@ -28,8 +28,8 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-004 Contracts v1 | ✅ done | Freeze at C1 after the team reviews it |
 | T-005 Seeds | 🟡 286 skills, 1,678 dependency mappings, Knight Hacks IX template | Taxonomy embeddings (embed.batch job); verify challenges on Devpost |
 | T-006 GitHub Apps | ⬜ manual | SETUP §4 |
-| T-007 CI/CD | 🟡 check job | Deploy job gated on `vars.DEPLOY_ENABLED` + Cloudflare secrets |
-| T-008 Deep health | 🟡 DO, DB, queue checks | GitHub JWT, Gemini and HF pings |
+| T-007 CI/CD | 🟡 check, approval-gated migrate, deploy (no preview env, so no PR previews) | Add required reviewers + `DATABASE_URL` secret to the `migrations` environment |
+| T-008 Deep health | 🟡 DO, DB, queue, GitHub App JWT, Gemini, HF embed checks | Run against prod; record ARCHITECTURE §13 results in RISKS §4 |
 | T-101 Tokens | ✅ done | Sync Figma variables |
 | T-104 App shell | 🟡 functional skeleton + routes + placeholders | Real design, inspector, ⌘K |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
@@ -84,7 +84,7 @@ Also in the scaffold:
 
 **T-007 · CI/CD** · P0 · PL · 1h · T-001
 - AC: GitHub Actions runs typecheck, lint and test on PRs.
-- AC: deploy on `main`; preview version upload on PRs.
+- AC: deploy on `main`. ~~Preview version upload on PRs~~ (the preview env was removed).
 - AC: the migration step is gated on manual approval.
 
 **T-008 · Deep health & verify-list** · P0 · PL · 1h · T-002, T-003
