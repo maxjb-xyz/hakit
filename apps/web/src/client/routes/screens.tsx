@@ -1,10 +1,8 @@
 /** Screen stubs S1–S14 (DESIGN §8). Each FE task replaces one export with a real screen in its own file. */
 import { useParams } from 'react-router';
-import type { MissionControlSnapshot } from '@hakit/contracts';
 import { ids } from '@hakit/contracts/fixtures';
 import { Button } from '@hakit/ui';
 import { Placeholder } from './Placeholder';
-import { useProjectSocket } from '../lib/ws';
 
 /** Until project selection exists (T-302), screens use the fixture project id. */
 const useProjectId = () => ids.project;
@@ -47,28 +45,7 @@ export function Join() {
 export function Onboarding() {
   return <Placeholder screen="S1/S3" title="Onboarding & skill import" tasks="T-207, T-208" endpoint="me" />;
 }
-export function MissionControl() {
-  const pid = useProjectId();
-  const { state, presence } = useProjectSocket(pid);
-  return (
-    <>
-      <p className="px-6 pt-4 text-caption text-subtle">
-        realtime: {state} · {presence.length} online
-      </p>
-      <Placeholder
-        screen="S11"
-        title="Mission Control"
-        tasks="T-106, T-503"
-        endpoint="missionControl"
-        args={{ params: { pid } }}
-        summarize={(d) => {
-          const s = d as MissionControlSnapshot;
-          return `${s.health.status}: ${s.health.reason} · ${s.progress.tasksDone}/${s.progress.tasksTotal} tasks · ${s.openRecommendations.length} recommendation(s)`;
-        }}
-      />
-    </>
-  );
-}
+export { MissionControl } from './MissionControl';
 export function Plan() {
   return (
     <Placeholder
