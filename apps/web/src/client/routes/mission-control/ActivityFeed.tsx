@@ -154,7 +154,10 @@ function FeedRow({ e, lookup, arrived }: { e: ActivityEvent; lookup: Lookup; arr
       <KindIcon kind={e.kind} />
       <span className="min-w-0 flex-1 truncate text-subtle">
         {linked && (
-          <Link to={taskHref(task.key)} className="mr-1.5 rounded-xs text-default hover:text-strong">
+          <Link
+            to={taskHref(task.key)}
+            className="mr-1.5 rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+          >
             {task.key}
           </Link>
         )}

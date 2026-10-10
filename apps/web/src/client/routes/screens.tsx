@@ -4,6 +4,7 @@ import { Button } from '@hakit/ui';
 export { Home } from './Home';
 export { Login } from './Login';
 export { Join } from './Join';
+export { CreateWorkspace } from './CreateWorkspace';
 export { Onboarding } from './Onboarding';
 export { MissionControl } from './MissionControl';
 export { Plan } from './Plan';

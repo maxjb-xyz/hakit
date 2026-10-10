@@ -40,6 +40,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@cloudflare/vite-plugin": "^1.63.1",
     "@cloudflare/workers-types": "^4.20260702.1",
     "@electric-sql/pglite": "^0.3.16",

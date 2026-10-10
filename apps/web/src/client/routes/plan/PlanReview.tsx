@@ -323,7 +323,12 @@ function Architecture({ outline, members, streaming }: ReviewProps) {
         ) : null
       ) : (
         <div className="space-y-4">
-          <div className="overflow-x-auto">
+          <div
+            className="relative overflow-x-auto"
+            tabIndex={0}
+            role="region"
+            aria-label="Plan tasks, scrolls sideways"
+          >
             <table className="w-full min-w-(--spacing-table-min) text-left text-body">
               <thead className="text-caption uppercase tracking-wide text-subtle">
                 <tr>

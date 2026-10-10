@@ -237,12 +237,12 @@ function VersionSwitcher(props: {
   onChange: (id: string) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-label text-muted">
+    <label className="flex min-w-0 max-w-full items-center gap-2 text-label text-muted">
       Version
       <select
         value={props.value ?? ''}
         onChange={(e) => props.onChange(e.target.value)}
-        className="h-control-md rounded-sm border border-border bg-raised px-2 text-body text-default hover:bg-hover"
+        className="h-control-md min-w-0 max-w-full truncate rounded-sm border border-border bg-raised px-2 text-body text-default hover:bg-hover"
       >
         {props.versions.map((v) => (
           <option key={v.id} value={v.id}>

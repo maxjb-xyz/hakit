@@ -52,7 +52,10 @@ export function AgentList({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
                   <span className="text-default">{firstName(lookup.member(a.userId))}</span>
                   {"'s agent on "}
                   {task ? (
-                    <Link to={taskHref(task.key)} className="rounded-xs text-default hover:text-strong">
+                    <Link
+                      to={taskHref(task.key)}
+                      className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+                    >
                       {task.key}
                     </Link>
                   ) : (

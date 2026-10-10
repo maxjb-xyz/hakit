@@ -11,7 +11,7 @@ import { qk } from '../lib/query';
 import { Countdown } from './Countdown';
 import { CommandMenu } from './CommandMenu';
 import { Inspector } from './Inspector';
-import { ProjectSwitcher } from './ProjectSwitcher';
+import { ProjectSwitcher, WorkspaceSwitcher } from './ProjectSwitcher';
 import { Shortcuts } from './Shortcuts';
 import { NAV, SETTINGS, type NavItem } from './nav';
 
@@ -102,17 +102,23 @@ export function AppShell() {
         </nav>
       </aside>
 
-      <div className="m-2 ml-0 grid min-h-0 grid-rows-(--grid-shell-main) overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
-        <header className="flex items-center gap-2 border-b border-hover px-7 max-sm:px-4">
-          <span className="text-body text-subtle">{workspace.data?.name ?? '…'}</span>
+      <div className="m-2 ml-0 grid min-h-0 grid-cols-1 grid-rows-(--grid-shell-main) overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
+        <header className="flex min-w-0 items-center gap-2 border-b border-hover px-7 max-sm:px-4">
+          {/* Phones: the workspace crumb gives way to the page; switch workspaces from ⌘K or a wider screen. */}
+          <span className="flex min-w-0 items-center max-sm:hidden">
+            <WorkspaceSwitcher wid={wid} name={workspace.data?.name} />
+          </span>
           <ProjectSwitcher wid={wid} />
           <span aria-hidden className="text-faint">
             ›
           </span>
-          <h1 className="text-body font-medium text-strong">{current?.label ?? ''}</h1>
+          {/* Visual breadcrumb only: each page renders its own h1. */}
+          <span aria-current="page" className="truncate text-body font-medium text-strong">
+            {current?.label ?? ''}
+          </span>
           <div className="ml-auto flex items-center gap-3">
             {/* Pages portal live status (e.g. "Synced 4s ago") here. */}
-            <div id="topbar-status" className="flex items-center" />
+            <div id="topbar-status" className="flex items-center max-sm:hidden" />
             {workspace.data && (
               <span className="md:hidden">
                 <Countdown deadlineAt={workspace.data.deadlineAt} />

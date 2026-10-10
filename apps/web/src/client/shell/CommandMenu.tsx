@@ -64,6 +64,18 @@ export function CommandMenu(props: { open: boolean; onOpenChange: (open: boolean
         perform: go('code'),
       },
       {
+        id: 'act-invite',
+        label: 'Invite teammates',
+        keywords: 'invite link share join team qr',
+        perform: go('team?invite=1'),
+      },
+      {
+        id: 'act-new-workspace',
+        label: 'Create a new workspace',
+        keywords: 'workspace team new hackathon template',
+        perform: () => void navigate('/new'),
+      },
+      {
         id: 'act-demo',
         label: 'Open Mission Control demo data',
         keywords: 'fixture fallback demo',

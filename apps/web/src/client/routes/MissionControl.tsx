@@ -88,9 +88,18 @@ export function MissionControl() {
   const [search] = useSearchParams();
   const demo = search.get('demo') === '1';
   const { pid, query } = useProject(wid);
-  if (demo) return <MissionControlScreen wid={wid} pid={fx.ids.project} demo />;
-  if (!pid) return <ProjectGate query={query} title="Mission Control" />;
-  return <MissionControlScreen key={pid} wid={wid} pid={pid} demo={false} />;
+  if (!demo && !pid) return <ProjectGate query={query} title="Mission Control" />;
+  // The shell's breadcrumb is visual only; the page names itself for screen readers and the outline.
+  return (
+    <>
+      <h1 className="sr-only">Mission Control</h1>
+      {demo ? (
+        <MissionControlScreen wid={wid} pid={fx.ids.project} demo />
+      ) : (
+        <MissionControlScreen key={pid} wid={wid} pid={pid!} demo={false} />
+      )}
+    </>
+  );
 }
 
 function MissionControlScreen({ wid, pid, demo }: { wid: string; pid: string; demo: boolean }) {

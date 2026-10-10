@@ -7,6 +7,7 @@ export const router = createBrowserRouter([
   { path: '/', element: <S.Home /> },
   { path: '/login', element: <S.Login /> },
   { path: '/j/:code', element: <S.Join /> },
+  { path: '/new', element: <S.CreateWorkspace /> },
   { path: '/onboarding/*', element: <S.Onboarding /> },
   { path: '/_ui', element: <S.UiGallery /> },
   {

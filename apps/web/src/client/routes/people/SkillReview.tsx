@@ -114,11 +114,11 @@ function SkillRow(props: { wid: string; uid: string; skill: MemberSkill; editabl
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
           {inferred && <AiGlyph />}
           <span className="truncate text-body font-medium text-strong">{s.skill.name}</span>
           <LevelMeter level={s.level} inferred={inferred} />
-          <span className="text-label text-muted">
+          <span className="whitespace-nowrap text-label text-muted">
             {s.level} · {LEVEL_WORD[s.level]}
           </span>
         </div>

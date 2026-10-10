@@ -48,7 +48,7 @@ export function PersonAvatar(props: {
       role={label ? 'img' : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      className={cn(base, 'font-semibold text-on-light', props.colorIndex === undefined && 'bg-level-4')}
+      className={cn(base, 'font-semibold text-on-light', props.colorIndex === undefined && 'bg-level-5')}
       style={
         props.colorIndex === undefined ? undefined : { background: `var(--color-member-${props.colorIndex})` }
       }

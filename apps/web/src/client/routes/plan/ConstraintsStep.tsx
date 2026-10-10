@@ -251,20 +251,24 @@ function ConstraintsEditor(props: {
           ) : (
             <ul className="flex flex-wrap gap-1.5">
               {chosen.map((c) => (
-                <Pill key={c.id} tone="accent">
-                  {c.sponsor}
-                </Pill>
+                <li key={c.id}>
+                  <Pill tone="accent">{c.sponsor}</Pill>
+                </li>
               ))}
               {state.required.map((t) => (
-                <Pill key={`r-${t}`}>needs {t}</Pill>
+                <li key={`r-${t}`}>
+                  <Pill>needs {t}</Pill>
+                </li>
               ))}
               {state.excluded.map((t) => (
-                <Pill key={`x-${t}`} tone="danger">
-                  no {t}
-                </Pill>
+                <li key={`x-${t}`}>
+                  <Pill tone="danger">no {t}</Pill>
+                </li>
               ))}
               {state.custom.map((t) => (
-                <Pill key={`c-${t}`}>{t}</Pill>
+                <li key={`c-${t}`}>
+                  <Pill>{t}</Pill>
+                </li>
               ))}
             </ul>
           )}

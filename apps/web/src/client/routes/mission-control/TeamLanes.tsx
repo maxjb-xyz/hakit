@@ -265,7 +265,7 @@ export function MilestoneList({
                       />
                     )}
                     <span
-                      className="absolute top-1/2 flex h-2 -translate-y-1/2 overflow-hidden rounded-full"
+                      className="absolute top-1/2 flex h-2 -translate-y-1/2 overflow-hidden rounded-full max-sm:top-3"
                       style={{ left: `${pct(from)}%`, width: `${Math.max(1, pct(to) - pct(from))}%` }}
                     >
                       <span className="h-full bg-level-5/80" style={{ width: `${m.measuredDone * 100}%` }} />
@@ -276,6 +276,8 @@ export function MilestoneList({
                         'absolute top-1/2 -translate-y-1/2 pl-2 text-label whitespace-nowrap',
                         risky ? 'text-warning' : 'text-subtle',
                         pct(to) > 80 && 'pr-2 pl-0 -translate-x-full',
+                        // Phones: no room beside the bar, so the note sits under it and truncates.
+                        'max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0.5 max-sm:left-0! max-sm:translate-0 max-sm:truncate max-sm:px-0',
                       )}
                       style={{ left: `${pct(to) > 80 ? pct(from) : pct(to)}%` }}
                     >

@@ -216,9 +216,10 @@ route(identity, 'createInvite', async ({ c, params, body }) => {
       id: '11000000-0000-4000-8000-000000000001',
       code: 'ORBIT7K2QX',
       url: `${c.env.APP_URL}/j/ORBIT7K2QX`,
-      expiresAt: '2026-10-13T11:00:00-04:00',
-      maxUses: null,
-      uses: 3,
+      // Echo the request so the invite panel shows what was asked for.
+      expiresAt: new Date(Date.now() + body.expiresInHours * 3_600_000).toISOString(),
+      maxUses: body.maxUses,
+      uses: 0,
     };
   const [i] = await c.var
     .db()

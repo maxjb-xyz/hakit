@@ -15,7 +15,10 @@ import { ago, fmtHours, useNow } from './mission-control/shared';
 import { EmptyBox, ErrorBox, PageHeader, Pill, TaskLinkChip } from './page-states';
 import { AvailabilityEditor } from './people/AvailabilityEditor';
 import { EvidenceList, SkillReview, isInferred } from './people/SkillReview';
-import { CATEGORY_LABEL, Card, PersonAvatar, Tabs, isNotFound, tabPanelProps } from './people/shared';
+import { CATEGORY_LABEL, PersonAvatar, Tabs, isNotFound, tabPanelProps } from './people/shared';
+
+/** Stat tile: a Card's look on a div, since <dl> may only contain dt/dd groups wrapped in divs. */
+const stat = 'min-w-0 rounded-md border border-border bg-surface px-5 py-3 max-sm:px-4';
 import { STATUS_LABEL, StatusIcon } from './tasks/meta';
 
 const TABS = ['skills', 'evidence', 'availability', 'assignments', 'agents'] as const;
@@ -203,11 +206,11 @@ export function MemberProfile() {
       </div>
 
       <dl className="grid gap-3 sm:grid-cols-3">
-        <Card className="py-3">
+        <div className={stat}>
           <dt className="text-label text-subtle">Available (self-reported)</dt>
           <dd className="mt-1 text-title text-strong">≈ {fmtHours(p.availableHours)}</dd>
-        </Card>
-        <Card className="py-3">
+        </div>
+        <div className={stat}>
           <dt className="text-label text-subtle">Working on</dt>
           <dd className="mt-1 min-w-0 text-body">
             {current ? (
@@ -223,13 +226,13 @@ export function MemberProfile() {
               <span className="text-subtle">Nothing in progress</span>
             )}
           </dd>
-        </Card>
-        <Card className="py-3">
+        </div>
+        <div className={stat}>
           <dt className="text-label text-subtle">Wants to learn</dt>
           <dd className="mt-1 truncate text-body text-default">
             {learning.length ? learning.join(', ') : <span className="text-subtle">Not set</span>}
           </dd>
-        </Card>
+        </div>
       </dl>
 
       <Tabs

@@ -62,13 +62,14 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-504 Adaptive rules | ✅ rules v1, `recs.evaluate` job (cron every 2 min + board changes), dedupe | – |
 | T-505 Recommendations | ✅ API + UI accept/dismiss | – |
 | T-602 Agent ingestion | ✅ `/agent/events` (token auth, rate limit, minimization), `agent.event` session state machine, task linking, timeouts | – |
-| Screens S1–S4, S12–S14 | ✅ Login, Join (invite landing), Onboarding with skill import, member profile, Code, Agents, Settings (repos, AI status, agent tokens) on real data | S2 create-workspace flow and invite panel are not in the client yet (T-207); use `demo seed` for real-mode demos |
+| Screens S1–S4, S12–S14 | ✅ Login, Join (invite landing), S2 create-workspace (`/new`, Knight Hacks template or custom deadline) and invite panel (Team, Settings), Onboarding with skill import, member profile, Code, Agents, Settings (repos, AI status, agent tokens) on real data | Invite QR code (needs a dependency) and live join presence; no list-invites endpoint, so a link shows only in the session that made it |
+| T-704 Responsive & a11y | ✅ `e2e/a11y.spec.ts`: axe (WCAG 2.1 A/AA) clean, no horizontal scroll, one main + one h1 on every route at 375/768/1440, visible focus; reduced motion stops looping animations. `SCREENSHOTS=1` writes docs/screenshots | Screen-reader pass by hand (VoiceOver/NVDA) |
 | T-703 Planning evals | ✅ golden team × idea harness (`services/ai/evals`): schema, stream, DAG, grounding, capacity, schedule, deliverables, challenges, coverage, privacy; offline in `pnpm test`, live `eval:planning` (needs `GEMINI_API_KEY`) | Run live and record pass rates per prompt version; ideas are golden inputs (the live run doesn't score `ideas.generate` yet) |
 | T-705 Demo kit | 🟡 docs/DEMO.md; `demo seed/swap/stall/reset` for a Tiger fork; `scripts/demo-push.sh` | Create the fork; record the backup video; dry-run timings |
 | T-706 Submission | 🟡 docs/SUBMISSION.md (Devpost text, built-with, sponsor paragraphs, capture checklist) | Screenshots, video, architecture PNG, Figma link |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 
-**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo, and the S2 create-workspace and invite UI. On the product side: project selection in place of the fixture ids, and the plan prompt-hash cache.
+**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. On the product side: project selection in place of the fixture ids, and the plan prompt-hash cache.
 
 Also in the scaffold:
 - **Mock mode** (`HAKIT_MOCKS=1`): every endpoint serves fixtures.

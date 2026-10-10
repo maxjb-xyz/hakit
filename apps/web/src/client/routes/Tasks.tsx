@@ -207,7 +207,12 @@ export function Tasks() {
   const { wid = '' } = useParams();
   const { pid, query } = useProject(wid);
   if (!pid) return <ProjectGate query={query} title="Tasks" />;
-  return <TasksScreen key={pid} wid={wid} pid={pid} />;
+  return (
+    <>
+      <h1 className="sr-only">Tasks</h1>
+      <TasksScreen key={pid} wid={wid} pid={pid} />
+    </>
+  );
 }
 
 function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
@@ -300,10 +305,12 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
             </button>
           ))}
         </div>
-        {!b.loading && <span className="text-label text-subtle">{tasks.length} tasks</span>}
+        {!b.loading && (
+          <span className="whitespace-nowrap text-label text-subtle max-sm:hidden">{tasks.length} tasks</span>
+        )}
         {view === 'board' && (
-          <label className="ml-auto flex items-center gap-2 text-label text-subtle">
-            Group by
+          <label className="ml-auto flex items-center gap-2 text-label whitespace-nowrap text-subtle">
+            <span className="max-sm:sr-only">Group by</span>
             <Picker
               label="Group by"
               value={groupBy}
@@ -324,7 +331,7 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
         <Button
           variant="secondary"
           size="sm"
-          className={view === 'board' ? undefined : 'ml-auto'}
+          className={cn('whitespace-nowrap', view !== 'board' && 'ml-auto')}
           onClick={() => setCreating('todo')}
           disabled={b.loading}
           title="New task (C)"

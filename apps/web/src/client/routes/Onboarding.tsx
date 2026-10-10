@@ -399,9 +399,15 @@ export function Onboarding() {
         <Card>
           <h1 className="text-title font-medium text-strong">You're not on a team yet</h1>
           <p className="mt-2 text-body text-muted">
-            Ask a teammate for their invite link (it looks like <span className="font-mono">/j/ABC123</span>)
-            and open it to join.
+            Starting the team? Create a workspace and invite everyone. Joining one? Ask a teammate for their
+            invite link (it looks like <span className="font-mono">/j/ABC123</span>) and open it.
           </p>
+          <Link
+            to="/new"
+            className="mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-400"
+          >
+            Create a workspace
+          </Link>
         </Card>
       </Frame>
     );

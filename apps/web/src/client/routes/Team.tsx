@@ -12,6 +12,7 @@ import { api } from '../lib/api';
 import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { useNow } from './mission-control/shared';
+import { InvitePanel } from './people/InvitePanel';
 
 const CATEGORIES: { key: SkillCategory; label: string }[] = [
   { key: 'frontend', label: 'Frontend' },
@@ -208,7 +209,13 @@ function CapabilityMatrix(props: {
         meta={`from GitHub repos, ${confirmed} of ${props.members.length} profiles confirmed`}
         right={<Legend />}
       />
-      <div className="overflow-x-auto">
+      {/* Scrolls sideways on phones; focusable so keyboard users can scroll it too. */}
+      <div
+        className="relative overflow-x-auto"
+        tabIndex={0}
+        role="region"
+        aria-label="Capability matrix, scrolls sideways"
+      >
         <div role="table" aria-label="Skill level by member and category" className="min-w-table-min">
           <div role="row" className="grid gap-1 pb-1" style={cols}>
             <span role="columnheader">
@@ -725,6 +732,15 @@ function Skeleton() {
 }
 
 export function Team() {
+  return (
+    <>
+      <h1 className="sr-only">Team</h1>
+      <TeamScreen />
+    </>
+  );
+}
+
+function TeamScreen() {
   const { wid = '' } = useParams();
   const [search, setSearch] = useSearchParams();
   const tab: Tab = (TABS as readonly string[]).includes(search.get('tab') ?? '')
@@ -827,27 +843,48 @@ export function Team() {
     </div>
   );
 
+  // A team of one gets the invite panel up front (DESIGN S2 empty state); otherwise it opens on demand.
+  const showInvite = search.has('invite') || ms.length <= 1;
+  const toggleInvite = () =>
+    setSearch(
+      (s) => {
+        const next = new URLSearchParams(s);
+        if (next.has('invite')) next.delete('invite');
+        else next.set('invite', '1');
+        return next;
+      },
+      { replace: true },
+    );
+
   return (
     <div className="p-7 max-sm:p-4">
       <div className="mb-7 flex flex-wrap items-center gap-3">
         {tabs}
-        <Link to="../plan" className="ml-auto">
-          <Button variant="primary">Plan a project with this team</Button>
-        </Link>
-      </div>
-
-      {ms.length === 0 ? (
-        <div className="grid place-items-center gap-3 py-20 text-center">
-          <div aria-hidden className="flex gap-1">
-            {[0, 1, 2].map((i) => (
-              <span key={i} className="h-10 w-16 rounded-xs border border-dashed border-border-strong" />
-            ))}
-          </div>
-          <p className="text-body text-muted">Invite teammates to see what this team can build.</p>
-          <Link to="../settings">
-            <Button variant="primary">Invite teammates</Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {ms.length > 1 && (
+            <Button aria-expanded={showInvite} aria-controls="team-invite" onClick={toggleInvite}>
+              Invite
+            </Button>
+          )}
+          <Link
+            to="../plan"
+            className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-400"
+          >
+            Plan a project with this team
           </Link>
         </div>
+      </div>
+
+      {showInvite && (
+        <div id="team-invite" className="mb-7">
+          <InvitePanel wid={wid} className="max-w-3xl" />
+        </div>
+      )}
+
+      {ms.length === 0 ? (
+        <p className="py-10 text-center text-body text-muted">
+          Invite teammates to see what this team can build.
+        </p>
       ) : tab === 'members' ? (
         <MembersList members={ms} />
       ) : tab === 'availability' ? (
@@ -860,7 +897,7 @@ export function Team() {
           tall
         />
       ) : (
-        <div className="grid gap-7 lg:grid-cols-(--grid-side-320)">
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-(--grid-side-320)">
           <div className="min-w-0 space-y-9">
             <CapabilityMatrix
               members={ms}

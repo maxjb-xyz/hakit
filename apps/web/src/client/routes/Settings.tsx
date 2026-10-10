@@ -1,5 +1,5 @@
 /**
- * S14 Settings & integrations (DESIGN §8). Integrations only for now: GitHub (App + connected repo),
+ * S14 Settings & integrations (DESIGN §8). The S2 invite panel, then integrations: GitHub (App + connected repo),
  * personal agent tokens (T-601: create shown once, list, revoke) and AI provider status (`aiStatus`).
  * Workspace, members, privacy and danger-zone sections need endpoints that don't exist yet.
  */
@@ -12,13 +12,15 @@ import { api } from '../lib/api';
 import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { Panel, ago, useNow } from './mission-control/shared';
-import { EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill } from './page-states';
+import { InvitePanel } from './people/InvitePanel';
+import { CopyField, EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill } from './page-states';
 
 export function Settings() {
   const { wid = '' } = useParams();
   return (
     <div className="space-y-6 p-6 max-sm:p-4">
-      <PageHeader title="Settings" subtitle="Integrations for this workspace" />
+      <PageHeader title="Settings" subtitle="Team and integrations for this workspace" />
+      <InvitePanel wid={wid} className="max-w-3xl" />
       <GithubSection wid={wid} />
       <AgentTokensSection wid={wid} />
       <AiSection />
@@ -253,37 +255,6 @@ function CreateTokenForm(props: {
   );
 }
 
-function CopyField(props: { label: string; value: string }) {
-  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
-  return (
-    <div className="space-y-1">
-      <p className="text-label text-muted">{props.label}</p>
-      <div className="flex min-w-0 items-center gap-2">
-        <code className="min-w-0 flex-1 overflow-x-auto rounded-sm border border-border bg-sunken px-3 py-2 font-mono text-label whitespace-nowrap text-default">
-          {props.value}
-        </code>
-        <Button
-          size="sm"
-          aria-label={`Copy ${props.label.toLowerCase()}`}
-          onClick={() =>
-            navigator.clipboard.writeText(props.value).then(
-              () => setCopied('done'),
-              () => setCopied('failed'),
-            )
-          }
-        >
-          {copied === 'done' ? 'Copied' : 'Copy'}
-        </Button>
-      </div>
-      {copied === 'failed' && (
-        <p role="alert" className="text-label text-warning">
-          Couldn't copy automatically. Select the text and copy it.
-        </p>
-      )}
-    </div>
-  );
-}
-
 function ShownOnce(props: { token: AgentTokenCreated & { name: string }; onDismiss: () => void }) {
   return (
     <div role="status" className="space-y-3 rounded-md border border-warning bg-surface p-4">
@@ -310,9 +281,12 @@ function TokenRow(props: { token: AgentTokenSummary; wid: string; now: number })
   });
   const revoked = t.revokedAt !== null;
   return (
-    <li className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-3', revoked && 'opacity-70')}>
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-3">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-body text-default">{t.name}</p>
+        {/* Revoked rows are struck through and dimmed by token, not opacity (keeps meta text at AA contrast). */}
+        <p className={cn('truncate text-body', revoked ? 'text-subtle line-through' : 'text-default')}>
+          {t.name}
+        </p>
         <p className="text-label text-subtle">
           Created {ago(t.createdAt, props.now)} · last used{' '}
           {t.lastUsedAt ? ago(t.lastUsedAt, props.now) : 'never'}
