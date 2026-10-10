@@ -28,10 +28,11 @@ export class ProjectRoom extends DurableObject<Env> {
     if (request.headers.get('Upgrade') !== 'websocket')
       return new Response('Expected WebSocket', { status: 426 });
     const userId = request.headers.get('x-hakit-user');
-    if (!Id.safeParse(userId).success) return new Response('Missing user', { status: 400 });
+    const user = Id.safeParse(userId);
+    if (!user.success) return new Response('Missing user', { status: 400 });
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
-    this.ctx.acceptWebSocket(server, [userId]);
+    this.ctx.acceptWebSocket(server, [user.data]);
     // hello replays first, then broadcasts presence, preserving sequence order on reconnect.
     return new Response(null, { status: 101, webSocket: client });
   }

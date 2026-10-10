@@ -9,7 +9,7 @@ import { realtime } from './realtime';
 
 function setup({ mocks = false, member = true, signedIn = true } = {}) {
   const store = fakeDb([[{ workspaceId: ids.workspace }].filter(() => member)]);
-  const fetch = vi.fn(async () => new Response('forwarded'));
+  const fetch = vi.fn(async (_request: Request) => new Response('forwarded'));
   const get = vi.fn(() => ({ fetch }));
   const env = { APP_URL: 'https://hakit.example', PROJECT_ROOM: { idFromName: (id: string) => id, get } } as unknown as Env;
   const app = new Hono<AppEnv>();
