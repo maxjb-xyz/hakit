@@ -9,6 +9,8 @@ import { createDb, schema } from '@hakit/db';
 import type { JobMessage } from '@hakit/contracts';
 import type { Env } from '../env';
 import { isMock } from '../env';
+import { broadcast } from '../lib/broadcast';
+import { sweepAgentSessions } from '../jobs/agent-event';
 import { redact } from '../lib/redact';
 
 /** Queue `sendBatch` accepts at most 100 messages per call. */
@@ -47,5 +49,21 @@ export async function handleScheduled(controller: ScheduledController, env: Env)
     console.error(JSON.stringify({ level: 'error', msg: 'recs enqueue failed', error: redact(String(err)) })),
   );
   // TODO(T-408): if (tick % 10 === 0) redelivery sweep
-  // TODO(T-602): mark agent sessions idle (>10m) / ended (>2h)
+  await sweepAgentSessionsJob(env, new Date(controller.scheduledTime));
+}
+
+/** T-602: mark agent sessions idle (>10m quiet) / ended (>2h quiet). */
+async function sweepAgentSessionsJob(env: Env, now: Date) {
+  const handle = createDb(env.HYPERDRIVE.connectionString);
+  try {
+    await handle.ready;
+    const updated = await sweepAgentSessions(handle.db, (pid, payload) => broadcast(env, pid, payload), now);
+    if (updated) console.log(JSON.stringify({ level: 'info', msg: 'agent sessions timed out', updated }));
+  } catch (err) {
+    console.error(
+      JSON.stringify({ level: 'error', msg: 'agent session sweep failed', error: redact(String(err)) }),
+    );
+  } finally {
+    await handle.close();
+  }
 }
