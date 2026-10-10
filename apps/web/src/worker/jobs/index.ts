@@ -9,6 +9,7 @@ import { getServices } from '../services';
 import { githubWebhookJob } from './github-webhook';
 import { embedBatchJob } from './embed-batch';
 import { skillsImportJob } from './skills-import';
+import { activityLinkJob } from './activity-link';
 
 export interface JobContext {
   env: Env;
@@ -31,7 +32,7 @@ export const handlers: { [T in JobType]: Handler<T> } = {
   'github.backfill': todo('T-405'), // GH
   'skills.import': skillsImportJob, // IN
   'embed.batch': embedBatchJob, // IN
-  'activity.link': todo('T-406'), // GH + IN
+  'activity.link': activityLinkJob, // GH + IN
   'agent.event': todo('T-602'), // GH
   'recs.evaluate': todo('T-504'), // IN
 };

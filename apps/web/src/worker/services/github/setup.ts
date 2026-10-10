@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { Id } from '@hakit/contracts';
+import { Id, type CreateRepo } from '@hakit/contracts';
 import type { AppEnv } from '../../lib/context';
 import { HttpError, unauthorized } from '../../lib/errors';
 import { githubUserToken } from '../../lib/github-token';
@@ -91,4 +91,13 @@ export async function installationSetup(c: Context<AppEnv>): Promise<Response> {
   await saveInstallation(db, installation);
   c.header('Cache-Control', 'no-store');
   return c.redirect(`/w/${state.data.workspaceId}/code`);
+}
+
+/** GitHub's prefilled new-repository page (INTEGRATIONS §1.6 A): no extra App permissions needed. */
+export function guidedRepoUrl(input: CreateRepo): string {
+  const url = new URL('https://github.com/new');
+  url.searchParams.set('name', input.name);
+  if (input.description) url.searchParams.set('description', input.description);
+  url.searchParams.set('visibility', input.private ? 'private' : 'public');
+  return url.toString();
 }

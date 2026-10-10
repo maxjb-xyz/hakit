@@ -27,6 +27,7 @@ const refEvent = base.extend({ ref: z.string(), ref_type: z.string() });
 const pr = z.object({
   number: z.number().int().positive(),
   title: z.string(),
+  body: z.string().nullable().optional(),
   html_url: z.url(),
   head: z.object({ ref: z.string(), sha: z.string() }),
   updated_at: Timestamp,
@@ -49,6 +50,8 @@ const reviewEvent = pullRequest.extend({
 export interface NormalizedActivity {
   actor: GithubActor | null;
   activity: Omit<ActivityEvent, 'id' | 'projectId' | 'actorUserId' | 'actorRaw'>;
+  /** Text searched for explicit `HK-n` references (full commit message, PR title + body). Never stored. */
+  linkText: string;
 }
 
 /** Pure conversion: time for events without a timestamp comes from the delivery ledger. */
@@ -57,8 +60,10 @@ export function normalizeGithub(event: string, payload: unknown, receivedAt: str
     repoId: number,
     who: GithubActor | null,
     fields: Partial<NormalizedActivity['activity']>,
+    linkText = '',
   ): NormalizedActivity => ({
     actor: who,
+    linkText,
     activity: {
       ts: receivedAt,
       source: 'github',
@@ -83,14 +88,19 @@ export function normalizeGithub(event: string, payload: unknown, receivedAt: str
     const result = p.deleted
       ? []
       : [...new Map(p.commits.map((c) => [c.id, c])).values()].map((c) =>
-          make(p.repository.id, c.author, {
-            kind: 'commit',
-            ts: new Date(c.timestamp).toISOString(),
-            ref: p.ref.replace(/^refs\/heads\//, '').replace(/^refs\/tags\//, ''),
-            sha: c.id,
-            title: c.message.split(/\r?\n/)[0]!,
-            url: c.url,
-          }),
+          make(
+            p.repository.id,
+            c.author,
+            {
+              kind: 'commit',
+              ts: new Date(c.timestamp).toISOString(),
+              ref: p.ref.replace(/^refs\/heads\//, '').replace(/^refs\/tags\//, ''),
+              sha: c.id,
+              title: c.message.split(/\r?\n/)[0]!,
+              url: c.url,
+            },
+            c.message,
+          ),
         );
     if (p.created && p.ref.startsWith('refs/heads/'))
       result.push(
@@ -119,18 +129,24 @@ export function normalizeGithub(event: string, payload: unknown, receivedAt: str
     if (event === 'pull_request_review') {
       if (p.action !== 'submitted') return [];
       const r = reviewEvent.parse(payload).review;
+      const prText = `${p.pull_request.title}\n${p.pull_request.body ?? ''}`;
       return [
-        make(p.repository.id, r.user, {
-          kind: 'pr_review',
-          ts: r.submitted_at,
-          ref: p.pull_request.head.ref,
-          // Reserve sha for commit rows: the existing dedupe index also covers PR kinds.
-          // Separate reviews of the same head SHA can legitimately share a timestamp.
-          sha: null,
-          prNumber: p.pull_request.number,
-          title: `PR #${p.pull_request.number} review: ${r.state}`,
-          url: r.html_url,
-        }),
+        make(
+          p.repository.id,
+          r.user,
+          {
+            kind: 'pr_review',
+            ts: r.submitted_at,
+            ref: p.pull_request.head.ref,
+            // Reserve sha for commit rows: the existing dedupe index also covers PR kinds.
+            // Separate reviews of the same head SHA can legitimately share a timestamp.
+            sha: null,
+            prNumber: p.pull_request.number,
+            title: `PR #${p.pull_request.number} review: ${r.state}`,
+            url: r.html_url,
+          },
+          prText,
+        ),
       ];
     }
     if (!['opened', 'closed', 'reopened', 'ready_for_review', 'synchronize'].includes(p.action)) return [];
@@ -144,17 +160,23 @@ export function normalizeGithub(event: string, payload: unknown, receivedAt: str
             : 'pr_closed'
           : 'pr_updated';
     return [
-      make(p.repository.id, p.sender ?? null, {
-        kind,
-        ts: (kind === 'pr_merged' ? r.merged_at : kind === 'pr_closed' ? r.closed_at : null) ?? r.updated_at,
-        ref: r.head.ref,
-        sha: null,
-        prNumber: r.number,
-        title: r.title,
-        url: r.html_url,
-        additions: r.additions ?? null,
-        deletions: r.deletions ?? null,
-      }),
+      make(
+        p.repository.id,
+        p.sender ?? null,
+        {
+          kind,
+          ts:
+            (kind === 'pr_merged' ? r.merged_at : kind === 'pr_closed' ? r.closed_at : null) ?? r.updated_at,
+          ref: r.head.ref,
+          sha: null,
+          prNumber: r.number,
+          title: r.title,
+          url: r.html_url,
+          additions: r.additions ?? null,
+          deletions: r.deletions ?? null,
+        },
+        `${r.title}\n${r.body ?? ''}`,
+      ),
     ];
   }
   // Installation/repository synchronization is T-402; these events produce no activity.

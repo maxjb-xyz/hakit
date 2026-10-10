@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { branchNameFor, cosine, taskNumberFromBranch, taskNumbersFromText, topoSort } from './index';
+import {
+  branchNameFor,
+  cosine,
+  inferTaskLink,
+  taskNumberFromBranch,
+  taskNumbersFromText,
+  topoSort,
+} from './index';
 
 describe('linking refs', () => {
   it.each([
@@ -13,6 +20,37 @@ describe('linking refs', () => {
     expect(taskNumbersFromText('Fix HK-4 and hk-9; not HK-x')).toEqual([4, 9]));
   it('builds branch names', () =>
     expect(branchNameFor(12, 'GitHub OAuth: sign-in!')).toBe('hk-12-github-oauth-sign-in'));
+});
+
+describe('inferTaskLink', () => {
+  const author = 'u1';
+  const task = (taskId: string, embedding: number[], assigneeIds: string[] = [], active = false) => ({
+    taskId,
+    embedding,
+    assigneeIds,
+    active,
+  });
+  it('links when the best match clears the threshold and margin', () =>
+    expect(inferTaskLink([1, 0], [task('a', [1, 0]), task('b', [0, 1])], null)).toEqual({
+      taskId: 'a',
+      confidence: 1,
+    }));
+  it('returns null below the threshold', () =>
+    expect(inferTaskLink([1, 0], [task('a', [0.5, 1])], null)).toBeNull());
+  it('returns null when the margin over second place is too small', () =>
+    expect(inferTaskLink([1, 0], [task('a', [1, 0.1]), task('b', [1, 0.12])], null)).toBeNull());
+  it('boosts the author as assignee to break a near tie', () =>
+    expect(inferTaskLink([1, 0], [task('a', [1, 0.1]), task('b', [1, 0.12], [author])], author)?.taskId).toBe(
+      'b',
+    ));
+  it("prefers the author's active tasks before all open tasks", () => {
+    const own = task('own', [0.8, 0.6], [author], true);
+    const other = task('other', [1, 0]);
+    expect(inferTaskLink([1, 0], [own, other], author)?.taskId).toBe('own');
+    expect(inferTaskLink([1, 0], [own, other], null)?.taskId).toBe('other');
+  });
+  it('ignores candidates with a mismatched dimension', () =>
+    expect(inferTaskLink([1, 0], [task('a', [1, 0, 0])], null)).toBeNull());
 });
 
 describe('topoSort', () => {

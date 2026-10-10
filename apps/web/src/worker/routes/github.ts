@@ -1,16 +1,17 @@
 /** Repo discovery/connection, activity feed, linking, author mapping. Owner: GH (T-402..T-407). */
 import { Hono } from 'hono';
-import { ActivityEvent } from '@hakit/contracts';
+import { ActivityEvent, WsPayload } from '@hakit/contracts';
 import { schema } from '@hakit/db';
 import { desc, eq } from 'drizzle-orm';
 import * as fx from '@hakit/contracts/fixtures';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
-import { mockOr } from '../lib/mock';
+import { broadcast } from '../lib/broadcast';
 import { fixtureRepo } from '../services/github/mock';
 import { notFound, unauthorized } from '../lib/errors';
 import { githubUserToken } from '../lib/github-token';
-import { installationUrl } from '../services/github/setup';
+import { guidedRepoUrl, installationUrl } from '../services/github/setup';
+import { mapAuthorAlias, setManualLink } from '../services/github/linking';
 import { connectRepository, requireProjectMember } from '../services/github/connections';
 
 export const github = new Hono<AppEnv>();
@@ -27,12 +28,11 @@ route(github, 'listRepos', async ({ c }) => {
   const token = await githubUserToken(c.var.db(), c.var.user.id, c.env.TOKEN_ENC_KEY, c.var.services.github);
   return c.var.services.github.listInstallationRepos(token);
 });
-route(github, 'createRepo', ({ c, body }) =>
-  mockOr(c, 'T-407', () => ({
-    mode: 'guided' as const,
-    url: `https://github.com/new?name=${encodeURIComponent(body.name)}`,
-  })),
-);
+route(github, 'createRepo', ({ c, body }) => {
+  // Guided creation (INTEGRATIONS §1.6 A); API creation is T-409 behind an opt-in permission upgrade.
+  if (!c.var.mocks && !c.var.user) throw unauthorized();
+  return { mode: 'guided' as const, url: guidedRepoUrl(body) };
+});
 route(github, 'connectRepo', async ({ c, params, body }) => {
   if (c.var.mocks) return fixtureRepo;
   if (!c.var.user) throw unauthorized();
@@ -65,8 +65,8 @@ route(github, 'listActivity', async ({ c, params }) => {
     nextCursor: null,
   };
 });
-route(github, 'linkActivity', ({ c, params, body }) =>
-  mockOr(c, 'T-406', () => {
+route(github, 'linkActivity', async ({ c, params, body }) => {
+  if (c.var.mocks) {
     const e = fx.activity.find((a) => a.id === params.eid);
     if (!e) throw notFound('Activity');
     return {
@@ -75,6 +75,20 @@ route(github, 'linkActivity', ({ c, params, body }) =>
       linkKind: body.taskId ? ('confirmed' as const) : ('none' as const),
       linkConfidence: null,
     };
-  }),
-);
-route(github, 'mapAuthor', ({ c }) => mockOr(c, 'T-407', () => ({ ok: true as const })));
+  }
+  if (!c.var.user) throw unauthorized();
+  // The route guard has checked membership of the event's project; the task must be in that project too.
+  const event = await setManualLink(c.var.db(), params.eid, body.taskId);
+  await broadcast(c.env, event.projectId, WsPayload.parse({ type: 'activity.created', data: { event } }));
+  return event;
+});
+route(github, 'mapAuthor', async ({ c, params, body }) => {
+  if (c.var.mocks) return { ok: true as const };
+  if (!c.var.user) throw unauthorized();
+  // requireMember has checked the caller's workspace membership; the target member is checked in the transaction.
+  const relinked = await mapAuthorAlias(c.var.db(), params.wid, body.raw, body.userId);
+  // One notification per project invalidates its activity feed; clients may see a known event ID again.
+  for (const event of relinked)
+    await broadcast(c.env, event.projectId, WsPayload.parse({ type: 'activity.created', data: { event } }));
+  return { ok: true as const };
+});
