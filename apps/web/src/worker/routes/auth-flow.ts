@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../lib/context';
 import { notImplemented } from '../lib/errors';
+import { installationSetup } from '../services/github/setup';
 
 export const authFlow = new Hono<AppEnv>();
 
@@ -17,8 +18,4 @@ authFlow.get('/auth/github/callback', (c) => {
   throw notImplemented('T-201');
 });
 
-authFlow.get('/auth/github/setup', (c) => {
-  if (c.var.mocks) return c.redirect('/');
-  // TODO(T-402): verify installation_id via services.github.userHasInstallation → upsert installation → redirect to repo picker
-  throw notImplemented('T-402');
-});
+authFlow.get('/auth/github/setup', installationSetup);
