@@ -7,6 +7,7 @@ import { JobMessage, type JobType } from '@hakit/contracts';
 import type { Env } from '../env';
 import { getServices } from '../services';
 import { githubWebhookJob } from './github-webhook';
+import { githubBackfillJob } from './github-backfill';
 import { embedBatchJob } from './embed-batch';
 import { skillsImportJob } from './skills-import';
 import { recsEvaluateJob } from './recs-evaluate';
@@ -20,18 +21,10 @@ export interface JobContext {
 
 type Handler<T extends JobType> = (msg: Extract<JobMessage, { type: T }>, ctx: JobContext) => Promise<void>;
 
-const todo =
-  <T extends JobType>(taskId: string): Handler<T> =>
-  async (msg) => {
-    console.warn(
-      JSON.stringify({ level: 'warn', msg: 'job handler not implemented', type: msg.type, taskId }),
-    );
-  };
-
 /** Owners replace their entry with a real handler in jobs/<name>.ts. */
 export const handlers: { [T in JobType]: Handler<T> } = {
   'github.webhook': githubWebhookJob, // GH
-  'github.backfill': todo('T-405'), // GH
+  'github.backfill': githubBackfillJob, // GH
   'skills.import': skillsImportJob, // IN
   'embed.batch': embedBatchJob, // IN
   'activity.link': activityLinkJob, // GH + IN
