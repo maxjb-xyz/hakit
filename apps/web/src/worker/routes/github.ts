@@ -1,8 +1,8 @@
 /** Repo discovery/connection, activity feed, linking, author mapping. Owner: GH (T-402..T-407). */
 import { Hono } from 'hono';
-import { ActivityEvent, Id } from '@hakit/contracts';
+import { ActivityEvent } from '@hakit/contracts';
 import { schema } from '@hakit/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import * as fx from '@hakit/contracts/fixtures';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
@@ -51,21 +51,8 @@ route(github, 'connectRepo', async ({ c, params, body }) => {
 route(github, 'listActivity', async ({ c, params }) => {
   if (c.var.mocks) return { items: fx.activity, nextCursor: null };
   if (!c.var.user) throw unauthorized();
-  if (!Id.safeParse(params.pid).success) throw notFound('Project');
   const db = c.var.db();
-  const [member] = await db
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .innerJoin(
-      schema.memberships,
-      and(
-        eq(schema.memberships.workspaceId, schema.projects.workspaceId),
-        eq(schema.memberships.userId, c.var.user.id),
-      ),
-    )
-    .where(eq(schema.projects.id, params.pid))
-    .limit(1);
-  if (!member) throw notFound('Project');
+  await requireProjectMember(db, c.var.user.id, params.pid);
   // The current endpoint contract has no pagination query; return the latest 100 events.
   const rows = await db
     .select()
