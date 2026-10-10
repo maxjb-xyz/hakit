@@ -4,9 +4,20 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
 import { ids } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
-import { LabelPill, MemberAvatar, STATUS_LABEL, STATUS_ORDER, StatusIcon, inferLabel } from './tasks/meta';
+import {
+  LabelPill,
+  MemberAvatar,
+  Picker,
+  STATUS_LABEL,
+  STATUS_ORDER,
+  StatusIcon,
+  inferLabel,
+} from './tasks/meta';
 import { NewTaskDialog } from './tasks/NewTaskDialog';
-import { Board } from './tasks/Board';
+import { Board, type GroupBy, type LevelOf } from './tasks/Board';
+import { useQueries } from '@tanstack/react-query';
+import { api } from '../lib/api';
+import { qk } from '../lib/query';
 import { TaskInspector } from './tasks/TaskInspector';
 import { useTaskBoard, type LabelOverrides } from './tasks/useTaskBoard';
 import { useProjectSocket } from '../lib/ws';
@@ -202,6 +213,22 @@ export function Tasks() {
   const [search, setSearch] = useSearchParams();
   const selectedKey = search.get('task');
   const view = search.get('view') === 'list' ? 'list' : 'board';
+  const groupParam = search.get('group');
+  const groupBy: GroupBy = groupParam === 'person' || groupParam === 'milestone' ? groupParam : 'none';
+  // Each member's skills, so cards can flag an assignee below a task's required level.
+  const skillQs = useQueries({
+    queries: b.members.map((m) => ({
+      queryKey: qk('memberSkills', { wid, uid: m.user.id }),
+      queryFn: () => api('memberSkills', { params: { wid, uid: m.user.id } }),
+      staleTime: 60_000,
+    })),
+  });
+  const levelOf: LevelOf = (uid, slug) => {
+    const i = b.members.findIndex((m) => m.user.id === uid);
+    const data = skillQs[i]?.data;
+    if (!data) return null;
+    return data.find((x) => x.skill.slug === slug)?.level ?? 0;
+  };
   const selected = b.tasks.find((t) => t.key === selectedKey);
   const now = useNow();
 
@@ -238,7 +265,13 @@ export function Tasks() {
   }, []);
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col',
+        // The inspector docks over the right edge; give the board that space so no column hides under it.
+        selectedKey && !b.loading && 'md:pr-(--spacing-inspector)',
+      )}
+    >
       <div className="flex h-12 items-center gap-3 border-b border-hover px-6 max-sm:px-4">
         <div role="tablist" aria-label="Task views" className="flex items-center gap-1">
           {(['board', 'list'] as const).map((v) => (
@@ -264,16 +297,35 @@ export function Tasks() {
           ))}
         </div>
         {!b.loading && <span className="text-label text-subtle">{tasks.length} tasks</span>}
+        {view === 'board' && (
+          <label className="ml-auto flex items-center gap-2 text-label text-subtle">
+            Group by
+            <Picker
+              label="Group by"
+              value={groupBy}
+              onChange={(v) =>
+                setSearch((p) => {
+                  if (v === 'none') p.delete('group');
+                  else p.set('group', v);
+                  return p;
+                })
+              }
+            >
+              <option value="none">None</option>
+              <option value="person">Person</option>
+              <option value="milestone">Milestone</option>
+            </Picker>
+          </label>
+        )}
         <Button
           variant="secondary"
           size="sm"
-          className="ml-auto"
+          className={view === 'board' ? undefined : 'ml-auto'}
           onClick={() => setCreating('todo')}
           disabled={b.loading}
           title="New task (C)"
         >
           New task
-          <kbd className="ml-1 text-caption text-subtle">C</kbd>
         </Button>
       </div>
 
@@ -309,6 +361,9 @@ export function Tasks() {
           tasks={tasks}
           dependencies={b.dependencies}
           members={members}
+          milestones={b.milestones}
+          groupBy={groupBy}
+          levelOf={levelOf}
           selectedKey={selectedKey}
           now={now}
           onMove={(t, status) => void b.update(t.id, { status }, `moved this to ${STATUS_LABEL[status]}`)}

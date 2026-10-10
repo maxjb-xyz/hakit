@@ -51,11 +51,19 @@ function ActivityBars({ values }: { values: number[] }) {
   );
 }
 
-function LaneRow({ lane, lookup }: { lane: Lane; lookup: Lookup }) {
+function LaneRow({ lane, lookup, s }: { lane: Lane; lookup: Lookup; s: MissionControlSnapshot }) {
   const member = lookup.member(lane.userId);
   const task = lookup.task(lane.currentTaskId);
   const quietFor = minutesSince(lane.lastActivityAt, lookup.now);
   const quiet = task && (quietFor === null || quietFor >= QUIET_MINUTES);
+  // Quiet only matters when other work waits on it: critical path, or something depends on it.
+  const matters =
+    task &&
+    (s.criticalPath.taskIds.includes(task.id) ||
+      (lookup.dependencies ?? []).some((d) => d.dependsOnTaskId === task.id && d.kind === 'blocks') ||
+      s.blockers.some((b) => b.blockedByTaskIds.includes(task.id)));
+  // Blockers this person owns: their current task, or anything else assigned to them that is stuck.
+  const blocked = s.blockers.filter((b) => b.ownerId === lane.userId || b.taskId === lane.currentTaskId);
   // No logged-hours field yet: compare wall time since start against the estimate.
   const elapsedH = task?.startedAt ? (lookup.now - Date.parse(task.startedAt)) / 3_600_000 : 0;
   const over = task && task.estimateHours > 0 && elapsedH > task.estimateHours;
@@ -75,56 +83,78 @@ function LaneRow({ lane, lookup }: { lane: Lane; lookup: Lookup }) {
         : `${task.status === 'in_review' ? 'In review' : 'In progress'} · ${ago(lane.lastActivityAt, lookup.now)}`;
 
   return (
-    <li>
-      <Link
-        to={`/w/${lookup.wid}/team/${lane.userId}`}
-        className="hover-light grid min-h-14 grid-cols-[24px_minmax(0,104px)_minmax(0,1fr)_68px] items-center gap-3 border-b border-border px-5 py-2 last:border-b-0 md:grid-cols-[24px_104px_minmax(0,1fr)_80px_28px_68px]"
-      >
-        <MemberAvatar member={member} className="size-6" />
-        <span className="min-w-0">
-          <span className="block truncate text-body font-medium text-strong">{memberName(member)}</span>
-          <span className="block truncate text-label text-subtle">
-            {lane.availableNow ? (member?.profile.headline ?? 'Available') : 'Away'}
-          </span>
+    <li className="hover-light grid min-h-14 grid-cols-[24px_minmax(0,104px)_minmax(0,1fr)_68px] items-center gap-3 border-b border-border px-5 py-2 last:border-b-0 md:grid-cols-[24px_104px_minmax(0,1fr)_80px_28px_68px]">
+      <MemberAvatar member={member} className="size-6" />
+      <span className="min-w-0">
+        <Link
+          to={`/w/${lookup.wid}/team/${lane.userId}`}
+          className="block truncate rounded-xs text-body font-medium text-strong hover:underline"
+        >
+          {memberName(member)}
+        </Link>
+        <span className="block truncate text-label text-subtle">
+          {lane.availableNow ? (member?.profile.headline ?? 'Available') : 'Away'}
         </span>
-        <span className="min-w-0">
-          {task ? (
-            <span className="block truncate text-body text-default">
-              <span className="text-faint">{task.key}</span> {task.title}
-            </span>
-          ) : (
-            <span className="block text-body text-subtle">No current task</span>
-          )}
-          <span className={cn('block truncate text-label', quiet || over ? 'text-warning' : 'text-subtle')}>
+      </span>
+      <span className="min-w-0">
+        {task ? (
+          <Link
+            to={`/w/${lookup.wid}/tasks?task=${task.key}`}
+            className="block truncate rounded-xs text-body text-default hover:text-strong"
+          >
+            <span className="text-faint">{task.key}</span> {task.title}
+          </Link>
+        ) : (
+          <span className="block text-body text-subtle">No current task</span>
+        )}
+        {blocked.length > 0 ? (
+          <span className="block truncate text-label text-danger">
+            {blocked.map((b) => (
+              <span key={b.taskId}>
+                {lookup.task(b.taskId)?.key} blocked by{' '}
+                {b.blockedByTaskIds.map((id) => lookup.task(id)?.key ?? '?').join(', ')}
+                {b.since && ` · ${ago(b.since, lookup.now)}`}{' '}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span
+            className={cn(
+              'block truncate text-label',
+              (quiet && matters) || over ? 'text-warning' : 'text-subtle',
+            )}
+            title={quiet && matters ? 'Other work waits on this task' : undefined}
+          >
             {sub}
+            {quiet && matters && ' · others wait on it'}
           </span>
-        </span>
-        <span className="max-md:hidden">
-          <ActivityBars values={lane.sparkline} />
-        </span>
-        <span className="flex items-center gap-1 max-md:hidden">
-          {sessions.map((a) => (
-            <span
-              key={a.id}
-              title={AGENT[a.status]!.label}
-              className={cn('size-[7px] rounded-full', AGENT[a.status]!.className)}
-            >
-              <span className="sr-only">{AGENT[a.status]!.label}</span>
-            </span>
-          ))}
-        </span>
-        <span className="flex flex-col items-end gap-1" title="Assigned (estimated) / available hours">
-          <span className="h-[3px] w-full rounded-full bg-hover">
-            <span
-              className={cn('block h-full rounded-full', load > 0.85 ? 'bg-warning' : 'bg-level-4')}
-              style={{ width: `${Math.min(1, load) * 100}%` }}
-            />
+        )}
+      </span>
+      <span className="max-md:hidden">
+        <ActivityBars values={lane.sparkline} />
+      </span>
+      <span className="flex items-center gap-1 max-md:hidden">
+        {sessions.map((a) => (
+          <span
+            key={a.id}
+            title={AGENT[a.status]!.label}
+            className={cn('size-[7px] rounded-full', AGENT[a.status]!.className)}
+          >
+            <span className="sr-only">{AGENT[a.status]!.label}</span>
           </span>
-          <span className={cn('text-label', load > 1 ? 'text-warning' : 'text-subtle')}>
-            ≈ {Math.round(lane.assignedHours)} / {Math.round(lane.availableHours)}h
-          </span>
+        ))}
+      </span>
+      <span className="flex flex-col items-end gap-1" title="Assigned (estimated) / available hours">
+        <span className="h-[3px] w-full rounded-full bg-hover">
+          <span
+            className={cn('block h-full rounded-full', load > 0.85 ? 'bg-warning' : 'bg-level-4')}
+            style={{ width: `${Math.min(1, load) * 100}%` }}
+          />
         </span>
-      </Link>
+        <span className={cn('text-label', load > 1 ? 'text-warning' : 'text-subtle')}>
+          ≈ {Math.round(lane.assignedHours)} / {Math.round(lane.availableHours)}h
+        </span>
+      </span>
     </li>
   );
 }
@@ -141,7 +171,7 @@ export function TeamLanes({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
       ) : (
         <ul className="overflow-hidden rounded-md border border-border">
           {s.lanes.map((l) => (
-            <LaneRow key={l.userId} lane={l} lookup={lookup} />
+            <LaneRow key={l.userId} lane={l} lookup={lookup} s={s} />
           ))}
         </ul>
       )}
@@ -155,10 +185,12 @@ export function TeamLanes({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
  * hatched forecast.
  */
 export function MilestoneList({
+  lookup,
   s,
   startsAt,
   now,
 }: {
+  lookup: Lookup;
   s: MissionControlSnapshot;
   startsAt: string | null;
   now: number;
@@ -185,6 +217,13 @@ export function MilestoneList({
               const to = targets[i]!;
               const done = m.measuredDone >= 1;
               const late = !done && to < now;
+              // Lateness is a risk only if an unfinished critical-path task sits in this milestone.
+              const risky =
+                late &&
+                s.criticalPath.taskIds.some((id) => {
+                  const t = lookup.task(id);
+                  return t?.milestoneId === m.id && t.status !== 'done';
+                });
               const note = done
                 ? 'Done'
                 : late
@@ -214,12 +253,13 @@ export function MilestoneList({
                     <span
                       className={cn(
                         'absolute top-1/2 -translate-y-1/2 pl-2 text-label whitespace-nowrap',
-                        late ? 'text-warning' : 'text-subtle',
+                        risky ? 'text-warning' : 'text-subtle',
                         pct(to) > 80 && 'pr-2 pl-0 -translate-x-full',
                       )}
                       style={{ left: `${pct(to) > 80 ? pct(from) : pct(to)}%` }}
                     >
                       {note}
+                      {!done && ` · ${m.tasksDone} of ${m.tasksTotal} done`}
                     </span>
                   </span>
                 </li>

@@ -241,6 +241,71 @@ export const priyaSkills: MemberSkill[] = [
   },
 ];
 
+/** Compact seeds → MemberSkill rows, so mock mode shows a different skill set per member. */
+type SkillSeed = [
+  slug: string,
+  name: string,
+  category: MemberSkill['skill']['category'],
+  level: number,
+  inferred: boolean,
+  repo: string,
+  summary: string,
+];
+let skillN = 100;
+const seedSkills = (login: string, seeds: SkillSeed[]): MemberSkill[] =>
+  seeds.map(([slug, name, category, level, inferred, repo, summary]) => {
+    const n = ++skillN;
+    return {
+      skill: { id: ids.skill(n), slug, name, category, aliases: [] },
+      level,
+      confidence: inferred ? 0.62 : 0.88,
+      source: inferred ? 'inferred' : 'confirmed',
+      confirmedAt: inferred ? null : at('2026-10-09T21:25:00-04:00'),
+      evidence: [
+        {
+          id: ids.evidence(n),
+          skillSlug: slug,
+          kind: 'manifest_dependency',
+          sourceRef: `${login}/${repo}`,
+          url: `https://github.com/${login}/${repo}`,
+          weight: inferred ? 0.4 : 0.9,
+          summary,
+          observedAt: at('2026-08-02T12:00:00-04:00'),
+        },
+      ],
+    };
+  });
+
+export const memberSkillsByUser: Record<string, MemberSkill[]> = {
+  [ids.users.priya]: [
+    ...priyaSkills,
+    ...seedSkills('priya-dev', [
+      ['typescript', 'TypeScript', 'frontend', 4, false, 'edge-notes', 'typescript in package.json'],
+      ['postgres', 'PostgreSQL', 'backend', 4, false, 'pg-queue', 'pg + drizzle-orm in package.json'],
+      ['timescaledb', 'TimescaleDB', 'data', 3, false, 'metrics-lab', 'hypertable migrations'],
+      ['pytorch', 'PyTorch', 'ml_ai', 1, true, 'notebooks', 'torch in requirements.txt'],
+    ]),
+  ],
+  [ids.users.marcus]: seedSkills('marcus-b', [
+    ['python', 'Python', 'backend', 5, false, 'triage-api', '92% Python by bytes'],
+    ['pandas', 'pandas', 'data', 4, false, 'ingest', 'pandas in requirements.txt'],
+    ['pytorch', 'PyTorch', 'ml_ai', 4, false, 'sev-model', 'torch + lightning in pyproject.toml'],
+    ['docker', 'Docker', 'infra_devops', 3, false, 'triage-api', 'Dockerfile + compose.yaml'],
+    ['react', 'React', 'frontend', 1, true, 'dash', 'react in package.json, 3 commits'],
+  ]),
+  [ids.users.jae]: seedSkills('jae-k', [
+    ['figma', 'Figma', 'design_ux', 4, false, 'portfolio', 'Figma exports in /design'],
+    ['javascript', 'JavaScript', 'frontend', 2, false, 'portfolio', 'vanilla JS site'],
+    ['pytorch', 'PyTorch', 'ml_ai', 1, true, 'class-hw', 'torch in requirements.txt'],
+  ]),
+  [ids.users.sam]: seedSkills('sam-agents', [
+    ['react', 'React', 'frontend', 5, false, 'agent-hud', 'react + vite in package.json'],
+    ['node', 'Node.js', 'backend', 3, false, 'agent-hud', 'express server'],
+    ['react-native', 'React Native', 'mobile', 2, false, 'pocket-hud', 'react-native in package.json'],
+    ['cloudflare-workers', 'Cloudflare Workers', 'infra_devops', 2, true, 'agent-hud', 'wrangler.toml'],
+  ]),
+};
+
 export const teamCapability: TeamCapability = {
   workspaceId: ids.workspace,
   categories: [

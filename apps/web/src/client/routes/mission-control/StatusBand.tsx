@@ -2,7 +2,8 @@
 import type { HealthStatus, MissionControlSnapshot } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { Countdown } from '../../shell/Countdown';
-import { clock, duration, type Lookup } from './shared';
+import { Link } from 'react-router';
+import { KeyedText, ago, clock, duration, type Lookup } from './shared';
 
 const HEALTH: Record<HealthStatus, { label: string; tone: string }> = {
   on_track: { label: 'On track', tone: 'text-default' },
@@ -35,7 +36,16 @@ function Col(props: { label: string; children: React.ReactNode; first?: boolean 
 
 const hm = (hours: number) => duration(Math.round(Math.abs(hours) * 60));
 
-export function StatusBand({ s, lookup }: { s: MissionControlSnapshot; lookup: Lookup }) {
+export function StatusBand({
+  s,
+  lookup,
+  staleSince,
+}: {
+  s: MissionControlSnapshot;
+  lookup: Lookup;
+  /** Set while the live connection is down: when the shown data was received. */
+  staleSince?: string | null;
+}) {
   const health = HEALTH[s.health.status];
   const { tasksDone, tasksTotal, measuredDone, forecastFinishAt } = s.progress;
   const forecastLate = forecastFinishAt !== null && Date.parse(forecastFinishAt) > Date.parse(s.deadlineAt);
@@ -57,7 +67,7 @@ export function StatusBand({ s, lookup }: { s: MissionControlSnapshot; lookup: L
   return (
     <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_1fr] lg:gap-0">
       <div className="flex flex-col gap-1.5 lg:pr-7">
-        <Countdown deadlineAt={s.deadlineAt} size="hero" />
+        <Countdown deadlineAt={s.deadlineAt} size="hero" neutral={Boolean(staleSince)} />
         <p className="text-body text-subtle">until submission · {clock(s.deadlineAt)}</p>
       </div>
 
@@ -66,7 +76,8 @@ export function StatusBand({ s, lookup }: { s: MissionControlSnapshot; lookup: L
           <HealthGlyph status={s.health.status} />
           {health.label}
         </p>
-        <p className="text-body text-subtle">{s.health.reason}</p>
+        <KeyedText text={s.health.reason} lookup={lookup} className="text-body text-subtle" />
+        {staleSince && <p className="text-label text-warning">Data from {ago(staleSince, lookup.now)}</p>}
       </Col>
 
       <Col label="Progress">
@@ -108,14 +119,21 @@ export function StatusBand({ s, lookup }: { s: MissionControlSnapshot; lookup: L
             return (
               <li key={id} className="flex items-center gap-1">
                 {i > 0 && <span aria-hidden>›</span>}
-                <span
-                  className={cn(
-                    t?.status === 'done' && 'line-through',
-                    t?.status === 'blocked' ? 'text-danger' : stalled.has(id) && 'text-warning',
-                  )}
-                >
-                  {t?.key ?? '?'}
-                </span>
+                {t ? (
+                  <Link
+                    to={`/w/${lookup.wid}/tasks?task=${t.key}`}
+                    title={`${t.title}${t.status === 'blocked' ? ' (blocked)' : stalled.has(id) ? ' (no recent activity)' : ''}`}
+                    className={cn(
+                      'rounded-xs hover:text-strong',
+                      t.status === 'done' && 'line-through',
+                      t.status === 'blocked' ? 'text-danger' : stalled.has(id) && 'text-warning',
+                    )}
+                  >
+                    {t.key}
+                  </Link>
+                ) : (
+                  '?'
+                )}
               </li>
             );
           })}

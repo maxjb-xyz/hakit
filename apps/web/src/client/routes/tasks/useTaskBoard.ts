@@ -162,6 +162,7 @@ export function useTaskBoard(pid: string, wid: string) {
     retry: () => void board.refetch(),
     tasks,
     dependencies: live ? board.data.dependencies : fx.board.dependencies,
+    milestones: live ? board.data.milestones : fx.board.milestones,
     members: members.isSuccess ? members.data : fx.members,
     activity: live ? (activity.data?.items ?? []) : fx.activity,
     labels,

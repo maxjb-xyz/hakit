@@ -5,7 +5,8 @@
  */
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ids } from '@hakit/contracts/fixtures';
 import type { CoverageLabel, Member, MemberSkill, SkillCategory, TeamCapability } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
@@ -119,18 +120,83 @@ function Legend() {
   );
 }
 
+/** Own skills only: confirm an inferred level or set a different one (`upsertSkill` is /me). */
+function SkillControls({ wid, uid, skill }: { wid: string; uid: string; skill: MemberSkill }) {
+  const qc = useQueryClient();
+  const save = useMutation({
+    mutationFn: (level: number) =>
+      api('upsertSkill', { params: { slug: skill.skill.slug }, body: { level, confirmed: true } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk('memberSkills', { wid, uid }) }),
+  });
+  return (
+    <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {skill.source === 'inferred' && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={save.isPending}
+          onClick={() => save.mutate(skill.level)}
+        >
+          Confirm level {skill.level}
+        </Button>
+      )}
+      <span className="text-label text-subtle">{skill.source === 'inferred' ? 'or set' : 'Adjust'}</span>
+      {[1, 2, 3, 4, 5].map((l) => (
+        <button
+          key={l}
+          type="button"
+          aria-pressed={l === skill.level && skill.source !== 'inferred'}
+          disabled={save.isPending}
+          onClick={() => save.mutate(l)}
+          className={cn(
+            'grid size-6 place-items-center rounded-xs border text-label',
+            l === skill.level
+              ? 'border-default text-strong'
+              : 'border-border-strong text-subtle hover:text-strong',
+          )}
+        >
+          {l}
+        </button>
+      ))}
+      {save.isSuccess && (
+        <span className="text-label text-subtle" role="status">
+          Saved
+        </span>
+      )}
+      {save.isError && (
+        <span className="text-label text-danger" role="alert">
+          {save.error.message}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function CapabilityMatrix(props: {
   members: Member[];
   cells: Map<string, Map<SkillCategory, Cell>>;
   cap: TeamCapability;
   skillsLoading: boolean;
+  /** Highest level the current plan's tasks ask for, per category. */
+  needs: Map<SkillCategory, number>;
+  meId: string | null;
+  wid: string;
 }) {
   const [open, setOpen] = useState<{ uid: string; cat: SkillCategory } | null>(null);
   const coverage = new Map(props.cap.categories.map((c) => [c.category, c]));
   const confirmed = props.members.filter((m) => m.topSkills.some((s) => s.confirmed)).length;
   const selected = open && props.cells.get(open.uid)?.get(open.cat);
   const selectedMember = open && props.members.find((m) => m.user.id === open.uid);
-  const cols = { gridTemplateColumns: `minmax(120px,150px) repeat(${CATEGORIES.length}, minmax(36px,1fr))` };
+  // Hide categories nobody has, nothing needs and the engine didn't flag; say so below the grid.
+  const relevant = (c: SkillCategory) =>
+    props.needs.has(c) ||
+    coverage.get(c)?.label === 'gap' ||
+    props.members.some((m) => props.cells.get(m.user.id)?.has(c));
+  const shown = props.skillsLoading ? CATEGORIES : CATEGORIES.filter((c) => relevant(c.key));
+  const hidden = CATEGORIES.filter((c) => !shown.includes(c));
+  const teamMax = (c: SkillCategory) =>
+    Math.max(0, ...props.members.map((m) => props.cells.get(m.user.id)?.get(c)?.level ?? 0));
+  const cols = { gridTemplateColumns: `minmax(120px,150px) repeat(${shown.length}, minmax(36px,1fr))` };
 
   return (
     <section aria-labelledby="cap-h">
@@ -145,7 +211,7 @@ function CapabilityMatrix(props: {
             <span role="columnheader">
               <span className="sr-only">Member</span>
             </span>
-            {CATEGORIES.map((c) => (
+            {shown.map((c) => (
               <span key={c.key} role="columnheader" className="truncate text-center text-label text-subtle">
                 {c.label}
               </span>
@@ -164,7 +230,7 @@ function CapabilityMatrix(props: {
                     {nameOf(m)}
                   </Link>
                 </span>
-                {CATEGORIES.map((c) => {
+                {shown.map((c) => {
                   const cell = row?.get(c.key);
                   const isOpen = open?.uid === m.user.id && open.cat === c.key;
                   if (!row && props.skillsLoading)
@@ -206,35 +272,73 @@ function CapabilityMatrix(props: {
             <span role="rowheader" className="text-body text-subtle">
               Coverage
             </span>
-            {CATEGORIES.map((c) => {
+            {shown.map((c) => {
               const cov = coverage.get(c.key);
               const st = cov ? COVERAGE[cov.label] : null;
+              const need = props.needs.get(c.key);
+              const short = need !== undefined && teamMax(c.key) < need;
               return (
-                <span key={c.key} role="cell" className="flex flex-col items-stretch gap-1.5">
-                  <span className="h-[3px] rounded-full bg-raised">
+                <span
+                  key={c.key}
+                  role="cell"
+                  className="flex flex-col items-stretch gap-1.5"
+                  title={[
+                    cov
+                      ? `Coverage ${cov.coverage.toFixed(1)} of 5, bus factor ${cov.busFactor}`
+                      : 'Not scored yet',
+                    need !== undefined ? `plan needs level ${need}, team best ${teamMax(c.key)}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join('. ')}
+                >
+                  <span
+                    className={cn(
+                      'relative h-[3px] rounded-full',
+                      cov ? 'bg-raised' : 'border-t border-dashed border-level-4',
+                    )}
+                  >
                     {cov && st && (
                       <span
                         className={cn('block h-full rounded-full', st.bar)}
                         style={{ width: `${Math.max(8, (cov.coverage / 5) * 100)}%` }}
                       />
                     )}
+                    {need !== undefined && (
+                      <span
+                        aria-hidden
+                        className={cn('absolute -top-1 h-[11px] w-px', short ? 'bg-warning' : 'bg-strong')}
+                        style={{ left: `${(need / 5) * 100}%` }}
+                      />
+                    )}
                   </span>
-                  <span
-                    className={cn('truncate text-center text-label', st?.tone ?? 'text-faint')}
-                    title={
-                      cov
-                        ? `coverage ${cov.coverage.toFixed(1)} of 5, bus factor ${cov.busFactor}`
-                        : undefined
-                    }
-                  >
-                    {st?.text ?? '–'}
+                  <span className={cn('truncate text-center text-label', st?.tone ?? 'text-faint')}>
+                    {st?.text ?? 'Not scored'}
                   </span>
+                  {need !== undefined && (
+                    <span
+                      className={cn(
+                        'truncate text-center text-caption',
+                        short ? 'text-warning' : 'text-subtle',
+                      )}
+                    >
+                      needs {need}
+                    </span>
+                  )}
                 </span>
               );
             })}
           </div>
         </div>
       </div>
+      {hidden.length > 0 && (
+        <p className="mt-3 text-label text-subtle">
+          Hidden: {hidden.map((c) => c.label).join(', ')}. No one has these skills and the plan doesn't need
+          them.
+        </p>
+      )}
+      <p className="mt-1 flex items-center gap-1.5 text-label text-subtle">
+        <span aria-hidden className="inline-block h-[11px] w-px bg-strong" /> level the current plan needs
+      </p>
 
       {selected && selectedMember && (
         <div
@@ -265,6 +369,9 @@ function CapabilityMatrix(props: {
                     ? `inferred ${Math.round(s.confidence * 100)}%`
                     : s.source.replace('_', ' ')}
                 </span>
+                {selectedMember.user.id === props.meId && (
+                  <SkillControls wid={props.wid} uid={props.meId} skill={s} />
+                )}
                 {s.evidence.length > 0 && (
                   <ul className="mt-1 space-y-0.5 border-l border-border pl-3">
                     {s.evidence.map((e) => (
@@ -316,7 +423,7 @@ function AvailabilityChart(props: {
 }) {
   const { start, end } = props;
   const W = 1000;
-  const H = props.tall ? 360 : 240;
+  const H = props.tall ? 240 : 120;
   const steps = Math.max(1, Math.ceil((end - start) / STEP_MS));
   const n = props.members.length || 1;
 
@@ -348,6 +455,10 @@ function AvailabilityChart(props: {
   });
 
   const nowPct = ((props.now - start) / (end - start)) * 100;
+  const nowIdx = Math.round((props.now - start) / STEP_MS);
+  const awakeNow = awake.filter((row) => row[nowIdx] === 1).length;
+  const pctOf = (iso: string) =>
+    Math.min(100, Math.max(0, ((Date.parse(iso) - start) / (end - start)) * 100));
   const ticks = Array.from({ length: 5 }, (_, i) => start + ((end - start) * i) / 4);
   const fmt = (t: number) =>
     new Date(t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -363,7 +474,7 @@ function AvailabilityChart(props: {
         <svg
           viewBox={`0 0 ${W} ${H}`}
           preserveAspectRatio="none"
-          className={cn('block w-full', props.tall ? 'h-90' : 'h-60')}
+          className={cn('block w-full', props.tall ? 'h-60' : 'h-30')}
           role="img"
           aria-label={`Stacked availability of ${props.members.length} members from ${fmt(start)} to ${fmt(end)}`}
         >
@@ -374,7 +485,19 @@ function AvailabilityChart(props: {
           ))}
         </svg>
         {nowPct > 0 && nowPct < 100 && (
-          <span aria-hidden className="absolute inset-y-0 w-px bg-strong/50" style={{ left: `${nowPct}%` }} />
+          <>
+            <span
+              aria-hidden
+              className="absolute inset-y-0 w-px bg-strong/50"
+              style={{ left: `${nowPct}%` }}
+            />
+            <span
+              className="absolute -top-0.5 rounded-xs bg-canvas px-1.5 text-label whitespace-nowrap text-default"
+              style={{ left: `${nowPct}%`, transform: nowPct > 85 ? 'translateX(-100%)' : undefined }}
+            >
+              awake now: {awakeNow} of {props.members.length}
+            </span>
+          </>
         )}
       </div>
       <div className="mt-2 flex justify-between text-label text-subtle">
@@ -382,14 +505,53 @@ function AvailabilityChart(props: {
           <span key={t}>{fmt(t)}</span>
         ))}
       </div>
-      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-label text-subtle">
+      <ul className="mt-4 space-y-1.5" aria-label="Sleep and away blocks per member">
         {bands.map((b) => (
-          <li key={b.m.user.id} className="flex items-center gap-1.5">
-            <span aria-hidden className="size-2.5 rounded-xs" style={{ background: `var(${b.fill})` }} />
-            {nameOf(b.m)} <span className="text-muted">{Math.round(b.m.profile.availableHours)}h</span>
+          <li
+            key={b.m.user.id}
+            className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)_40px] items-center gap-3"
+          >
+            <span className="flex min-w-0 items-center gap-1.5 text-label text-subtle">
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-xs"
+                style={{ background: `var(${b.fill})` }}
+              />
+              <span className="truncate">{nameOf(b.m)}</span>
+            </span>
+            <span className="relative h-2 rounded-full bg-raised">
+              {b.m.profile.availability
+                .filter((w) => w.kind !== 'available')
+                .map((w) => (
+                  <span
+                    key={w.start}
+                    title={`${w.kind === 'sleep' ? 'Sleep' : 'Away'} ${fmt(Date.parse(w.start))} to ${fmt(Date.parse(w.end))}`}
+                    className={cn(
+                      'absolute inset-y-0 rounded-full',
+                      w.kind === 'sleep' ? 'bg-hatch' : 'border border-dashed border-level-4',
+                    )}
+                    style={{ left: `${pctOf(w.start)}%`, width: `${pctOf(w.end) - pctOf(w.start)}%` }}
+                  >
+                    <span className="sr-only">
+                      {w.kind} {fmt(Date.parse(w.start))} to {fmt(Date.parse(w.end))}
+                    </span>
+                  </span>
+                ))}
+            </span>
+            <span className="text-right text-label text-muted">
+              {Math.round(b.m.profile.availableHours)}h
+            </span>
           </li>
         ))}
       </ul>
+      <p className="mt-2 flex items-center gap-1.5 text-label text-subtle">
+        <span aria-hidden className="bg-hatch inline-block h-2 w-4 rounded-full" /> sleep
+        <span
+          aria-hidden
+          className="ml-3 inline-block h-2 w-4 rounded-full border border-dashed border-level-4"
+        />{' '}
+        away
+      </p>
     </section>
   );
 }
@@ -571,6 +733,11 @@ export function Team() {
     : 'capability';
   const now = useNow();
 
+  const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me') });
+  const board = useQuery({
+    queryKey: qk('getBoard', { pid: ids.project }),
+    queryFn: () => api('getBoard', { params: { pid: ids.project } }),
+  });
   const cap = useQuery({
     queryKey: qk('teamCapability', { wid }),
     queryFn: () => api('teamCapability', { params: { wid } }),
@@ -595,6 +762,18 @@ export function Team() {
     const d = skills[i]?.data;
     if (d) cells.set(m.user.id, buildCells(d));
   });
+
+  // Plan needs per category: required skill slugs mapped through the skills we know about.
+  const slugCategory = new Map<string, SkillCategory>();
+  for (const q of skills) for (const ms of q.data ?? []) slugCategory.set(ms.skill.slug, ms.skill.category);
+  const needs = new Map<SkillCategory, number>();
+  for (const t of board.data?.tasks ?? []) {
+    if (t.status === 'cut') continue;
+    for (const r of t.requiredSkills) {
+      const c = slugCategory.get(r.skillSlug);
+      if (c) needs.set(c, Math.max(needs.get(c) ?? 0, r.level));
+    }
+  }
 
   const error = cap.error ?? members.error;
   if (error)
@@ -686,6 +865,9 @@ export function Team() {
               cells={cells}
               cap={cap.data}
               skillsLoading={skills.some((s) => s.isPending)}
+              needs={needs}
+              meId={me.data?.user.id ?? null}
+              wid={wid}
             />
             <AvailabilityChart
               members={ms}

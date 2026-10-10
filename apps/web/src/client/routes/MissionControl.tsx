@@ -11,7 +11,6 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useProjectSocket } from '../lib/ws';
 import { ActivityFeed } from './mission-control/ActivityFeed';
-import { BlockersStrip } from './mission-control/BlockersStrip';
 import { RecommendationList } from './mission-control/RecommendationList';
 import { StatusBand } from './mission-control/StatusBand';
 import { MilestoneList, TeamLanes } from './mission-control/TeamLanes';
@@ -99,11 +98,17 @@ export function MissionControl() {
   const now = fallback ? Date.parse(fx.missionControl.generatedAt) : realNow;
 
   const lookup = useMemo<Lookup>(() => {
-    const tasks = demo || board.isError ? fx.board.tasks : (board.data?.tasks ?? []);
+    const b = demo || board.isError ? fx.board : board.data;
+    const tasks = b?.tasks ?? [];
     const people = demo || members.isError ? fx.members : (members.data ?? []);
     const t = new Map(tasks.map((x) => [x.id, x]));
     const m = new Map(people.map((x) => [x.user.id, x]));
+    const k = new Map(tasks.map((x) => [x.key, x]));
     return {
+      byKey: (key) => k.get(key),
+      dependencies: b?.dependencies ?? [],
+      alternatives: (taskId) =>
+        b?.assignments.find((a) => a.taskId === taskId && a.status === 'active')?.alternatives ?? [],
       wid,
       now,
       task: (id) => (id ? t.get(id) : undefined),
@@ -134,17 +139,17 @@ export function MissionControl() {
       )}
 
       <div className={cn('space-y-7 transition-opacity', stale && 'opacity-60')}>
-        <StatusBand s={s} lookup={lookup} />
+        <StatusBand s={s} lookup={lookup} staleSince={stale ? s.generatedAt : null} />
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_312px]">
           <div className="min-w-0 space-y-7">
             <TeamLanes s={s} lookup={lookup} />
             <MilestoneList
+              lookup={lookup}
               s={s}
               startsAt={workspace.data?.startsAt ?? (fallback ? fx.workspace.startsAt : null)}
               now={now}
             />
-            {s.blockers.length > 0 && <BlockersStrip s={s} lookup={lookup} />}
           </div>
           <div className="min-w-0 space-y-7">
             <RecommendationList recs={s.openRecommendations} lookup={lookup} demo={fallback} />

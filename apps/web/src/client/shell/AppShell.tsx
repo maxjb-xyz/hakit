@@ -9,6 +9,7 @@ import { cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { Countdown } from './Countdown';
+import { Shortcuts } from './Shortcuts';
 import { IconAgents, IconCode, IconMission, IconPlan, IconSettings, IconTasks, IconTeam } from './icons';
 
 type NavItem = { to: string; label: string; icon: ComponentType };
@@ -109,6 +110,9 @@ export function AppShell() {
                 <Countdown deadlineAt={workspace.data.deadlineAt} />
               </span>
             )}
+            <span className="text-label text-subtle max-sm:hidden">
+              <kbd className="rounded-xs border border-border-strong px-1.5 text-caption">?</kbd> shortcuts
+            </span>
             <kbd className="rounded-xs border border-border-strong px-1.5 text-caption text-subtle">⌘K</kbd>
           </div>
         </header>
@@ -116,6 +120,7 @@ export function AppShell() {
         <main className="min-h-0 overflow-auto">
           <Outlet />
         </main>
+        <Shortcuts />
       </div>
 
       <nav

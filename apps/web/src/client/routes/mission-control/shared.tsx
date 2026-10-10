@@ -1,7 +1,7 @@
 /** Shared bits for S11 Mission Control: panel frame, lookups, time formatting, measured bars, task refs. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { Member, Task } from '@hakit/contracts';
+import type { AssignmentAlternative, Member, Task, TaskDependency } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 
 /** Resolves ids in the snapshot to tasks/members, plus the "now" every relative time is measured from. */
@@ -10,7 +10,39 @@ export type Lookup = {
   now: number;
   task: (id: string | null) => Task | undefined;
   member: (id: string | null) => Member | undefined;
+  /** Task by `HK-n` key, for turning keys in prose into links. */
+  byKey?: (key: string) => Task | undefined;
+  /** Solver alternatives for a task's active assignment (board `assignments`). */
+  alternatives?: (taskId: string) => AssignmentAlternative[];
+  dependencies?: TaskDependency[];
 };
+
+/** Turns `HK-n` mentions in a sentence into links to the task panel. Unknown keys stay plain text. */
+export function KeyedText({ text, lookup, className }: { text: string; lookup: Lookup; className?: string }) {
+  const parts = text.split(/(HK-\d+)/g);
+  return (
+    <span className={className}>
+      {parts.map((p, i) => {
+        const t = i % 2 === 1 ? lookup.byKey?.(p) : undefined;
+        return t ? (
+          <Link
+            key={i}
+            to={`/w/${lookup.wid}/tasks?task=${t.key}`}
+            className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+          >
+            {p}
+          </Link>
+        ) : (
+          p
+        );
+      })}
+    </span>
+  );
+}
+
+/** Shortens from the middle so both the prefix (`hk-6`) and the tail stay readable. */
+export const midTruncate = (s: string, max = 22) =>
+  s.length <= max ? s : `${s.slice(0, Math.ceil((max - 1) / 2))}…${s.slice(-Math.floor((max - 1) / 2))}`;
 
 export const memberName = (m: Member | undefined) => (m ? (m.user.name ?? m.user.githubLogin) : 'Unassigned');
 export const firstName = (m: Member | undefined) => memberName(m).split(' ')[0]!;

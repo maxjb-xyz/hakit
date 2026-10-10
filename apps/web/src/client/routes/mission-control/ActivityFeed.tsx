@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { ActivityEvent } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { MemberAvatar } from '../tasks/meta';
-import { ago, firstName, type Lookup } from './shared';
+import { ago, firstName, midTruncate, type Lookup } from './shared';
 import { SectionHead } from './TeamLanes';
 
 const VERB: Record<ActivityEvent['kind'], string> = {
@@ -140,22 +140,25 @@ function FeedRow({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
   const who = member ? firstName(member) : (e.actorRaw ?? 'Someone');
   const task = lookup.task(e.taskId);
   const inferred = e.linkKind === 'inferred';
-  const ref = e.ref ?? task?.key ?? e.title;
+  const linked = task && e.linkKind !== 'none';
   const mins = Math.max(0, Math.round((lookup.now - Date.parse(e.ts)) / 60_000));
   return (
     <li className="flex h-[34px] items-center gap-3 text-body" title={e.title}>
       <KindIcon kind={e.kind} />
       <span className="min-w-0 flex-1 truncate text-subtle">
-        <span className="text-default">{who}</span> {SHORT_VERB[e.kind] ?? VERB[e.kind]}{' '}
-        {task && e.linkKind !== 'none' ? (
+        {linked && (
           <Link
             to={`/w/${lookup.wid}/tasks?task=${task.key}`}
-            className="rounded-xs text-default hover:text-strong"
+            className="mr-1.5 rounded-xs text-default hover:text-strong"
           >
-            {ref === task.key ? task.key : `${ref} · ${task.key}`}
+            {task.key}
           </Link>
+        )}
+        <span className="text-default">{who}</span> {SHORT_VERB[e.kind] ?? VERB[e.kind]}{' '}
+        {e.ref ? (
+          <span className="text-muted">{midTruncate(e.ref)}</span>
         ) : (
-          <span className="text-default">{ref}</span>
+          !linked && <span className="text-default">{e.title}</span>
         )}
       </span>
       {inferred && (
