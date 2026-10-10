@@ -185,12 +185,16 @@ function FeedRow({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
 export function ActivityFeed({ events, lookup }: { events: ActivityEvent[]; lookup: Lookup }) {
   const sorted = [...events].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   return (
-    <section>
+    <section className="flex min-h-0 flex-1 flex-col">
       <SectionHead title="Activity" meta="GitHub, agents" />
       {sorted.length === 0 ? (
         <p className="text-body text-subtle">No activity yet. Connect a repo on the Code page.</p>
       ) : (
-        <ul aria-live="polite" aria-relevant="additions" className="max-h-96 overflow-auto">
+        <ul
+          aria-live="polite"
+          aria-relevant="additions"
+          className="min-h-0 flex-1 overflow-auto max-lg:max-h-96"
+        >
           {sorted.map((e) => (
             <FeedRow key={e.id} e={e} lookup={lookup} />
           ))}

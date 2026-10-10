@@ -83,7 +83,7 @@ function LaneRow({ lane, lookup, s }: { lane: Lane; lookup: Lookup; s: MissionCo
         : `${task.status === 'in_review' ? 'In review' : 'In progress'} · ${ago(lane.lastActivityAt, lookup.now)}`;
 
   return (
-    <li className="hover-light grid min-h-14 grid-cols-[24px_minmax(0,104px)_minmax(0,1fr)_68px] items-center gap-3 border-b border-border px-5 py-2 last:border-b-0 md:grid-cols-[24px_104px_minmax(0,1fr)_80px_28px_68px]">
+    <li className="hover-light grid min-h-14 grid-cols-[24px_minmax(0,104px)_minmax(0,1fr)_68px] items-center gap-3 border-b border-border px-5 py-3 last:border-b-0 md:grid-cols-[24px_104px_minmax(0,1fr)_80px_28px_68px]">
       <MemberAvatar member={member} className="size-6" />
       <span className="min-w-0">
         <Link
@@ -231,9 +231,9 @@ export function MilestoneList({
                   : 'On plan';
               return (
                 <li key={m.id} className="contents">
-                  <span className="flex h-9 items-center truncate text-body text-default">{m.title}</span>
+                  <span className="flex h-11 items-center truncate text-body text-default">{m.title}</span>
                   <span
-                    className="relative h-9"
+                    className="relative h-11"
                     aria-label={`${m.title}: ${m.tasksDone} of ${m.tasksTotal} tasks done, ${note}`}
                   >
                     {now > start && now < end && (

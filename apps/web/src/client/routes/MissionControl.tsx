@@ -14,6 +14,8 @@ import { useProjectSocket } from '../lib/ws';
 import { ActivityFeed } from './mission-control/ActivityFeed';
 import { RecommendationList } from './mission-control/RecommendationList';
 import { StatusBand } from './mission-control/StatusBand';
+import { UpNext } from './mission-control/UpNext';
+import { AgentList } from './mission-control/AgentList';
 import { MilestoneList, TeamLanes } from './mission-control/TeamLanes';
 import { useNow, type Lookup } from './mission-control/shared';
 import { AiGlyph } from './mission-control/RecommendationList';
@@ -128,10 +130,11 @@ export function MissionControl() {
   }, [demo, board.isError, board.data, members.isError, members.data, wid, now]);
 
   if (!s) return <Skeleton />;
+  const tasks = demo || board.isError ? fx.board.tasks : (board.data?.tasks ?? []);
   const stale = !fallback && state !== 'open';
 
   return (
-    <div className="space-y-7 p-7 max-sm:p-4">
+    <div className="flex min-h-full flex-col gap-7 p-7 max-sm:p-4">
       <TopbarStatus>
         <SyncChip demo={fallback} state={state} at={s.generatedAt} now={tick} />
       </TopbarStatus>
@@ -149,11 +152,11 @@ export function MissionControl() {
         </div>
       )}
 
-      <div className={cn('space-y-7 transition-opacity', stale && 'opacity-60')}>
+      <div className={cn('flex flex-1 flex-col gap-7 transition-opacity', stale && 'opacity-60')}>
         <StatusBand s={s} lookup={lookup} staleSince={stale ? s.generatedAt : null} />
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_312px]">
-          <div className="min-w-0 space-y-7">
+        <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_312px] xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="flex min-w-0 flex-col gap-7">
             <TeamLanes s={s} lookup={lookup} />
             <MilestoneList
               lookup={lookup}
@@ -161,9 +164,11 @@ export function MissionControl() {
               startsAt={workspace.data?.startsAt ?? (fallback ? fx.workspace.startsAt : null)}
               now={now}
             />
+            <UpNext s={s} tasks={tasks} lookup={lookup} />
           </div>
-          <div className="min-w-0 space-y-7">
+          <div className="flex min-w-0 flex-col gap-7">
             <RecommendationList recs={s.openRecommendations} lookup={lookup} demo={fallback} />
+            <AgentList s={s} lookup={lookup} />
             <ActivityFeed events={s.recentActivity} lookup={lookup} />
           </div>
         </div>
