@@ -48,17 +48,7 @@ export function Onboarding() {
 export { MissionControl } from './MissionControl';
 export { Plan } from './Plan';
 export { Tasks } from './Tasks';
-export function Team() {
-  return (
-    <Placeholder
-      screen="S5"
-      title="Team capability"
-      tasks="T-209"
-      endpoint="teamCapability"
-      args={{ params: { wid: useWid() } }}
-    />
-  );
-}
+export { Team } from './Team';
 export function MemberProfile() {
   const { uid = '' } = useParams();
   return (
