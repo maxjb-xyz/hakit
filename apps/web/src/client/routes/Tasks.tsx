@@ -1,11 +1,23 @@
-/** S10 Tasks — list view grouped by status + inspector (DESIGN §8, T-312). Data: tasks/useTaskBoard. */
+/** S10 Tasks: board (default) or list grouped by status + inspector (DESIGN §8, T-312). Data: tasks/useTaskBoard. */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
 import { ids } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
-import { LabelPill, MemberAvatar, STATUS_LABEL, STATUS_ORDER, StatusIcon, inferLabel } from './tasks/meta';
+import {
+  LabelPill,
+  MemberAvatar,
+  Picker,
+  STATUS_LABEL,
+  STATUS_ORDER,
+  StatusIcon,
+  inferLabel,
+} from './tasks/meta';
 import { NewTaskDialog } from './tasks/NewTaskDialog';
+import { Board, type GroupBy, type LevelOf } from './tasks/Board';
+import { useQueries } from '@tanstack/react-query';
+import { api } from '../lib/api';
+import { qk } from '../lib/query';
 import { TaskInspector } from './tasks/TaskInspector';
 import { useTaskBoard, type LabelOverrides } from './tasks/useTaskBoard';
 import { useProjectSocket } from '../lib/ws';
@@ -26,11 +38,11 @@ function TaskRow(props: {
         to={{ search: `?task=${task.key}` }}
         aria-current={props.selected || undefined}
         className={cn(
-          'flex items-center gap-3 border-b border-border px-6 py-2 text-body transition-colors duration-(--duration-instant) hover:bg-hover focus-visible:bg-hover max-sm:px-4',
-          props.selected && 'bg-accent-a12 hover:bg-accent-a12 focus-visible:bg-accent-a12',
+          'hover-light flex h-9 items-center gap-3 border-b border-hover px-6 text-body max-sm:px-4',
+          props.selected && 'bg-raised',
         )}
       >
-        <span className="w-12 shrink-0 font-mono text-label text-subtle">{task.key}</span>
+        <span className="w-12 shrink-0 text-label text-faint">{task.key}</span>
         <StatusIcon status={task.status} />
         <span className="sr-only">{STATUS_LABEL[task.status]}:</span>
         <span className={cn('min-w-0 flex-1 truncate text-default', task.status === 'cut' && 'line-through')}>
@@ -64,7 +76,7 @@ function StatusGroup(props: {
   const id = `group-${props.status}`;
   return (
     <section aria-labelledby={`${id}-h`}>
-      <h2 id={`${id}-h`} className="sticky top-0 z-10 border-b border-border bg-surface">
+      <h2 id={`${id}-h`} className="sticky top-0 z-10 border-b border-hover bg-canvas">
         <button
           type="button"
           aria-expanded={open}
@@ -195,11 +207,28 @@ function Banner(props: { tone: 'warning' | 'danger'; children: ReactNode; action
 
 export function Tasks() {
   const { wid = '' } = useParams();
-  const b = useTaskBoard(pid, wid);
-  useProjectSocket(b.live ? pid : undefined);
-  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useSearchParams();
   const selectedKey = search.get('task');
+  const b = useTaskBoard(pid, wid, selectedKey);
+  useProjectSocket(b.live ? pid : undefined);
+  const [creating, setCreating] = useState<TaskStatus | null>(null);
+  const view = search.get('view') === 'list' ? 'list' : 'board';
+  const groupParam = search.get('group');
+  const groupBy: GroupBy = groupParam === 'person' || groupParam === 'milestone' ? groupParam : 'none';
+  // Each member's skills, so cards can flag an assignee below a task's required level.
+  const skillQs = useQueries({
+    queries: b.members.map((m) => ({
+      queryKey: qk('memberSkills', { wid, uid: m.user.id }),
+      queryFn: () => api('memberSkills', { params: { wid, uid: m.user.id } }),
+      staleTime: 60_000,
+    })),
+  });
+  const levelOf: LevelOf = (uid, slug) => {
+    const i = b.members.findIndex((m) => m.user.id === uid);
+    const data = skillQs[i]?.data;
+    if (!data) return null;
+    return data.find((x) => x.skill.slug === slug)?.level ?? 0;
+  };
   const selected = b.tasks.find((t) => t.key === selectedKey);
   const now = useNow();
 
@@ -229,41 +258,77 @@ export function Tasks() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       e.preventDefault();
-      setCreating(true);
+      setCreating('todo');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3 max-sm:px-4">
-        <h1 className="text-body font-medium text-strong">All tasks</h1>
-        {!b.loading && <span className="text-label text-subtle">{tasks.length}</span>}
+    <div
+      className={cn(
+        'flex h-full min-h-0 flex-col',
+        // The inspector docks over the right edge; give the board that space so no column hides under it.
+        selectedKey && !b.loading && 'md:pr-(--spacing-inspector)',
+      )}
+    >
+      <div className="flex h-12 items-center gap-3 border-b border-hover px-7 max-sm:px-4">
+        <div role="tablist" aria-label="Task views" className="flex items-center gap-1">
+          {(['board', 'list'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() =>
+                setSearch((p) => {
+                  if (v === 'board') p.delete('view');
+                  else p.set('view', v);
+                  return p;
+                })
+              }
+              className={cn(
+                'h-control-sm rounded-sm px-2.5 text-body capitalize',
+                view === v ? 'bg-hover text-strong' : 'text-subtle hover:bg-raised hover:text-strong',
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        {!b.loading && <span className="text-label text-subtle">{tasks.length} tasks</span>}
+        {view === 'board' && (
+          <label className="ml-auto flex items-center gap-2 text-label text-subtle">
+            Group by
+            <Picker
+              label="Group by"
+              value={groupBy}
+              onChange={(v) =>
+                setSearch((p) => {
+                  if (v === 'none') p.delete('group');
+                  else p.set('group', v);
+                  return p;
+                })
+              }
+            >
+              <option value="none">None</option>
+              <option value="person">Person</option>
+              <option value="milestone">Milestone</option>
+            </Picker>
+          </label>
+        )}
         <Button
-          variant="primary"
+          variant="secondary"
           size="sm"
-          className="ml-auto"
-          onClick={() => setCreating(true)}
+          className={view === 'board' ? undefined : 'ml-auto'}
+          onClick={() => setCreating('todo')}
           disabled={b.loading}
           title="New task (C)"
         >
-          + New task
+          New task
         </Button>
       </div>
 
-      {b.loadError && (
-        <Banner
-          tone="warning"
-          action={
-            <Button size="sm" onClick={b.retry}>
-              Retry
-            </Button>
-          }
-        >
-          Couldn't load tasks ({b.loadError}). Showing demo data; changes won't be saved.
-        </Banner>
-      )}
       {b.saveError && (
         <Banner
           tone="danger"
@@ -279,11 +344,35 @@ export function Tasks() {
 
       {b.loading ? (
         <ListSkeleton />
+      ) : b.loadError ? (
+        <Banner
+          tone="danger"
+          action={
+            <Button size="sm" onClick={b.retry}>
+              Retry
+            </Button>
+          }
+        >
+          Couldn't load tasks ({b.loadError}).
+        </Banner>
+      ) : view === 'board' ? (
+        <Board
+          tasks={tasks}
+          dependencies={b.dependencies}
+          members={members}
+          milestones={b.milestones}
+          groupBy={groupBy}
+          levelOf={levelOf}
+          selectedKey={selectedKey}
+          now={now}
+          onMove={(t, status) => void b.update(t.id, { status }, `moved this to ${STATUS_LABEL[status]}`)}
+          onCreate={(status) => setCreating(status)}
+        />
       ) : (
         <TaskList tasks={tasks} members={members} labels={b.labels} selectedKey={selectedKey} />
       )}
 
-      {selectedKey && !b.loading && (
+      {selectedKey && !b.loading && !b.loadError && (
         <TaskInspector
           key={selected?.id ?? selectedKey}
           taskKey={selectedKey}
@@ -300,8 +389,9 @@ export function Tasks() {
         />
       )}
       <NewTaskDialog
-        open={creating}
-        onClose={() => setCreating(false)}
+        open={creating !== null}
+        initialStatus={creating ?? undefined}
+        onClose={() => setCreating(null)}
         onCreate={(input) => void b.create(input)}
         members={members}
       />

@@ -8,7 +8,9 @@ import { mockOr } from '../lib/mock';
 export const capability = new Hono<AppEnv>();
 
 route(capability, 'importSkills', ({ c }) => mockOr(c, 'T-204', () => ({ jobId: 'mock-import-job' })));
-route(capability, 'memberSkills', ({ c }) => mockOr(c, 'T-206', () => fx.priyaSkills));
+route(capability, 'memberSkills', ({ c, params }) =>
+  mockOr(c, 'T-206', () => fx.memberSkillsByUser[params.uid] ?? []),
+);
 route(capability, 'upsertSkill', ({ c, body }) =>
   mockOr(c, 'T-206', () => ({ ...fx.priyaSkills[0]!, level: body.level })),
 );

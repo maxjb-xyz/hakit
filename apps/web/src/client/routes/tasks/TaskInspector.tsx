@@ -20,7 +20,7 @@ import {
 } from './meta';
 
 /** A change made in this session, shown in the activity list until the API records it. */
-export type HistoryEntry = { id: string; ts: string; text: string };
+export type HistoryEntry = { id: string; ts: string; actor: string; text: string };
 
 /** Branch name that confirms the task↔code link (DESIGN §8 S10, AI.md §C.5). */
 export const branchName = (t: Pick<Task, 'key' | 'title'>) =>
@@ -46,7 +46,7 @@ function Section(props: { title: string; meta?: ReactNode; children: ReactNode }
 function Property(props: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-h-control-md items-center gap-3 max-md:flex-1 max-md:basis-40">
-      <dt className="w-20 shrink-0 text-label text-subtle">{props.label}</dt>
+      <dt className="w-28 shrink-0 text-label text-subtle">{props.label}</dt>
       <dd className="min-w-0 text-label text-default">{props.children}</dd>
     </div>
   );
@@ -164,7 +164,7 @@ function Activity(props: { task: Task; events: ActivityEvent[]; history: History
             •
           </span>
           <p className="text-label text-muted">
-            <span className="text-default">You</span> {h.text}
+            <span className="text-default">{h.actor}</span> {h.text}
             <span className="text-subtle"> · {ago(h.ts, props.lookup.now)}</span>
           </p>
         </li>
@@ -228,7 +228,7 @@ export function TaskInspector(props: {
   }, [onClose]);
 
   const frame =
-    'fixed top-12 right-0 bottom-0 z-20 flex w-full max-w-3xl flex-col border-l border-border bg-raised shadow-e2 max-md:bottom-14';
+    'fixed top-14 right-2.5 bottom-2.5 z-20 flex w-full max-w-(--spacing-inspector) flex-col rounded-r-md border-l border-hover bg-canvas max-md:inset-x-0 max-md:top-0 max-md:bottom-14 max-md:max-w-none max-md:rounded-none';
 
   if (!task) {
     return (
@@ -290,7 +290,7 @@ export function TaskInspector(props: {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 overflow-auto md:grid-cols-[minmax(0,1fr)_15rem]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         <div className="px-6 py-5 max-sm:px-4">
           <label htmlFor={`${headingId}-title`} className="sr-only">
             Title
@@ -329,7 +329,7 @@ export function TaskInspector(props: {
           <Activity task={task} events={props.events} history={props.history} lookup={props.lookup} />
         </div>
 
-        <dl className="flex flex-col gap-1 border-l border-border bg-surface p-4 max-md:order-first max-md:flex-row max-md:flex-wrap max-md:border-b max-md:border-l-0">
+        <dl className="order-first flex flex-col gap-1 border-b border-hover px-6 py-4 max-sm:px-4">
           <Property label="Status">
             <Picker
               label="Status"

@@ -22,6 +22,7 @@
     "pg": "^8.23.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "~0.3.16",
     "@hakit/contracts": "workspace:*",
     "@types/pg": "^8.23.1",
     "dotenv": "^17.2.0",

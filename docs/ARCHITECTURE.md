@@ -24,7 +24,7 @@ Status: **Planning draft v1.** Research date 2026-10-10. Items marked **(verify)
 | Plan | **Workers Paid ($5/mo)** | Removes the free plan's 10 ms CPU/request, 50-subrequest and queue-ops ceilings during ingest and demo. Decision D-2. |
 | Package mgr / monorepo | **pnpm workspaces** (no Turborepo for MVP) | Minimal tooling. |
 | Testing | Vitest + `@cloudflare/vitest-pool-workers` (worker), Vitest (engine), Playwright (E2E) | |
-| CI/CD | GitHub Actions: typecheck, lint, test; `wrangler deploy` on `main` → production, PR → preview (`wrangler versions upload`) | Reproducible deploys. |
+| CI/CD | GitHub Actions: typecheck, lint, test; `wrangler deploy` on `main` → production (no preview environment) | Reproducible deploys. |
 
 **What we deliberately do not use:** separate API server, microservices, Workflows, D1 (we have Postgres), KV (sessions live in Postgres; Hyperdrive caches reads), Vectorize (pgvector suffices at our scale), Pages (Workers static assets supersede it).
 
@@ -101,14 +101,13 @@ hakit/
               "consumers": [{ "queue": "hakit-jobs", "max_batch_size": 10, "max_retries": 5, "dead_letter_queue": "hakit-dlq" }] },
   "triggers": { "crons": ["*/2 * * * *"] },
   "ai": { "binding": "AI" },
-  "vars": { "APP_URL": "https://hakit.<domain>", "GEMINI_MODEL_PLAN": "gemini-flash-latest", "GEMINI_MODEL_FAST": "gemini-flash-lite-latest", "EMBED_MODEL": "Qwen/Qwen3-Embedding-0.6B", "EMBED_DIM": "1024" },
-  "env": { "preview": { /* separate Hyperdrive → Tiger fork */ } }
+  "vars": { "APP_URL": "https://hakit.<domain>", "GEMINI_MODEL_PLAN": "gemini-flash-latest", "GEMINI_MODEL_FAST": "gemini-flash-lite-latest", "EMBED_MODEL": "Qwen/Qwen3-Embedding-0.6B", "EMBED_DIM": "1024" }
 }
 ```
 
 **Secrets** (`wrangler secret put`): `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PKCS#8 — convert with `openssl pkcs8 -topk8 -nocrypt`), `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, `SESSION_SECRET`, `TOKEN_ENC_KEY` (AES-GCM 256, base64), `GEMINI_API_KEY`, `HF_TOKEN`, optional `AMD_LLM_BASE_URL`/`AMD_LLM_KEY`, optional `ELEVENLABS_API_KEY`.
 
-**Environments:** `local` (wrangler dev + Tiger fork or local Postgres with timescale/pgvector via Docker), `preview` (Tiger *fork* of prod — a Tiger feature worth showing), `production`. A **second GitHub App** ("Hakit Dev") with a smee/cloudflared tunnel URL for local webhook development.
+**Environments:** `local` (wrangler dev + Tiger fork or local Postgres with timescale/pgvector via Docker), `preview` (Tiger *fork* of prod — a Tiger feature worth showing), `production`. A **second GitHub App** ("Hakit Dev") for local sign-in only (webhooks off; local webhook work replays signed fixtures, no tunnels).
 
 ## 5. Data model (Postgres / Drizzle)
 
@@ -400,7 +399,7 @@ DLQ `hakit-dlq` inspected manually. Each handler is a pure function of (message,
 
 1. `pnpm i && pnpm -r typecheck && pnpm -r test`
 2. `pnpm --filter db migrate` (drizzle-kit against Tiger via direct URL, not Hyperdrive)
-3. `pnpm --filter web build && wrangler deploy` (CI on `main`), preview via `wrangler versions upload` per PR.
+3. `pnpm --filter web build && wrangler deploy` (CI on `main`).
 4. Seed: `pnpm --filter db seed` (skill taxonomy + embeddings, Knight Hacks IX template).
 5. Smoke test script: health endpoint, DB ping, GitHub App JWT ping, Gemini ping, HF ping, DO WebSocket echo.
 
