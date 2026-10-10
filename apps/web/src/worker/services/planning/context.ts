@@ -6,23 +6,12 @@ import { loadProjectState } from '../../lib/project-state';
 import { HttpError, notFound } from '../../lib/errors';
 import type { PipelineInput } from './pipeline';
 
-export async function planningInput(
-  db: Pick<Db, 'select'>,
-  projectId: string,
-  ideaId: string,
-  now: Date,
-  guidance?: string,
-): Promise<PipelineInput> {
+/** Team, deadline and constraint facts shared by plan generation and plan validation. */
+async function planningBasis(db: Pick<Db, 'select'>, projectId: string, now: Date) {
   const { state, workspace, taxonomy } = await loadProjectState(db, projectId, now);
   if (!state.members.length)
     throw new HttpError(422, 'empty_team', 'Planning needs at least one team member');
   if (!taxonomy.length) throw new HttpError(422, 'empty_taxonomy', 'Planning needs a skill taxonomy');
-  const [ideaRow] = await db
-    .select()
-    .from(schema.ideas)
-    .where(and(eq(schema.ideas.id, ideaId), eq(schema.ideas.projectId, projectId)));
-  if (!ideaRow) throw notFound('Idea');
-  const idea = IdeaCandidate.parse(ideaRow.payload);
   const constraints = await db
     .select()
     .from(schema.projectConstraints)
@@ -30,12 +19,6 @@ export async function planningInput(
   const challengeIds = constraints.filter((c) => c.kind === 'challenge' && c.refId).map((c) => c.refId!);
   const challenges = challengeIds.length
     ? await db.select().from(schema.challenges).where(inArray(schema.challenges.id, challengeIds))
-    : [];
-  const [template] = workspace.hackathonTemplateId
-    ? await db
-        .select()
-        .from(schema.hackathonTemplates)
-        .where(eq(schema.hackathonTemplates.id, workspace.hackathonTemplateId))
     : [];
   const levels = new Map(
     taxonomy.map((s) => [s.slug, Math.max(0, ...state.members.map((m) => effectiveSkill(m, s.slug, state)))]),
@@ -45,6 +28,66 @@ export async function planningInput(
     (sum, m) => sum + m.availableHours * DEFAULT_CONFIG.focusFactor,
     0,
   );
+  const validation: PipelineInput['validation'] = {
+    allowedSkillSlugs: new Set(taxonomy.map((s) => s.slug)),
+    teamSize: state.members.length,
+    totalEffectiveHours,
+    hoursUntilDeadline: hoursRemaining,
+    selectedChallengeKeys: challenges.map((c) => c.key),
+    teamSkillLevels: levels,
+  };
+  return {
+    state,
+    workspace,
+    taxonomy,
+    constraints,
+    challenges,
+    levels,
+    hoursRemaining,
+    totalEffectiveHours,
+    validation,
+  };
+}
+
+/** Deterministic validator input for re-checking an edited plan (T-307) against the current team. */
+export async function planValidationInput(
+  db: Pick<Db, 'select'>,
+  projectId: string,
+  now: Date,
+): Promise<PipelineInput['validation']> {
+  return (await planningBasis(db, projectId, now)).validation;
+}
+
+export async function planningInput(
+  db: Pick<Db, 'select'>,
+  projectId: string,
+  ideaId: string,
+  now: Date,
+  guidance?: string,
+): Promise<PipelineInput> {
+  const {
+    state,
+    workspace,
+    taxonomy,
+    constraints,
+    challenges,
+    levels,
+    hoursRemaining,
+    totalEffectiveHours,
+    validation,
+  } = await planningBasis(db, projectId, now);
+  const [ideaRow] = await db
+    .select()
+    .from(schema.ideas)
+    .where(and(eq(schema.ideas.id, ideaId), eq(schema.ideas.projectId, projectId)));
+  if (!ideaRow) throw notFound('Idea');
+  const idea = IdeaCandidate.parse(ideaRow.payload);
+  const [template] = workspace.hackathonTemplateId
+    ? await db
+        .select()
+        .from(schema.hackathonTemplates)
+        .where(eq(schema.hackathonTemplates.id, workspace.hackathonTemplateId))
+    : [];
   const context = PlanningContext.parse({
     team: {
       members: [...state.members]
@@ -94,13 +137,6 @@ export async function planningInput(
       0,
       (now.getTime() - (workspace.startsAt ?? workspace.createdAt).getTime()) / 3_600_000,
     ),
-    validation: {
-      allowedSkillSlugs: new Set(context.taxonomy.allowedSkillSlugs),
-      teamSize: state.members.length,
-      totalEffectiveHours,
-      hoursUntilDeadline: hoursRemaining,
-      selectedChallengeKeys: challenges.map((c) => c.key),
-      teamSkillLevels: levels,
-    },
+    validation,
   };
 }

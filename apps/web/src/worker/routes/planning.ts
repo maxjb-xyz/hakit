@@ -12,9 +12,9 @@ import {
   type Project,
 } from '@hakit/contracts';
 import { schema } from '@hakit/db';
+import { validatePlan } from '@hakit/engine';
 import type { AppEnv } from '../lib/context';
 import { route, sseRoute } from '../lib/route';
-import { mockOr } from '../lib/mock';
 import { conflict, HttpError, notFound } from '../lib/errors';
 import { loadBoard } from '../lib/board';
 import { broadcast } from '../lib/broadcast';
@@ -22,7 +22,8 @@ import { planRows } from '../lib/materialize';
 import { redact } from '../lib/redact';
 import { assertProjectMember } from '../middleware/auth';
 import * as ideas from '../services/ideas';
-import { planningInput } from '../services/planning/context';
+import { planningInput, planValidationInput } from '../services/planning/context';
+import { applyPlanPatch } from '../services/planning/patch';
 import { generatePlanPipeline } from '../services/planning/pipeline';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
@@ -302,7 +303,69 @@ route(planning, 'getPlan', async ({ c, params }) => {
   if (!plan) throw notFound('Plan');
   return Plan.parse({ ...plan, createdAt: plan.createdAt.toISOString() });
 });
-route(planning, 'patchPlan', ({ c }) => mockOr(c, 'T-307', () => mockPlan()));
+/**
+ * T-307: apply inline edits to a draft plan. Every patch saves a new draft version (the source draft is kept, so the
+ * review screen's version switcher can go back), re-validated by the engine against the current team so the
+ * feasibility banner's numbers are deterministic. Accepted or superseded plans are immutable (409).
+ */
+route(planning, 'patchPlan', async ({ c, params, body }) => {
+  if (c.var.mocks) return { ...mockPlan(), status: 'draft' as const };
+  await assertProjectMember(c, params.pid);
+  const db = c.var.db();
+  const saved = await db.transaction(async (tx) => {
+    // Lock the project so patches serialize with each other, with generation and with accept.
+    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
+    const [source] = await tx
+      .select()
+      .from(schema.plans)
+      .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+      .limit(1);
+    if (!source) throw notFound('Plan');
+    if (source.status !== 'draft') throw conflict(`Plan is ${source.status}; only draft plans can be edited`);
+    const [accepted] = await tx
+      .select({ id: schema.plans.id })
+      .from(schema.plans)
+      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
+      .limit(1);
+    if (accepted) throw conflict('This project already has an accepted plan');
+
+    const edited = applyPlanPatch(PlanDocument.parse(source.payload), body);
+    const checked = validatePlan({
+      ...(await planValidationInput(tx, params.pid, new Date())),
+      outline: edited.outline,
+      tasks: edited.tasks,
+    });
+    // Same rule as generation: persist the validator's retained scope; cut keys stay in feasibility.
+    const payload = PlanDocument.safeParse({ ...edited, tasks: checked.tasks });
+    if (!payload.success)
+      throw new HttpError(422, 'invalid_plan', 'Edited plan is not valid', checked.feasibility.issues);
+    const [latest] = await tx
+      .select({ version: schema.plans.version })
+      .from(schema.plans)
+      .where(eq(schema.plans.projectId, params.pid))
+      .orderBy(desc(schema.plans.version))
+      .limit(1);
+    const [plan] = await tx
+      .insert(schema.plans)
+      .values({
+        projectId: params.pid,
+        version: latest!.version + 1,
+        payload: payload.data,
+        feasibility: checked.feasibility,
+        model: source.model,
+        createdBy: c.var.user!.id,
+      })
+      .returning();
+    return plan!;
+  });
+  c.executionCtx.waitUntil(
+    broadcast(c.env, params.pid, {
+      type: 'plan.progress',
+      data: { planId: saved.id, stage: 'edited' },
+    }).catch(() => {}),
+  );
+  return Plan.parse({ ...saved, createdAt: saved.createdAt.toISOString() });
+});
 /**
  * T-308: accept a draft plan and materialize it in one transaction. The project row is locked so concurrent accepts
  * serialize; a project with an accepted plan must re-plan explicitly (409), so tasks are never duplicated.

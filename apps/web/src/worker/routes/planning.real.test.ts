@@ -326,3 +326,93 @@ describe('assignment API (T-311)', () => {
     ).toBe(404);
   });
 });
+
+describe('plan editing (T-307)', () => {
+  const patch = (planId: string, ops: unknown[], token = owner.token) =>
+    h.call(`/projects/${pid}/plans/${planId}`, { method: 'PATCH', token, json: { ops } });
+
+  beforeEach(async () => {
+    await h.db.insert(schema.skills).values([
+      { slug: 'cloudflare-workers', name: 'Workers', category: 'backend' },
+      { slug: 'auth-oauth', name: 'OAuth', category: 'backend' },
+    ]);
+    await h.db.delete(schema.memberProfiles).where(eq(schema.memberProfiles.userId, owner.id));
+    await h.db
+      .insert(schema.memberProfiles)
+      .values({ workspaceId: wid, userId: owner.id, availableHours: 30 });
+  });
+
+  it('saves a new re-validated draft version, keeps the source draft, and broadcasts', async () => {
+    const v1 = await draftPlan();
+    const res = await patch(v1, [
+      { op: 'set_summary', value: 'Edited' },
+      { op: 'remove_task', key: 'T2' },
+      { op: 'upsert_task', task: { ...t1, key: 'T4', title: 'Docs', dependsOn: ['T3'], priority: 'should' } },
+    ]);
+    expect(res.status).toBe(200);
+    const plan = endpoints.patchPlan.response.parse(await res.json());
+    expect(plan).toMatchObject({ version: 2, status: 'draft', model: 'test' });
+    expect(plan.id).not.toBe(v1);
+    expect(plan.payload.outline.summary).toBe('Edited');
+    expect(plan.payload.tasks.map((t) => [t.key, t.dependsOn])).toEqual([
+      ['T1', []],
+      ['T3', []],
+      ['T4', ['T3']],
+    ]);
+    // Deterministic numbers from the engine, not the stale `{}` feasibility of the source.
+    expect(plan.feasibility.requiredHours).toBeGreaterThan(0);
+    expect(plan.feasibility.issues.some((i) => i.code === 'UNKNOWN_DEPENDENCY')).toBe(false);
+    const [source] = await h.db.select().from(schema.plans).where(eq(schema.plans.id, v1));
+    expect(source).toMatchObject({ status: 'draft', version: 1 });
+    expect(h.broadcasts).toContainEqual({
+      type: 'plan.progress',
+      data: { planId: plan.id, stage: 'edited' },
+    });
+
+    // Editing an older draft still appends after the latest version.
+    const again = endpoints.patchPlan.response.parse(
+      await (await patch(v1, [{ op: 'set_summary', value: 'Branch' }])).json(),
+    );
+    expect(again.version).toBe(3);
+  });
+
+  it('reports cycles introduced by an edit as feasibility issues', async () => {
+    const v1 = await draftPlan();
+    const res = await patch(v1, [{ op: 'upsert_task', task: { ...t1, dependsOn: ['T3'] } }]);
+    expect(res.status).toBe(200);
+    const plan = endpoints.patchPlan.response.parse(await res.json());
+    expect(plan.feasibility.ok).toBe(false);
+    expect(plan.feasibility.issues.map((i) => i.code)).toContain('DEPENDENCY_CYCLE');
+  });
+
+  it('applies the cut line like generation: optional work beyond capacity is cut and reported', async () => {
+    await h.db.update(schema.memberProfiles).set({ availableHours: 1 });
+    const v1 = await draftPlan();
+    const extra = { ...t1, key: 'T4', title: 'Polish', priority: 'could' as const };
+    const plan = endpoints.patchPlan.response.parse(
+      await (await patch(v1, [{ op: 'upsert_task', task: extra }])).json(),
+    );
+    expect(plan.feasibility.cutTaskKeys).toEqual(['T4']);
+    expect(plan.payload.tasks.map((t) => t.key)).toEqual(['T1', 'T2', 'T3']);
+    expect(plan.feasibility.issues.map((i) => i.code)).toContain('OVER_CAPACITY');
+  });
+
+  it('rejects stale references, accepted plans, and outsiders without writing', async () => {
+    const v1 = await draftPlan();
+    expect((await patch(v1, [{ op: 'remove_task', key: 'T9' }])).status).toBe(400);
+    const out = await h.signIn(2);
+    expect((await patch(v1, [{ op: 'set_summary', value: 'x' }], out.token)).status).toBe(404);
+    expect((await patch('00000000-0000-4000-8000-000000000000', [])).status).toBe(404);
+
+    const accepted = await h.call(`/projects/${pid}/plans/${v1}/accept`, {
+      method: 'POST',
+      token: owner.token,
+      json: {},
+    });
+    expect(accepted.status).toBe(200);
+    const res = await patch(v1, [{ op: 'set_summary', value: 'x' }]);
+    expect(res.status).toBe(409);
+    expect(await res.text()).toContain('only draft plans can be edited');
+    expect(await h.db.select().from(schema.plans)).toHaveLength(1);
+  });
+});
