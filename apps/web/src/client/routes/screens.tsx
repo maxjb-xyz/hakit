@@ -1,6 +1,5 @@
 /** Screen registry S1–S14 (DESIGN §8). Each FE task replaces one export with a real screen in its own file. */
 import { Button } from '@hakit/ui';
-import { Placeholder } from './Placeholder';
 
 export { Login } from './Login';
 export { Join } from './Join';
