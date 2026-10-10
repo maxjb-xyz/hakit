@@ -1,15 +1,15 @@
 /** Board, tasks, dependencies, assignment. Owners: PL (CRUD, accept, manual), IN (solver/explanations). */
 import { Hono, type Context } from 'hono';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Id, type TaskStatus } from '@hakit/contracts';
 import * as fx from '@hakit/contracts/fixtures';
-import { topoSort } from '@hakit/engine';
 import { schema, type Db } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
 import { mockOr } from '../lib/mock';
 import { conflict, HttpError, notFound } from '../lib/errors';
-import { loadBoard, toAssignment, toTask, ZERO_BREAKDOWN } from '../lib/board';
+import { loadBoard, toAssignment, toTask } from '../lib/board';
+import { addDependency, allocateTaskNumbers, assignTask, memberLogin } from '../lib/board-mutations';
 import { broadcast } from '../lib/broadcast';
 import { assertProjectMember, assertTaskMember } from '../middleware/auth';
 
@@ -73,15 +73,10 @@ route(tasks, 'createTask', async ({ c, params, body }) => {
   const db = c.var.db();
   await assertMilestone(db, params.pid, body.milestoneId);
   const task = await db.transaction(async (tx) => {
-    // Atomic HK-number allocation.
-    const [p] = await tx
-      .update(schema.projects)
-      .set({ nextTaskNumber: sql`${schema.projects.nextTaskNumber} + 1` })
-      .where(eq(schema.projects.id, params.pid))
-      .returning({ number: sql<number>`${schema.projects.nextTaskNumber} - 1` });
+    const number = await allocateTaskNumbers(tx, params.pid);
     const [t] = await tx
       .insert(schema.tasks)
-      .values({ ...body, projectId: params.pid, number: p!.number, source: 'manual' })
+      .values({ ...body, projectId: params.pid, number, source: 'manual' })
       .returning();
     await tx
       .insert(schema.taskEvents)
@@ -140,49 +135,9 @@ route(tasks, 'updateTask', async ({ c, params, body }) => {
 
 route(tasks, 'putDependency', async ({ c, params, body }) => {
   if (c.var.mocks) return { ok: true as const };
-  if (params.tid === params.depId) throw badRequest('A task cannot depend on itself');
   const { projectId } = await assertTaskMember(c, params.tid);
-  const db = c.var.db();
-  await db.transaction(async (tx) => {
-    // Serialize dependency edits per project so two concurrent edges can't form a cycle together.
-    await tx
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(eq(schema.projects.id, projectId))
-      .for('update');
-    const ids = await tx
-      .select({ id: schema.tasks.id })
-      .from(schema.tasks)
-      .where(eq(schema.tasks.projectId, projectId));
-    if (!ids.some((t) => t.id === params.depId)) throw notFound('Task');
-    const edges = await tx
-      .select({ t: schema.taskDependencies.taskId, d: schema.taskDependencies.dependsOnTaskId })
-      .from(schema.taskDependencies)
-      .where(
-        inArray(
-          schema.taskDependencies.taskId,
-          ids.map((t) => t.id),
-        ),
-      );
-    const next: [string, string][] = [
-      ...edges.map((e) => [e.t, e.d] as [string, string]),
-      [params.tid, params.depId],
-    ];
-    if (
-      !topoSort(
-        ids.map((t) => t.id),
-        next,
-      ).ok
-    )
-      throw conflict('That dependency would create a cycle');
-    await tx
-      .insert(schema.taskDependencies)
-      .values({ taskId: params.tid, dependsOnTaskId: params.depId, kind: body.kind })
-      .onConflictDoUpdate({
-        target: [schema.taskDependencies.taskId, schema.taskDependencies.dependsOnTaskId],
-        set: { kind: body.kind },
-      });
-  });
+  if (!Id.safeParse(params.depId).success) throw notFound('Task');
+  await c.var.db().transaction((tx) => addDependency(tx, projectId, params.tid, params.depId, body.kind));
   notify(c, projectId, { type: 'board.changed', data: { reason: 'dependency' } });
   return { ok: true as const };
 });
@@ -277,40 +232,18 @@ route(tasks, 'manualAssign', async ({ c, params, body }) => {
   }
   const { projectId, workspaceId } = await assertTaskMember(c, params.tid);
   const db = c.var.db();
-  const [member] = await db
-    .select({ login: schema.users.githubLogin })
-    .from(schema.memberships)
-    .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
-    .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, body.userId)));
-  if (!member) throw badRequest('Assignee is not a member of this workspace');
+  const login = await memberLogin(db, workspaceId, body.userId);
   const { task, assignment } = await db.transaction(async (tx) => {
     const [t] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
-    await tx
-      .update(schema.assignments)
-      .set({ status: 'replaced' })
-      .where(and(eq(schema.assignments.taskId, params.tid), eq(schema.assignments.status, 'active')));
-    const [a] = await tx
-      .insert(schema.assignments)
-      .values({
-        taskId: params.tid,
-        userId: body.userId,
-        status: 'active',
-        source: 'manual',
-        locked: body.lock,
-        score: 0,
-        breakdown: ZERO_BREAKDOWN,
-        reasonCodes: body.lock ? ['MANUAL', 'OVERRIDE_LOCKED'] : ['MANUAL'],
-        explanation: `Assigned manually to @${member.login}${body.lock ? ' and locked' : ''}.`,
-        createdBy: c.var.user!.id,
-      })
-      .returning();
-    await tx.insert(schema.taskEvents).values({
+    const a = await assignTask(tx, {
       taskId: params.tid,
-      actorUserId: c.var.user!.id,
-      kind: 'assignee',
-      toValue: body.userId,
+      userId: body.userId,
+      login,
+      source: 'manual',
+      locked: body.lock,
+      actorId: c.var.user!.id,
     });
-    return { task: toTask(t!, body.userId), assignment: toAssignment(a!) };
+    return { task: toTask(t!, body.userId), assignment: toAssignment(a) };
   });
   notify(c, projectId, { type: 'task.updated', data: { task, assignment } });
   return assignment;
