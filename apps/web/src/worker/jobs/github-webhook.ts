@@ -25,7 +25,7 @@ export interface WebhookDependencies {
   markProcessed(deliveryId: string): Promise<void>;
 }
 
-async function eventId(delivery: string, project: string, index: number) {
+export async function eventId(delivery: string, project: string, index: number) {
   const digest = new Uint8Array(
     await crypto.subtle.digest(
       'SHA-256',
@@ -78,6 +78,65 @@ export async function processGithubWebhook(input: WebhookJob, deps: WebhookDepen
   await deps.markProcessed(job.deliveryId);
 }
 
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** Author lookups, explicit task references and deduplicating inserts, shared by webhooks and backfill (T-405). */
+export function activityStore(tx: Tx): AuthorLookup & Pick<ActivityTransaction, 'taskByNumber' | 'save'> {
+  return {
+    taskByNumber: (projectId, numbers) => taskForReferences(tx, projectId, numbers),
+    byGithubId: async (id) =>
+      (
+        await tx
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(eq(schema.users.githubUserId, id))
+          .limit(1)
+      )[0]?.id ?? null,
+    byAlias: async (raw) =>
+      (
+        await tx
+          .select({ id: schema.authorAliases.userId })
+          .from(schema.authorAliases)
+          .where(eq(schema.authorAliases.emailOrLogin, raw))
+          .limit(1)
+      )[0]?.id ?? null,
+    save: async (event) => {
+      // A project lock makes the SHA lookup + insert safe across concurrent deliveries.
+      // The hypertable's unique index includes ts, so it cannot alone dedupe different timestamps.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`github-project:${event.projectId}`}, 0))`,
+      );
+      const [existing] = await tx
+        .select()
+        .from(schema.activityEvents)
+        .where(and(eq(schema.activityEvents.id, event.id), eq(schema.activityEvents.ts, new Date(event.ts))))
+        .limit(1);
+      if (existing) return activityFromRow(existing);
+      if (event.kind === 'commit' && event.sha !== null) {
+        const [duplicate] = await tx
+          .select({ id: schema.activityEvents.id })
+          .from(schema.activityEvents)
+          .where(
+            and(
+              eq(schema.activityEvents.projectId, event.projectId),
+              eq(schema.activityEvents.source, 'github'),
+              eq(schema.activityEvents.kind, 'commit'),
+              eq(schema.activityEvents.sha, event.sha),
+            ),
+          )
+          .limit(1);
+        if (duplicate) return null;
+      }
+      const [row] = await tx
+        .insert(schema.activityEvents)
+        .values({ ...event, ts: new Date(event.ts) })
+        .onConflictDoNothing()
+        .returning();
+      return row ? activityFromRow(row) : null;
+    },
+  };
+}
+
 export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependencies {
   return {
     transaction: (run) =>
@@ -110,59 +169,7 @@ export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependenci
                 )
                 .orderBy(schema.projectRepos.projectId)
             ).map((r) => r.id),
-          taskByNumber: (projectId, numbers) => taskForReferences(tx, projectId, numbers),
-          byGithubId: async (id) =>
-            (
-              await tx
-                .select({ id: schema.users.id })
-                .from(schema.users)
-                .where(eq(schema.users.githubUserId, id))
-                .limit(1)
-            )[0]?.id ?? null,
-          byAlias: async (raw) =>
-            (
-              await tx
-                .select({ id: schema.authorAliases.userId })
-                .from(schema.authorAliases)
-                .where(eq(schema.authorAliases.emailOrLogin, raw))
-                .limit(1)
-            )[0]?.id ?? null,
-          save: async (event) => {
-            // A project lock makes the SHA lookup + insert safe across concurrent deliveries.
-            // The hypertable's unique index includes ts, so it cannot alone dedupe different timestamps.
-            await tx.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${`github-project:${event.projectId}`}, 0))`,
-            );
-            const [existing] = await tx
-              .select()
-              .from(schema.activityEvents)
-              .where(
-                and(eq(schema.activityEvents.id, event.id), eq(schema.activityEvents.ts, new Date(event.ts))),
-              )
-              .limit(1);
-            if (existing) return activityFromRow(existing);
-            if (event.kind === 'commit' && event.sha !== null) {
-              const [duplicate] = await tx
-                .select({ id: schema.activityEvents.id })
-                .from(schema.activityEvents)
-                .where(
-                  and(
-                    eq(schema.activityEvents.projectId, event.projectId),
-                    eq(schema.activityEvents.source, 'github'),
-                    eq(schema.activityEvents.kind, 'commit'),
-                    eq(schema.activityEvents.sha, event.sha),
-                  ),
-                )
-                .limit(1);
-              if (duplicate) return null;
-            }
-            const [row] = await tx
-              .insert(schema.activityEvents)
-              .values({ ...event, ts: new Date(event.ts) })
-              .onConflictDoNothing()
-              .returning();
-            return row ? activityFromRow(row) : null;
-          },
+          ...activityStore(tx),
         }),
       ),
     publish: async (event) => {

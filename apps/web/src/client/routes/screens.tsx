@@ -60,11 +60,7 @@ export function MemberProfile() {
 }
 export { Code } from './Code';
 export { Agents } from './Agents';
-export function Settings() {
-  return (
-    <Placeholder screen="S14" title="Settings & integrations" tasks="T-601, T-402" endpoint="aiStatus" />
-  );
-}
+export { Settings } from './Settings';
 export function UiGallery() {
   return (
     <section className="space-y-6 p-6">
