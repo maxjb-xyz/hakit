@@ -189,7 +189,7 @@ function MissionControlScreen({ wid, pid, demo }: { wid: string; pid: string; de
         </div>
       )}
 
-      <div className={cn('flex flex-1 flex-col gap-7 transition-opacity', stale && 'opacity-60')}>
+      <div className="flex flex-1 flex-col gap-7">
         <StatusBand s={s} lookup={lookup} staleSince={stale ? s.generatedAt : null} />
 
         <div className="grid flex-1 gap-6 lg:grid-cols-(--grid-side-312) xl:grid-cols-(--grid-side-360)">

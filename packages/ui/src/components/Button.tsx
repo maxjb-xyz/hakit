@@ -6,7 +6,7 @@ import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../cn';
 
 const variants = {
-  primary: 'bg-accent-500 text-strong hover:bg-accent-400 active:bg-accent-600',
+  primary: 'bg-accent-500 text-strong hover:bg-accent-600 active:bg-accent-600',
   secondary: 'bg-raised text-default border border-border hover:bg-hover',
   ghost: 'bg-transparent text-muted hover:bg-hover hover:text-default',
   danger: 'bg-danger text-strong hover:opacity-90',

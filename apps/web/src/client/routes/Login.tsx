@@ -42,7 +42,7 @@ const STEPS = [
 ];
 
 const linkButton =
-  'inline-flex h-control-xl w-full items-center justify-center rounded-md bg-accent-500 px-5 text-body-lg font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-400 active:bg-accent-600';
+  'inline-flex h-control-xl w-full items-center justify-center rounded-md bg-accent-500 px-5 text-body-lg font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600 active:bg-accent-600';
 
 export function Login() {
   const [search] = useSearchParams();

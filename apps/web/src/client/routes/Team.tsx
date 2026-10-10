@@ -868,7 +868,7 @@ function TeamScreen() {
           )}
           <Link
             to="../plan"
-            className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-400"
+            className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600"
           >
             Plan a project with this team
           </Link>

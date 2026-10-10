@@ -81,7 +81,7 @@ export function ProjectGate(props: {
           action={
             <Link
               to={`/w/${wid}/plan`}
-              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-400"
+              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-600"
             >
               Plan a project
             </Link>

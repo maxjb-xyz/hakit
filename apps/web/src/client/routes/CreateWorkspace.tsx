@@ -259,7 +259,7 @@ export function CreateWorkspace() {
           <h1 className="text-title font-medium text-strong">Sign in to create a workspace</h1>
           <a
             href={`${API_PREFIX}/auth/github/login?next=${encodeURIComponent('/new')}`}
-            className="mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-400"
+            className="mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600"
           >
             Continue with GitHub
           </a>
@@ -319,7 +319,7 @@ export function CreateWorkspace() {
             </Link>
             <Link
               to={`/onboarding?wid=${encodeURIComponent(wid)}`}
-              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-400"
+              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-600"
             >
               Set up your profile
             </Link>
