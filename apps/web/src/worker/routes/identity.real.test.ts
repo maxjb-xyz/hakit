@@ -192,7 +192,7 @@ describe('T-201 sign-in & sessions', () => {
     );
     vi.mocked(github.refreshToken).mockRejectedValue(new GithubAuthError('bad_refresh_token'));
     await expect(getGithubAccessToken(db, key, github, id, now)).rejects.toMatchObject({
-      code: 'reauth_required',
+      code: 'github_reauth_required',
     });
     expect(await db.select().from(schema.githubTokens)).toHaveLength(0);
     expect((await call('/me', { token })).status).toBe(401);
