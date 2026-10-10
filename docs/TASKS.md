@@ -161,6 +161,7 @@ Also in the scaffold:
 - AC: test that the fallback produces 1024-dim vectors.
 
 **T-206 · Capability API** · P0 · IN · 2h · T-204
+- Status: implemented on `t-206-capability-api`, based on T-204/T-205. Real skill/evidence reads, protected self-edits/removal reports, literal/alias search with optional semantic fallback, and deterministic coverage/availability calculations tested with fixtures and isolated WASM Postgres. UI integration and deployed verification remain pending. See `docs/CAPABILITY-VERIFICATION.md`.
 - AC: member skills with evidence; skill upsert and delete (delete stores a negative report); taxonomy search.
 - AC: `/capability` computes coverage, bus factor, overlaps, availability curve and effective hours (AI.md §A.3), with an engine unit test.
 

@@ -110,7 +110,7 @@ export function dependencies(path: string, content: string): string[] {
         )
           array = true;
         if (array) names.push(...[...line.matchAll(/["']([\w.-]+)(?=[<>=!~[;"'\s])/g)].map((m) => m[1]!));
-        if (line.includes(']')) array = false;
+        if (array && unquoted(line).includes(']')) array = false;
       }
     }
     return names;
@@ -248,4 +248,9 @@ export function aggregateEvidence(evidence: EvidenceDraft[]): InferredSkill[] {
             },
           ];
     });
+}
+
+/** Strips quoted string contents so brackets inside strings (e.g. "fastapi[all]") are ignored. */
+function unquoted(line: string): string {
+  return line.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
 }
