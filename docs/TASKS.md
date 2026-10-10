@@ -38,6 +38,9 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-302 API | ✅ hackathon, projects, constraints (challenge refs checked against the workspace template) | FE: S7 screen, fit meter |
 | T-308 Plan materialization | ✅ one transaction, HK numbers from the project counter, `embed.batch`, `board.changed` | Re-planning after acceptance (409 today) |
 | T-311 API | ✅ accept (locks win), manual assign + lock; board CRUD and cycle-checked dependencies | Solver proposals (T-309, IN) must be stored as `proposed` rows |
+| T-502 MC snapshot | ✅ measured progress, lanes (activity_hourly sparkline, agent sessions), blockers, recent activity, open recs | Schedule/health come from T-501 (IN); until then `SCHEDULE_PENDING` |
+| T-505 API | ✅ accept applies typed actions in one transaction (reassign, priority/cut, status, split, dependency); dismiss stores a reason | FE: RecommendationCard |
+| T-601 Agent tokens | ✅ create (shown once, SHA-256 stored), list/revoke own, `authenticateAgentToken` + `AGENT_RATE_LIMITER` | GH: call it from `/agent/events` (T-602) |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 
