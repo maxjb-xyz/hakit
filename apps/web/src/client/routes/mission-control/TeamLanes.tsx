@@ -210,7 +210,7 @@ export function MilestoneList({
       {s.milestones.length === 0 ? (
         <p className="text-body text-subtle">Milestones appear once a plan is accepted.</p>
       ) : (
-        <div className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)] gap-x-4">
+        <div className="grid grid-cols-[minmax(96px,152px)_minmax(0,1fr)] gap-x-5">
           <ol className="contents">
             {s.milestones.map((m, i) => {
               const from = i === 0 ? start : targets[i - 1]!;
@@ -267,9 +267,19 @@ export function MilestoneList({
             })}
           </ol>
           <span />
-          <div className="relative mt-1 flex justify-between text-label text-subtle">
-            {ticks.map((t) => (
-              <span key={t}>{fmt(t)}</span>
+          <div className="relative mt-1 h-4 text-label text-subtle">
+            {ticks.map((t, i) => (
+              <span
+                key={t}
+                className="absolute top-0 whitespace-nowrap"
+                style={{
+                  left: `${pct(t)}%`,
+                  transform:
+                    i === 0 ? undefined : i === ticks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+                }}
+              >
+                {fmt(t)}
+              </span>
             ))}
           </div>
         </div>

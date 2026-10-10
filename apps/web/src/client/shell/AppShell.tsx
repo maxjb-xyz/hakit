@@ -98,13 +98,15 @@ export function AppShell() {
       </aside>
 
       <div className="m-2 ml-0 grid min-h-0 grid-rows-[48px_1fr] overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
-        <header className="flex items-center gap-2 border-b border-hover px-6 max-sm:px-4">
+        <header className="flex items-center gap-2 border-b border-hover px-7 max-sm:px-4">
           <span className="text-body text-subtle">{workspace.data?.name ?? '…'}</span>
           <span aria-hidden className="text-faint">
             ›
           </span>
           <span className="text-body font-medium text-strong">{current?.label ?? ''}</span>
           <div className="ml-auto flex items-center gap-3">
+            {/* Pages portal live status (e.g. "Synced 4s ago") here. */}
+            <div id="topbar-status" className="flex items-center" />
             {workspace.data && (
               <span className="md:hidden">
                 <Countdown deadlineAt={workspace.data.deadlineAt} />

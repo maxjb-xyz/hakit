@@ -2,7 +2,8 @@
  * S11 Mission Control (DESIGN §8, T-106/T-503). Live snapshot via `missionControl`, kept fresh by the
  * project socket. `?demo=1`, or any load failure, renders the fixture snapshot (demo fallback).
  */
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import * as fx from '@hakit/contracts/fixtures';
@@ -35,6 +36,16 @@ function Skeleton() {
       </div>
     </div>
   );
+}
+
+/** Renders into the shell's top bar (handoff: sync state sits beside ⌘K, not in the page). */
+function TopbarStatus({ children }: { children: React.ReactNode }) {
+  const el = useSyncExternalStore(
+    () => () => {},
+    () => document.getElementById('topbar-status'),
+    () => null,
+  );
+  return el ? createPortal(children, el) : null;
 }
 
 function SyncChip({
@@ -121,9 +132,9 @@ export function MissionControl() {
 
   return (
     <div className="space-y-7 p-7 max-sm:p-4">
-      <div className="flex justify-end">
+      <TopbarStatus>
         <SyncChip demo={fallback} state={state} at={s.generatedAt} now={tick} />
-      </div>
+      </TopbarStatus>
 
       {snap.isError && !demo && (
         <div

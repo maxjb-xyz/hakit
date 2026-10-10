@@ -272,7 +272,7 @@ export function Tasks() {
         selectedKey && !b.loading && 'md:pr-(--spacing-inspector)',
       )}
     >
-      <div className="flex h-12 items-center gap-3 border-b border-hover px-6 max-sm:px-4">
+      <div className="flex h-12 items-center gap-3 border-b border-hover px-7 max-sm:px-4">
         <div role="tablist" aria-label="Task views" className="flex items-center gap-1">
           {(['board', 'list'] as const).map((v) => (
             <button

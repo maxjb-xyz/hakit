@@ -271,10 +271,10 @@ export function Board(props: {
   }, [nav, selected, columns, onMove, moving]);
 
   const doneCount = columns.find((c) => c.status === 'done')!.tasks.length;
-  const template = `repeat(4, minmax(220px, 1fr)) ${doneOpen ? 'minmax(220px, 1fr)' : '140px'}`;
+  const template = `repeat(4, minmax(200px, 1fr)) ${doneOpen ? 'minmax(200px, 1fr)' : '112px'}`;
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-3">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
       <p aria-live="assertive" className="sr-only">
         {announce}
       </p>
@@ -294,10 +294,12 @@ export function Board(props: {
               <button
                 type="button"
                 aria-expanded={doneOpen}
+                aria-label={doneOpen ? 'Collapse Done' : 'Expand Done'}
+                title={doneOpen ? 'Collapse' : 'Expand'}
                 onClick={() => setDoneOpen((o) => !o)}
-                className="ml-auto rounded-xs px-1 text-label text-subtle hover:text-strong"
+                className="ml-auto grid size-6 shrink-0 place-items-center rounded-xs text-subtle hover:bg-hover hover:text-strong"
               >
-                {doneOpen ? 'Hide' : 'Show'}
+                <span aria-hidden>{doneOpen ? '‹' : '›'}</span>
               </button>
             ) : (
               <button
@@ -314,7 +316,12 @@ export function Board(props: {
       </div>
 
       {lanes.map((lane) => (
-        <section key={lane.key} aria-label={lane.title || 'All tasks'} className={cn(lane.title && 'mt-3')}>
+        <section
+          key={lane.key}
+          aria-label={lane.title || 'All tasks'}
+          // Ungrouped: wells run to the bottom of the page. Grouped: each well hugs its own cards.
+          className={cn(lane.title ? 'mt-3' : 'flex min-h-0 flex-1 flex-col')}
+        >
           {lane.title && (
             <h3 className="mb-1.5 flex items-center gap-2 px-1 text-label text-muted">
               {lane.avatar && <MemberAvatar member={lane.avatar} className="size-[18px]" />}
@@ -322,7 +329,10 @@ export function Board(props: {
               <span className="text-subtle">{lane.tasks.length}</span>
             </h3>
           )}
-          <div className="grid gap-2" style={{ gridTemplateColumns: template }}>
+          <div
+            className={cn('grid gap-2', lane.title ? 'items-start' : 'flex-1')}
+            style={{ gridTemplateColumns: template }}
+          >
             {BOARD_COLUMNS.map((status) => {
               const cell = `${lane.key}:${status}`;
               const tasks = lane.tasks
@@ -352,13 +362,15 @@ export function Board(props: {
                   )}
                 >
                   {collapsed ? (
-                    <button
-                      type="button"
-                      onClick={() => setDoneOpen(true)}
-                      className="m-auto rounded-xs px-2 py-3 text-label text-subtle hover:text-strong"
-                    >
-                      {tasks.length} done
-                    </button>
+                    tasks.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDoneOpen(true)}
+                        className="rounded-xs px-2 py-3 text-label text-subtle hover:text-strong"
+                      >
+                        {tasks.length} done
+                      </button>
+                    )
                   ) : tasks.length === 0 ? (
                     dragging && (
                       <p className="m-1 rounded-sm border border-dashed border-border-strong px-3 py-4 text-center text-label text-subtle">
