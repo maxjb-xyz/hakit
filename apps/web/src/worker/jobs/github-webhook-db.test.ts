@@ -25,6 +25,7 @@ function setup(responses: unknown[][]) {
     select: () => {
       const query = {
         from: () => query,
+        innerJoin: () => query,
         where: (condition: SQL) => {
           conditions.push(condition);
           return query;

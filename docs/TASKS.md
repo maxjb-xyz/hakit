@@ -230,8 +230,10 @@ Also in the scaffold:
 - Implementation: delivery claim and queue send run inside a DB transaction; queue failure rolls back the claim. Queue send and DB commit are not atomic across services, so T-403 must remain idempotent (including duplicate jobs after a commit failure).
 
 **T-402 · Installation & repo discovery** · P0 · GH · 3h · T-201, T-401
+- Status: implemented and locally tested (50 focused tests); live verification and preview deployment depend on T-006, T-201 and Platform bindings. See [GITHUB-VERIFICATION](GITHUB-VERIFICATION.md) for checks you can run without coding.
 - AC: install URL with state; Setup URL handler verifies the installation through `GET /user/installations`.
 - AC: repo list API; `installation*` and `repository` events keep tables in sync; connect-repo endpoint.
+- Implementation: short-lived signed state cookie bound to user/workspace; paginated user-token discovery; project-membership and GitHub-access checks before transactional connection; post-commit `github.backfill` enqueue (processor remains T-405). Lifecycle jobs synchronize metadata and detach revoked repos; activity fanout excludes detached/suspended installations. Uses the existing schema; AES-GCM token helpers document the T-201 storage envelope, and expired tokens require reauthentication until Platform adds lazy refresh. Repository picker UI remains T-407.
 
 **T-403 · Event normalization & attribution** · P0 · GH · 3h · T-401
 - Status: implemented and locally tested (50 focused tests); live GitHub/DB/Queue/DO verification and preview deployment remain pending setup.
@@ -240,7 +242,7 @@ Also in the scaffold:
 - AC: insert into the hypertable; DO broadcast `activity.created`.
 - AC: fixture-based tests for every event type.
 - Implementation: queue handler validates payloads, resolves authors, fans out only to connected projects, stores activity transactionally, broadcasts after commit and marks the delivery processed. Stable activity IDs allow notification retries without duplicate rows; clients may receive the same activity ID again. Commit dedupe uses a transaction-scoped project lock plus a SHA lookup because the existing hypertable index includes the timestamp. PR/review rows leave `sha` null to avoid that index collapsing distinct same-second events; their branch and PR number are retained.
-- The real activity endpoint returns the latest 100 events with project-membership checks. Pagination requires a future contract addition. Installation/repository events currently produce no activity; table synchronization must be added in T-402 before live monitoring. Explicit/semantic task linking remains T-406.
+- The real activity endpoint returns the latest 100 events with project-membership checks. Pagination requires a future contract addition. Installation/repository events produce no activity; table synchronization is implemented in T-402. Explicit/semantic task linking remains T-406.
 
 **T-404 · ProjectRoom DO & WS client** · P0 · GH · 3h · T-004
 - AC: hibernation accept with membership-checked upgrade; `broadcast` RPC; sequence numbers with a 200-event replay buffer; presence.

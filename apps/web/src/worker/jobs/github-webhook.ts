@@ -1,12 +1,14 @@
 import { createDb, schema, type Db } from '@hakit/db';
 import { ActivityEvent, JobMessage, WsPayload, type ActivityEvent as Activity } from '@hakit/contracts';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { synchronizeGithub } from '../services/github/lifecycle';
 import type { Env } from '../env';
 import { broadcast } from '../lib/broadcast';
 import { normalizeGithub, resolveAuthor, type AuthorLookup } from '../services/github/normalize';
 
 type WebhookJob = Extract<JobMessage, { type: 'github.webhook' }>;
 export interface ActivityTransaction extends AuthorLookup {
+  synchronize?(event: string, payload: unknown, receivedAt: string): Promise<void>;
   delivery(id: string): Promise<{ receivedAt: string; processed: boolean }>;
   projects(repoId: number): Promise<string[]>;
   /** Returns the stored event, or null when the same commit came from another delivery. */
@@ -37,6 +39,11 @@ export async function processGithubWebhook(input: WebhookJob, deps: WebhookDepen
   const events = await deps.transaction(async (tx) => {
     const delivery = await tx.delivery(job.deliveryId);
     if (delivery.processed) return null;
+    if (['installation', 'installation_repositories', 'repository'].includes(job.event)) {
+      if (!tx.synchronize) throw new Error('GitHub lifecycle synchronization is not configured');
+      await tx.synchronize(job.event, job.payload, delivery.receivedAt);
+      return [];
+    }
     const normalized = normalizeGithub(job.event, job.payload, delivery.receivedAt);
     const saved: Activity[] = [];
     for (const [index, item] of normalized.entries()) {
@@ -69,6 +76,7 @@ export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependenci
     transaction: (run) =>
       db.transaction(async (tx) =>
         run({
+          synchronize: (event, payload, receivedAt) => synchronizeGithub(tx, event, payload, receivedAt),
           delivery: async (id) => {
             await tx.execute(
               sql`select pg_advisory_xact_lock(hashtextextended(${`github-delivery:${id}`}, 0))`,
@@ -85,7 +93,14 @@ export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependenci
               await tx
                 .select({ id: schema.projectRepos.projectId })
                 .from(schema.projectRepos)
-                .where(eq(schema.projectRepos.repoId, repoId))
+                .innerJoin(schema.repos, eq(schema.repos.id, schema.projectRepos.repoId))
+                .innerJoin(
+                  schema.githubInstallations,
+                  eq(schema.githubInstallations.id, schema.repos.installationId),
+                )
+                .where(
+                  and(eq(schema.projectRepos.repoId, repoId), isNull(schema.githubInstallations.suspendedAt)),
+                )
                 .orderBy(schema.projectRepos.projectId)
             ).map((r) => r.id),
           byGithubId: async (id) =>

@@ -1,6 +1,7 @@
 import { fixtureRepo } from './mock';
 import type { GithubService } from './types';
 import type { Env } from '../../env';
+import { githubDiscovery } from './discovery';
 
 /** Verify the original UTF-8 body with WebCrypto's timing-safe HMAC verification. */
 export async function verifyWebhook(
@@ -38,13 +39,20 @@ export function githubService(env: Env): GithubService {
       `https://github.com/apps/${env.GITHUB_APP_SLUG ?? 'hakit'}/installations/new?state=${encodeURIComponent(state)}`,
     exchangeCode: ni('T-201'),
     getUser: ni('T-201'),
-    listInstallationRepos: ni('T-402'),
-    userHasInstallation: ni('T-402'),
+    ...githubDiscovery(),
     verifyWebhook: (raw, signature) => verifyWebhook(env.GITHUB_WEBHOOK_SECRET, raw, signature),
   };
 }
 
 export const mockGithub: GithubService = {
+  listInstallations: async () => [
+    {
+      id: 55501,
+      account: { login: 'team-orbit', type: 'Organization' },
+      repository_selection: 'selected',
+      suspended_at: null,
+    },
+  ],
   authorizeUrl: () => '/api/v1/auth/github/callback?code=mock&state=mock',
   installUrl: () => 'https://github.com/apps/hakit/installations/new',
   exchangeCode: async () => ({
