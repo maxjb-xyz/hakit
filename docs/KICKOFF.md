@@ -106,7 +106,7 @@ Branch per task. PR to main when CI is green.
 You are the GitHub/Real-time/Agents (GH) owner on Hakit. Read CLAUDE.md, docs/INTEGRATIONS.md §1 and §6, docs/ARCHITECTURE.md §7–9, and docs/TASKS.md (T-006, T-401–T-409, T-506, T-602–T-605).
 
 Order:
-1. T-006: register the "Hakit Dev" and "Hakit" GitHub Apps (docs/SETUP.md §3). Convert the key to PKCS#8. Start a cloudflared tunnel for webhooks. Put the secrets in apps/web/.dev.vars only.
+1. T-006: register the "Hakit Dev" and "Hakit" GitHub Apps (docs/SETUP.md §4). Convert the key to PKCS#8. No tunnels: Hakit Dev webhooks go to the preview worker; replay signed fixtures locally. Put local secrets in apps/web/.dev.vars only.
 2. T-401: in webhooks/github.ts and services/github, verify the HMAC on the raw body with crypto.subtle (constant time), dedupe via webhook_deliveries, enqueue, and return 202. Test bad-signature, duplicate and unknown-event cases.
 3. T-403: the github.webhook job handler. Normalize push/create/delete/pull_request/review into activity_events. Attribute authors (user id → noreply email parse → alias). Broadcast after commit. Use linking/refs.ts for HK- links.
 4. T-402: the installation flow, Setup URL verification via GET /user/installations, and the repo list/connect endpoints.
@@ -125,8 +125,8 @@ Branch per task. PR to main when CI is green.
 | What | Who | Guide |
 |---|---|---|
 | Tiger Cloud service + share the URL privately | PL | SETUP §2 |
-| Cloudflare: login, Hyperdrive, queues, first deploy | PL | SETUP §4 |
-| GitHub Apps (dev + prod), tunnel | GH | SETUP §3 |
+| Cloudflare: login, Hyperdrive, queues, prod + preview deploy | PL | SETUP §3 |
+| GitHub Apps (dev + prod) | GH | SETUP §4 |
 | Gemini key, Hugging Face token | IN | SETUP §5 |
 | Figma file + variables | FE | DESIGN §11 |
 | Confirm the sponsor challenges on Devpost and the Hackers Guide; update `packages/db/src/seed/hackathons.ts` | Team lead | INTEGRATIONS §0 |
