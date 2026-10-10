@@ -10,7 +10,6 @@
     "deploy": "vite build && wrangler deploy",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:github": "vitest run github src/worker/jobs/index.test.ts --reporter=verbose",
     "cf-typegen": "wrangler types --include-runtime false"
   },
   "dependencies": {
