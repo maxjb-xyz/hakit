@@ -61,7 +61,7 @@ export function AppShell() {
   const current = [...NAV, SETTINGS].find((n) => pathname.includes(`/${n.to}`));
 
   return (
-    <div className="grid h-dvh grid-cols-[var(--spacing-sidebar)_1fr] bg-sunken max-md:grid-cols-1 max-md:grid-rows-[1fr_56px]">
+    <div className="grid h-dvh grid-cols-[var(--spacing-sidebar)_1fr] bg-sunken max-md:grid-cols-1 max-md:grid-rows-(--grid-shell-mobile)">
       <aside className="flex flex-col bg-sunken px-2.5 py-3 max-md:hidden" aria-label="Primary">
         <div className="flex h-9 items-center gap-2.5 px-1.5">
           <span
@@ -97,7 +97,7 @@ export function AppShell() {
         </nav>
       </aside>
 
-      <div className="m-2 ml-0 grid min-h-0 grid-rows-[48px_1fr] overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
+      <div className="m-2 ml-0 grid min-h-0 grid-rows-(--grid-shell-main) overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
         <header className="flex items-center gap-2 border-b border-hover px-7 max-sm:px-4">
           <span className="text-body text-subtle">{workspace.data?.name ?? '…'}</span>
           <span aria-hidden className="text-faint">

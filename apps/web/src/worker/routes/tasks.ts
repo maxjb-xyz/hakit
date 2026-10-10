@@ -219,12 +219,14 @@ route(tasks, 'acceptAssignments', async ({ c, params, body }) => {
 
 /** T-311: manual assign (and lock). Replaces any active assignment; the assignee must be a workspace member. */
 route(tasks, 'manualAssign', async ({ c, params, body }) => {
+  const userId = body.userId ?? null;
   if (c.var.mocks) {
+    if (!userId) return null;
     const base = fx.assignments.find((a) => a.taskId === params.tid) ?? fx.assignments[0]!;
     return {
       ...base,
       taskId: params.tid,
-      userId: body.userId,
+      userId,
       source: 'manual' as const,
       locked: body.lock,
       reasonCodes: ['MANUAL'],
@@ -232,18 +234,35 @@ route(tasks, 'manualAssign', async ({ c, params, body }) => {
   }
   const { projectId, workspaceId } = await assertTaskMember(c, params.tid);
   const db = c.var.db();
-  const login = await memberLogin(db, workspaceId, body.userId);
+  if (!userId) {
+    const task = await db.transaction(async (tx) => {
+      const [t] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
+      const ended = await tx
+        .update(schema.assignments)
+        .set({ status: 'replaced' })
+        .where(and(eq(schema.assignments.taskId, params.tid), eq(schema.assignments.status, 'active')))
+        .returning({ id: schema.assignments.id });
+      if (ended.length > 0)
+        await tx
+          .insert(schema.taskEvents)
+          .values({ taskId: params.tid, actorUserId: c.var.user!.id, kind: 'assignee', toValue: null });
+      return toTask(t!, null);
+    });
+    notify(c, projectId, { type: 'task.updated', data: { task, assignment: null } });
+    return null;
+  }
+  const login = await memberLogin(db, workspaceId, userId);
   const { task, assignment } = await db.transaction(async (tx) => {
     const [t] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
     const a = await assignTask(tx, {
       taskId: params.tid,
-      userId: body.userId,
+      userId,
       login,
       source: 'manual',
       locked: body.lock,
       actorId: c.var.user!.id,
     });
-    return { task: toTask(t!, body.userId), assignment: toAssignment(a) };
+    return { task: toTask(t!, userId), assignment: toAssignment(a) };
   });
   notify(c, projectId, { type: 'task.updated', data: { task, assignment } });
   return assignment;

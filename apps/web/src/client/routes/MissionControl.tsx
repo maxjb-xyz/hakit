@@ -32,7 +32,7 @@ function Skeleton() {
           <div key={i} className={cn(box, 'h-20')} />
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_312px]">
+      <div className="grid gap-6 lg:grid-cols-(--grid-side-312)">
         <div className={cn(box, 'h-80')} />
         <div className={cn(box, 'h-80')} />
       </div>
@@ -155,7 +155,7 @@ export function MissionControl() {
       <div className={cn('flex flex-1 flex-col gap-7 transition-opacity', stale && 'opacity-60')}>
         <StatusBand s={s} lookup={lookup} staleSince={stale ? s.generatedAt : null} />
 
-        <div className="grid flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_312px] xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid flex-1 gap-6 lg:grid-cols-(--grid-side-312) xl:grid-cols-(--grid-side-360)">
           <div className="flex min-w-0 flex-col gap-7">
             <TeamLanes s={s} lookup={lookup} />
             <MilestoneList

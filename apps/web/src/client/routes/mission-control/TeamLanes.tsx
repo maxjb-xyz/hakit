@@ -41,7 +41,7 @@ function ActivityBars({ values }: { values: number[] }) {
         <span
           key={i}
           className={cn(
-            'min-w-px flex-1 rounded-[1px]',
+            'min-w-px flex-1 rounded-hairline',
             v === 0 ? 'bg-hover' : v < 4 ? 'bg-level-4' : 'bg-default',
           )}
           style={{ height: v === 0 ? 2 : Math.min(24, 2 + v * 4) }}
@@ -83,7 +83,7 @@ function LaneRow({ lane, lookup, s }: { lane: Lane; lookup: Lookup; s: MissionCo
         : `${task.status === 'in_review' ? 'In review' : 'In progress'} · ${ago(lane.lastActivityAt, lookup.now)}`;
 
   return (
-    <li className="hover-light grid min-h-14 grid-cols-[24px_minmax(0,104px)_minmax(0,1fr)_68px] items-center gap-3 border-b border-border px-5 py-3 last:border-b-0 md:grid-cols-[24px_104px_minmax(0,1fr)_80px_28px_68px]">
+    <li className="hover-light grid min-h-14 grid-cols-(--grid-lane) items-center gap-3 border-b border-border px-5 py-3 last:border-b-0 md:grid-cols-(--grid-lane-md)">
       <MemberAvatar member={member} className="size-6" />
       <span className="min-w-0">
         <Link
@@ -138,14 +138,14 @@ function LaneRow({ lane, lookup, s }: { lane: Lane; lookup: Lookup; s: MissionCo
           <span
             key={a.id}
             title={AGENT[a.status]!.label}
-            className={cn('size-[7px] rounded-full', AGENT[a.status]!.className)}
+            className={cn('size-dot rounded-full', AGENT[a.status]!.className)}
           >
             <span className="sr-only">{AGENT[a.status]!.label}</span>
           </span>
         ))}
       </span>
       <span className="flex flex-col items-end gap-1" title="Assigned (estimated) / available hours">
-        <span className="h-[3px] w-full rounded-full bg-hover">
+        <span className="h-meter w-full rounded-full bg-hover">
           <span
             className={cn('block h-full rounded-full', load > 0.85 ? 'bg-warning' : 'bg-level-4')}
             style={{ width: `${Math.min(1, load) * 100}%` }}
@@ -210,7 +210,7 @@ export function MilestoneList({
       {s.milestones.length === 0 ? (
         <p className="text-body text-subtle">Milestones appear once a plan is accepted.</p>
       ) : (
-        <div className="grid grid-cols-[minmax(96px,152px)_minmax(0,1fr)] gap-x-5">
+        <div className="grid grid-cols-(--grid-lane-legend) gap-x-5">
           <ol className="contents">
             {s.milestones.map((m, i) => {
               const from = i === 0 ? start : targets[i - 1]!;

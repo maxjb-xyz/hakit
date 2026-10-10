@@ -164,7 +164,7 @@ function Card(props: {
             ⋯
           </span>
         </label>
-        <MemberAvatar member={props.assignee} className="size-[18px]" />
+        <MemberAvatar member={props.assignee} className="size-glyph" />
       </span>
     </li>
   );
@@ -324,7 +324,7 @@ export function Board(props: {
         >
           {lane.title && (
             <h3 className="mb-1.5 flex items-center gap-2 px-1 text-label text-muted">
-              {lane.avatar && <MemberAvatar member={lane.avatar} className="size-[18px]" />}
+              {lane.avatar && <MemberAvatar member={lane.avatar} className="size-glyph" />}
               {lane.title}
               <span className="text-subtle">{lane.tasks.length}</span>
             </h3>

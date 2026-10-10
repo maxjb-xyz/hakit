@@ -46,8 +46,8 @@ export function AgentList({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
             const st = STATUS[a.status as Exclude<AgentSessionStatus, 'ended'>];
             const task = lookup.task(a.taskId);
             return (
-              <li key={a.id} className="flex h-[34px] items-center gap-3 text-body">
-                <span aria-hidden className={cn('size-[7px] shrink-0 rounded-full', st.dot)} />
+              <li key={a.id} className="flex h-row-compact items-center gap-3 text-body">
+                <span aria-hidden className={cn('size-dot shrink-0 rounded-full', st.dot)} />
                 <span className="min-w-0 flex-1 truncate text-subtle">
                   <span className="text-default">{firstName(lookup.member(a.userId))}</span>
                   {"'s agent on "}

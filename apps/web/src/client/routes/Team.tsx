@@ -67,7 +67,10 @@ function Avatar({ m }: { m: Member }) {
 /** Small dashed diamond marking AI-originated text (handoff principle 4). */
 function AiGlyph() {
   return (
-    <span aria-hidden className="inline-block size-2 rotate-45 border-[1.5px] border-dashed border-ai" />
+    <span
+      aria-hidden
+      className="inline-block size-2 rotate-45 border-(length:--border-width-emphasis) border-dashed border-ai"
+    />
   );
 }
 
@@ -206,7 +209,7 @@ function CapabilityMatrix(props: {
         right={<Legend />}
       />
       <div className="overflow-x-auto">
-        <div role="table" aria-label="Skill level by member and category" className="min-w-[560px]">
+        <div role="table" aria-label="Skill level by member and category" className="min-w-table-min">
           <div role="row" className="grid gap-1 pb-1" style={cols}>
             <span role="columnheader">
               <span className="sr-only">Member</span>
@@ -293,7 +296,7 @@ function CapabilityMatrix(props: {
                 >
                   <span
                     className={cn(
-                      'relative h-[3px] rounded-full',
+                      'relative h-meter rounded-full',
                       cov ? 'bg-raised' : 'border-t border-dashed border-level-4',
                     )}
                   >
@@ -306,7 +309,7 @@ function CapabilityMatrix(props: {
                     {need !== undefined && (
                       <span
                         aria-hidden
-                        className={cn('absolute -top-1 h-[11px] w-px', short ? 'bg-warning' : 'bg-strong')}
+                        className={cn('absolute -top-1 h-tick w-px', short ? 'bg-warning' : 'bg-strong')}
                         style={{ left: `${(need / 5) * 100}%` }}
                       />
                     )}
@@ -337,7 +340,7 @@ function CapabilityMatrix(props: {
         </p>
       )}
       <p className="mt-1 flex items-center gap-1.5 text-label text-subtle">
-        <span aria-hidden className="inline-block h-[11px] w-px bg-strong" /> level the current plan needs
+        <span aria-hidden className="inline-block h-tick w-px bg-strong" /> level the current plan needs
       </p>
 
       {selected && selectedMember && (
@@ -507,10 +510,7 @@ function AvailabilityChart(props: {
       </div>
       <ul className="mt-4 space-y-1.5" aria-label="Sleep and away blocks per member">
         {bands.map((b) => (
-          <li
-            key={b.m.user.id}
-            className="grid grid-cols-[minmax(96px,150px)_minmax(0,1fr)_40px] items-center gap-3"
-          >
+          <li key={b.m.user.id} className="grid grid-cols-(--grid-skill-row) items-center gap-3">
             <span className="flex min-w-0 items-center gap-1.5 text-label text-subtle">
               <span
                 aria-hidden
@@ -563,7 +563,10 @@ function Callout(props: { kind: 'gap' | 'overlap'; title: string; body: string }
     <li className="rounded-md border border-border bg-surface p-4">
       <p className="flex items-start gap-2.5 text-body font-medium text-strong">
         {props.kind === 'gap' ? (
-          <span aria-hidden className="mt-1 size-3 shrink-0 rounded-full border-[1.5px] border-danger" />
+          <span
+            aria-hidden
+            className="mt-1 size-3 shrink-0 rounded-full border-(length:--border-width-emphasis) border-danger"
+          />
         ) : (
           <span aria-hidden className="mt-1 size-3 shrink-0 rounded-full bg-level-4" />
         )}
@@ -670,7 +673,7 @@ function MembersList({ members }: { members: Member[] }) {
         <li key={m.user.id}>
           <Link
             to={m.user.id}
-            className="hover-light grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-4 py-3 sm:grid-cols-[24px_200px_minmax(0,1fr)_80px]"
+            className="hover-light grid grid-cols-(--grid-member-row) items-center gap-3 rounded-md px-4 py-3 sm:grid-cols-(--grid-member-row-sm)"
           >
             <Avatar m={m} />
             <span className="min-w-0">
@@ -708,11 +711,7 @@ function MembersList({ members }: { members: Member[] }) {
 function Skeleton() {
   const b = 'animate-pulse rounded-md bg-raised';
   return (
-    <div
-      className="grid gap-7 p-7 lg:grid-cols-[minmax(0,1fr)_320px]"
-      aria-busy="true"
-      aria-label="Loading team"
-    >
+    <div className="grid gap-7 p-7 lg:grid-cols-(--grid-side-320)" aria-busy="true" aria-label="Loading team">
       <div className="space-y-7">
         <div className={cn(b, 'h-64')} />
         <div className={cn(b, 'h-60')} />
@@ -858,7 +857,7 @@ export function Team() {
           tall
         />
       ) : (
-        <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-7 lg:grid-cols-(--grid-side-320)">
           <div className="min-w-0 space-y-9">
             <CapabilityMatrix
               members={ms}

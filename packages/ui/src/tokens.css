@@ -78,6 +78,7 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-hairline: 1px;
 
   /* Elevation (dark UIs: luminance + border; shadow only from e2) */
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45);
@@ -95,6 +96,30 @@
   --spacing-sidebar: 224px;
   --spacing-rail: 56px;
   --spacing-inspector: 360px;
+  --spacing-topbar: 48px;
+  --spacing-row-compact: 34px;
+  --spacing-dot: 7px;
+  --spacing-meter: 3px;
+  --spacing-tick: 11px;
+  --spacing-glyph: 18px;
+  --spacing-table-min: 560px;
+
+  /* Stroke widths: border-(length:--border-width-emphasis) */
+  --border-width-emphasis: 1.5px;
+
+  /* Grid templates: grid-cols-(--grid-…) / grid-rows-(--grid-…) */
+  --grid-side-312: minmax(0, 1fr) 312px;
+  --grid-side-320: minmax(0, 1fr) 320px;
+  --grid-side-360: minmax(0, 1fr) 360px;
+  --grid-shell-mobile: 1fr 56px;
+  --grid-shell-main: 48px 1fr;
+  --grid-skill-row: minmax(96px, 150px) minmax(0, 1fr) 40px;
+  --grid-member-row: 24px minmax(0, 1fr) auto;
+  --grid-member-row-sm: 24px 200px minmax(0, 1fr) 80px;
+  --grid-lane: 24px minmax(0, 104px) minmax(0, 1fr) 68px;
+  --grid-lane-md: 24px 104px minmax(0, 1fr) 80px 28px 68px;
+  --grid-lane-legend: minmax(96px, 152px) minmax(0, 1fr);
+  --grid-up-next: 24px minmax(0, 1fr) auto 56px;
 }
 
 /* Control heights (DESIGN §4): h-control-sm/md/lg/xl */

@@ -7,6 +7,21 @@ import { extendTailwindMerge } from 'tailwind-merge';
  */
 const twMerge = extendTailwindMerge({
   extend: {
+    theme: {
+      spacing: [
+        'sidebar',
+        'rail',
+        'inspector',
+        'topbar',
+        'row-compact',
+        'dot',
+        'meter',
+        'tick',
+        'glyph',
+        'table-min',
+      ],
+      radius: ['hairline'],
+    },
     classGroups: {
       'font-size': [
         { text: ['caption', 'label', 'body', 'body-lg', 'title', 'display-sm', 'display-lg', 'hero'] },

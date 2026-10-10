@@ -42,7 +42,7 @@ export function UpNext({ s, tasks, lookup }: { s: MissionControlSnapshot; tasks:
             <li key={t.id}>
               <Link
                 to={`/w/${lookup.wid}/tasks?task=${t.key}`}
-                className="hover-light grid h-11 grid-cols-[24px_minmax(0,1fr)_auto_56px] items-center gap-3 border-b border-border px-5 text-body last:border-b-0"
+                className="hover-light grid h-11 grid-cols-(--grid-up-next) items-center gap-3 border-b border-border px-5 text-body last:border-b-0"
               >
                 <MemberAvatar member={lookup.member(t.assigneeId)} className="size-5" />
                 <span className={cn('min-w-0 truncate', waits.length ? 'text-subtle' : 'text-default')}>

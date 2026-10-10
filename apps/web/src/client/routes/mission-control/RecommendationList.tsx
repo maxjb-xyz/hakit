@@ -58,7 +58,7 @@ export function AiGlyph({ className }: { className?: string }) {
     <span
       aria-hidden
       className={cn(
-        'inline-block size-2 shrink-0 rotate-45 border-[1.5px] border-dashed border-ai',
+        'inline-block size-2 shrink-0 rotate-45 border-(length:--border-width-emphasis) border-dashed border-ai',
         className,
       )}
     />

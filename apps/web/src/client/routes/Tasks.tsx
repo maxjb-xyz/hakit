@@ -329,18 +329,6 @@ export function Tasks() {
         </Button>
       </div>
 
-      {b.loadError && (
-        <Banner
-          tone="warning"
-          action={
-            <Button size="sm" onClick={b.retry}>
-              Retry
-            </Button>
-          }
-        >
-          Couldn't load tasks ({b.loadError}). Showing demo data; changes won't be saved.
-        </Banner>
-      )}
       {b.saveError && (
         <Banner
           tone="danger"
@@ -356,6 +344,17 @@ export function Tasks() {
 
       {b.loading ? (
         <ListSkeleton />
+      ) : b.loadError ? (
+        <Banner
+          tone="danger"
+          action={
+            <Button size="sm" onClick={b.retry}>
+              Retry
+            </Button>
+          }
+        >
+          Couldn't load tasks ({b.loadError}).
+        </Banner>
       ) : view === 'board' ? (
         <Board
           tasks={tasks}
@@ -373,7 +372,7 @@ export function Tasks() {
         <TaskList tasks={tasks} members={members} labels={b.labels} selectedKey={selectedKey} />
       )}
 
-      {selectedKey && !b.loading && (
+      {selectedKey && !b.loading && !b.loadError && (
         <TaskInspector
           key={selected?.id ?? selectedKey}
           taskKey={selectedKey}

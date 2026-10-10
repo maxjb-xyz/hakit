@@ -229,7 +229,8 @@ export const endpoints = {
     method: 'PUT',
     path: '/tasks/:tid/assignee',
     body: ManualAssign,
-    response: Assignment,
+    /** null when the request unassigned the task. */
+    response: Assignment.nullable(),
     owner: 'PL',
   },
   explainAssignment: {

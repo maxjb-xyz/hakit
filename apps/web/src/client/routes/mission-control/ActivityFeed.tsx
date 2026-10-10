@@ -143,7 +143,7 @@ function FeedRow({ e, lookup }: { e: ActivityEvent; lookup: Lookup }) {
   const linked = task && e.linkKind !== 'none';
   const mins = Math.max(0, Math.round((lookup.now - Date.parse(e.ts)) / 60_000));
   return (
-    <li className="flex h-[34px] items-center gap-3 text-body" title={e.title}>
+    <li className="flex h-row-compact items-center gap-3 text-body" title={e.title}>
       <KindIcon kind={e.kind} />
       <span className="min-w-0 flex-1 truncate text-subtle">
         {linked && (

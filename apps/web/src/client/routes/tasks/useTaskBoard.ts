@@ -1,12 +1,11 @@
 /**
  * S10 data: board + members + activity, with optimistic create/update.
  * Live: edits go into the TanStack cache first, then to the API; a failed save is reverted.
- * Fallback (getBoard failed): fixture board in local state, edits are local only.
+ * getBoard failure surfaces as `loadError` (the screen shows an error state with retry); mock mode gets fixtures via the API.
  */
 import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ProjectBoard, Task, UpdateTask } from '@hakit/contracts';
-import * as fx from '@hakit/contracts/fixtures';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
 import type { TaskLabel } from './meta';
@@ -60,21 +59,18 @@ export function useTaskBoard(pid: string, wid: string) {
   });
 
   const live = board.isSuccess;
-  const [localTasks, setLocalTasks] = useState<Task[]>(fx.board.tasks);
   const [labels, setLabels] = useState<LabelOverrides>({});
   const [history, setHistory] = useState<Record<string, HistoryEntry[]>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const tasks = live ? board.data.tasks : localTasks;
+  const tasks = live ? board.data.tasks : [];
 
   /** Apply a change to whichever copy of the tasks is on screen. */
   const setTasks = useCallback(
     (fn: (ts: Task[]) => Task[]) => {
-      if (live)
-        qc.setQueryData<ProjectBoard>(qk('getBoard', { pid }), (b) => (b ? { ...b, tasks: fn(b.tasks) } : b));
-      else setLocalTasks(fn);
+      qc.setQueryData<ProjectBoard>(qk('getBoard', { pid }), (b) => (b ? { ...b, tasks: fn(b.tasks) } : b));
     },
-    [live, qc, pid],
+    [qc, pid],
   );
   const replace = (id: string, next: Task | ((t: Task) => Task)) =>
     setTasks((ts) => ts.map((t) => (t.id === id ? (typeof next === 'function' ? next(t) : next) : t)));
@@ -90,9 +86,10 @@ export function useTaskBoard(pid: string, wid: string) {
     setTasks((ts) => [...ts, draft]);
     setLabels((ls) => ({ ...ls, [draft.id]: input.label }));
     if (!live) return;
+    let saved: Task;
     try {
       // createTask has no status/assignee fields, so those follow as separate calls.
-      let saved = await api('createTask', {
+      saved = await api('createTask', {
         params: { pid },
         body: {
           title: input.title,
@@ -104,20 +101,31 @@ export function useTaskBoard(pid: string, wid: string) {
           acceptanceCriteria: [],
         },
       });
-      if (input.status !== saved.status)
+    } catch (e) {
+      setTasks((ts) => ts.filter((t) => t.id !== draft.id));
+      setSaveError(`Couldn't create “${input.title}”: ${message(e)}`);
+      return;
+    }
+    // The task exists on the server now: keep it on screen under its real id whatever happens next.
+    replace(draft.id, saved);
+    setLabels(({ [draft.id]: label = null, ...rest }) => ({ ...rest, [saved.id]: label }));
+    try {
+      if (input.status !== saved.status) {
         saved = await api('updateTask', { params: { tid: saved.id }, body: { status: input.status } });
+        replace(saved.id, saved);
+      }
       if (input.assigneeId) {
         await api('manualAssign', {
           params: { tid: saved.id },
           body: { userId: input.assigneeId, lock: true },
         });
-        saved = { ...saved, assigneeId: input.assigneeId };
+        const assigneeId = input.assigneeId;
+        replace(saved.id, (t) => ({ ...t, assigneeId }));
       }
-      replace(draft.id, saved);
-      setLabels(({ [draft.id]: label = null, ...rest }) => ({ ...rest, [saved.id]: label }));
     } catch (e) {
-      setTasks((ts) => ts.filter((t) => t.id !== draft.id));
-      setSaveError(`Couldn't create “${input.title}”: ${message(e)}`);
+      const created = saved;
+      replace(created.id, created);
+      setSaveError(`Created ${created.key}, but couldn't set its status/assignee: ${message(e)}`);
     }
   }
 
@@ -128,7 +136,7 @@ export function useTaskBoard(pid: string, wid: string) {
     replace(id, (t) => ({ ...t, ...patch, updatedAt: new Date().toISOString() }));
     const { assigneeId, ...fields } = patch;
     const unassign = 'assigneeId' in patch && !assigneeId;
-    if (text) note(id, unassign && live ? `${text} (not saved: the API can't unassign yet)` : text);
+    if (text) note(id, text);
     if (!live) return;
     try {
       if (Object.keys(fields).length > 0) {
@@ -144,6 +152,8 @@ export function useTaskBoard(pid: string, wid: string) {
       }
       if (assigneeId)
         await api('manualAssign', { params: { tid: id }, body: { userId: assigneeId, lock: true } });
+      else if (unassign)
+        await api('manualAssign', { params: { tid: id }, body: { userId: null, lock: false } });
     } catch (e) {
       replace(id, before);
       setSaveError(`Couldn't save ${before.key}: ${message(e)}. Change undone.`);
@@ -161,10 +171,10 @@ export function useTaskBoard(pid: string, wid: string) {
     loadError: board.isError ? message(board.error) : null,
     retry: () => void board.refetch(),
     tasks,
-    dependencies: live ? board.data.dependencies : fx.board.dependencies,
-    milestones: live ? board.data.milestones : fx.board.milestones,
-    members: members.isSuccess ? members.data : fx.members,
-    activity: live ? (activity.data?.items ?? []) : fx.activity,
+    dependencies: live ? board.data.dependencies : [],
+    milestones: live ? board.data.milestones : [],
+    members: members.data ?? [],
+    activity: activity.data?.items ?? [],
     labels,
     history,
     saveError,
