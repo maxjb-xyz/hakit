@@ -1,9 +1,11 @@
 /** Hackathons, projects, constraints, ideas, plans. Owners: PL (projects), IN (ideas/plans). */
 import { Hono } from 'hono';
 import * as fx from '@hakit/contracts/fixtures';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
   PlanDocument,
+  IdeaStreamEvent,
+  Plan,
   type Feasibility,
   type HackathonTemplate,
   type PlanStreamEvent,
@@ -13,12 +15,15 @@ import { schema } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route, sseRoute } from '../lib/route';
 import { mockOr } from '../lib/mock';
-import { conflict, HttpError, notFound, notImplemented } from '../lib/errors';
+import { conflict, HttpError, notFound } from '../lib/errors';
 import { loadBoard } from '../lib/board';
 import { broadcast } from '../lib/broadcast';
 import { planRows } from '../lib/materialize';
 import { redact } from '../lib/redact';
 import { assertProjectMember } from '../middleware/auth';
+import * as ideas from '../services/ideas';
+import { planningInput } from '../services/planning/context';
+import { generatePlanPipeline } from '../services/planning/pipeline';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
@@ -158,24 +163,122 @@ route(planning, 'putConstraints', async ({ c, params, body }) => {
   return body;
 });
 
-route(planning, 'listIdeas', ({ c }) => mockOr(c, 'T-303', () => [mockIdea()]));
-route(planning, 'submitIdea', ({ c }) =>
-  mockOr(c, 'T-303', () => ({ ...mockIdea(), source: 'user' as const })),
+route(planning, 'listIdeas', ({ c, params }) => {
+  if (c.var.mocks) return [mockIdea()];
+  c.header('Cache-Control', 'no-store');
+  return ideas.listIdeas(c.var.db(), params.pid);
+});
+route(planning, 'submitIdea', ({ c, params, body }) =>
+  c.var.mocks
+    ? { ...mockIdea(), source: 'user' as const }
+    : ideas.submitIdea(c.var.db(), params.pid, c.var.user!.id, body),
 );
 
-sseRoute(planning, 'generateIdeas', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-303');
+sseRoute(planning, 'generateIdeas', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    const emit = (event: IdeaStreamEvent) => send(IdeaStreamEvent.parse(event));
+    try {
+      await ideas.generateIdeas(
+        c.var.db(),
+        c.var.services.llm,
+        params.pid,
+        c.var.user!.id,
+        body,
+        emit,
+        new Date(),
+      );
+    } catch (error) {
+      await ideas.ideaError(emit, error);
+    }
+    return;
+  }
   await send({ type: 'stage', message: 'Reading team capability' });
+  for (let i = 0; i < body.count; i++) {
+    const idea = mockIdea();
+    await send({
+      type: 'idea',
+      idea: {
+        ...idea,
+        id: idea.id.replace(/[0-9a-f]{12}$/i, String(i + 1).padStart(12, '0')),
+        candidate: { ...idea.candidate, title: `${idea.candidate.title} ${i + 1}` },
+      },
+    });
+  }
+  await send({ type: 'done' });
+});
+sseRoute(planning, 'refineIdea', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    const emit = (event: IdeaStreamEvent) => send(IdeaStreamEvent.parse(event));
+    try {
+      await ideas.refineIdea(
+        c.var.db(),
+        c.var.services.llm,
+        params.pid,
+        params.iid,
+        c.var.user!.id,
+        body,
+        emit,
+        new Date(),
+      );
+    } catch (error) {
+      await ideas.ideaError(emit, error);
+    }
+    return;
+  }
   await send({ type: 'idea', idea: mockIdea() });
   await send({ type: 'done' });
 });
-sseRoute(planning, 'refineIdea', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-303');
-  await send({ type: 'idea', idea: mockIdea() });
-  await send({ type: 'done' });
-});
-sseRoute(planning, 'generatePlan', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-305');
+sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    await assertProjectMember(c, params.pid);
+    const emit = (event: PlanStreamEvent) => send(event);
+    try {
+      await emit({ type: 'stage', stage: 'context', message: 'Reading team capability and selected idea' });
+      const db = c.var.db();
+      const input = await planningInput(db, params.pid, body.ideaId, new Date(), body.guidance);
+      const result = await generatePlanPipeline(input, c.var.services.llm, emit);
+      await emit({ type: 'stage', stage: 'save', message: 'Saving a versioned draft plan' });
+      const saved = await db.transaction(async (tx) => {
+        await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
+        const [latest] = await tx
+          .select({ version: schema.plans.version })
+          .from(schema.plans)
+          .where(eq(schema.plans.projectId, params.pid))
+          .orderBy(desc(schema.plans.version))
+          .limit(1);
+        const [plan] = await tx
+          .insert(schema.plans)
+          .values({
+            projectId: params.pid,
+            version: (latest?.version ?? 0) + 1,
+            ...result,
+            createdBy: c.var.user!.id,
+          })
+          .returning();
+        await tx.update(schema.ideas).set({ selected: false }).where(eq(schema.ideas.projectId, params.pid));
+        await tx.update(schema.ideas).set({ selected: true }).where(eq(schema.ideas.id, body.ideaId));
+        return plan!;
+      });
+      c.executionCtx.waitUntil(
+        broadcast(c.env, params.pid, {
+          type: 'plan.progress',
+          data: { planId: saved.id, stage: 'done' },
+        }).catch(() => {}),
+      );
+      await emit({ type: 'done', planId: saved.id });
+    } catch (error) {
+      await emit({
+        type: 'error',
+        code: error instanceof HttpError ? error.code : 'PLAN_GENERATION_FAILED',
+        message:
+          error instanceof HttpError
+            ? error.message
+            : 'Plan generation failed; try again or edit a draft manually',
+        fallbackAvailable: false,
+      });
+    }
+    return;
+  }
   const events: PlanStreamEvent[] = [
     { type: 'stage', stage: 'outline', message: 'Drafting scope and architecture' },
     { type: 'outline', outline: fx.planDocument.outline },
@@ -187,7 +290,18 @@ sseRoute(planning, 'generatePlan', async ({ c, send }) => {
   for (const e of events) await send(e);
 });
 
-route(planning, 'getPlan', ({ c }) => mockOr(c, 'T-305', () => mockPlan()));
+route(planning, 'getPlan', async ({ c, params }) => {
+  if (c.var.mocks) return mockPlan();
+  await assertProjectMember(c, params.pid);
+  const [plan] = await c.var
+    .db()
+    .select()
+    .from(schema.plans)
+    .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+    .limit(1);
+  if (!plan) throw notFound('Plan');
+  return Plan.parse({ ...plan, createdAt: plan.createdAt.toISOString() });
+});
 route(planning, 'patchPlan', ({ c }) => mockOr(c, 'T-307', () => mockPlan()));
 /**
  * T-308: accept a draft plan and materialize it in one transaction. The project row is locked so concurrent accepts

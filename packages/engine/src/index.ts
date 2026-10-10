@@ -5,6 +5,7 @@ export * from './capability/infer';
 export * from './capability/team';
 export * from './capability/dep-map';
 export * from './planning/validate';
+export * from './planning/idea-fit';
 export * from './schedule/cpm';
 export * from './assign/solve';
 export * from './assign/explain';

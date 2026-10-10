@@ -1,32 +1,48 @@
-/**
- * Embedding router (docs/AI.md §2.4): HF router → AMD vLLM (optional) → Workers AI, all Qwen3-Embedding-0.6B / 1024d.
- * Owner: IN. Task: T-205. Needs circuit breaker + content-hash cache (embedding_cache table).
- */
+import { EMBED_DIM } from '@hakit/db';
+import type { Env } from '../../env';
 import type { EmbeddingProvider } from '../ai/types';
+import { EmbeddingError, hfEmbeddings, QWEN_MODEL } from './providers';
+import { cachedEmbeddings, hyperdriveEmbeddingCache, type EmbeddingCache } from './cache';
+import { embeddingRouter } from './router';
+export * from './providers';
+export * from './cache';
+export * from './router';
 
-export function hfEmbeddings(_opts: { token: string; model: string; dim: number }): EmbeddingProvider {
+const routers = new WeakMap<Env, EmbeddingProvider>();
+/** Initialize lazily: unavailable AI configuration must not break unrelated API routes. */
+export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingProvider {
+  let cached: EmbeddingProvider | undefined;
   return {
-    name: 'hf',
-    model: _opts.model,
-    dim: _opts.dim,
-    async embed() {
-      throw new Error('hfEmbeddings not implemented (T-205)');
+    get name() {
+      return cached?.name ?? 'hf';
     },
-  };
-}
-
-export function workersAiEmbeddings(ai: Ai, model: string, dim: number): EmbeddingProvider {
-  return {
-    name: 'workers_ai',
-    model,
-    dim,
-    async embed(texts) {
-      // Shape per Workers AI embedding models: { data: number[][] }. Verify for qwen3-embedding (T-205).
-      const res = (await ai.run(model as Parameters<Ai['run']>[0], { text: texts } as never)) as {
-        data?: number[][];
-      };
-      if (!res.data) throw new Error('Workers AI returned no embeddings');
-      return res.data;
+    model: env.EMBED_MODEL,
+    dim: Number(env.EMBED_DIM),
+    async embed(texts, kind) {
+      if (env.EMBED_MODEL !== QWEN_MODEL || Number(env.EMBED_DIM) !== EMBED_DIM)
+        throw new EmbeddingError(
+          'configuration',
+          'Embedding model/dimension must match the Qwen3 1024-dimensional database',
+        );
+      if (!cached) {
+        let router = routers.get(env);
+        if (!router) {
+          const dim = Number(env.EMBED_DIM);
+          // Hugging Face is the only embedding API; without it callers fall back to keyword matching.
+          if (!env.HF_TOKEN)
+            throw new EmbeddingError('configuration', 'HF_TOKEN is not set; embeddings are unavailable');
+          const providers: EmbeddingProvider[] = [
+            hfEmbeddings({ token: env.HF_TOKEN, model: env.EMBED_MODEL, dim }),
+          ];
+          router = embeddingRouter(providers);
+          routers.set(env, router);
+        }
+        cached = cachedEmbeddings(
+          router,
+          cache ?? hyperdriveEmbeddingCache(() => env.HYPERDRIVE.connectionString),
+        );
+      }
+      return cached.embed(texts, kind);
     },
   };
 }

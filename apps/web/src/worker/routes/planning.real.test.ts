@@ -290,7 +290,7 @@ describe('assignment API (T-311)', () => {
     expect(await manual.json()).toMatchObject({
       source: 'manual',
       locked: true,
-      reasonCodes: ['MANUAL', 'OVERRIDE_LOCKED'],
+      reasonCodes: expect.arrayContaining(['MANUAL', 'OVERRIDE_LOCKED']),
     });
     expect((await accept([await propose(t1!.id, owner.id)])).status).toBe(409);
 

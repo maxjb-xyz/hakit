@@ -13,7 +13,6 @@ const env = {
   APP_URL: 'http://localhost:5173',
   EMBED_DIM: '1024',
   EMBED_MODEL: 'mock',
-  WORKERS_AI_EMBED_MODEL: 'mock',
   GEMINI_MODEL_PLAN: 'mock',
   GEMINI_MODEL_FAST: 'mock',
 } as unknown as Env;

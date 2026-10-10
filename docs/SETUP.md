@@ -99,8 +99,6 @@ curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application
 |---|---|---|
 | Gemini | https://aistudio.google.com → API key. Enable billing with a spend cap (D-6). Confirm the model IDs behind `gemini-flash-latest` / Flash-Lite | `GEMINI_API_KEY` |
 | Hugging Face | Token with "Inference Providers" permission. PRO or prepaid credits needed (D-5). Check `Qwen/Qwen3-Embedding-0.6B` availability on the router | `HF_TOKEN` |
-| Workers AI | Nothing to set up; it's the embedding fallback. For local dev it needs `wrangler login` + `HAKIT_REMOTE_BINDINGS=1 pnpm dev` | – |
-| AMD (optional) | Only if an AMD challenge is confirmed. Set up the MI300X with vLLM (INTEGRATIONS §4) | `AMD_*` |
 
 ## 6. Branch protection (owner)
 

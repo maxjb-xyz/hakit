@@ -9,12 +9,15 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:planning": "vitest run src/planning/validate.test.ts --reporter=verbose",
+    "test:planning:coverage": "vitest run --coverage --coverage.include=src/planning/validate.ts --coverage.thresholds.branches=100 --coverage.thresholds.lines=100 --coverage.thresholds.functions=100 --coverage.thresholds.statements=100"
   },
   "dependencies": {
     "@hakit/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "4.1.11",
     "typescript": "~5.9.3",
     "vitest": "^4.1.11"
   }

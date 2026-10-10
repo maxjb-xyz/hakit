@@ -149,17 +149,20 @@ Also in the scaffold:
 - AC: availability windows validated (inside the event window, no overlaps); `available_hours` derived.
 
 **T-204 · Skill import job** · P0 · IN · 4h · T-005, T-201
+- Status: public-repo import route/job, deterministic inference, semantic matching, protected upserts and fixture/in-memory database tests implemented. Project progress broadcasts wired; pre-project onboarding progress requires PL/GH/FE transport coordination. Live 40-repo latency verification remains pending. See `docs/INTELLIGENCE-QA.md` for QA and implementation limits.
 - AC: implements AI.md §A.2: GraphQL repo fetch, manifest fetch, deterministic map, semantic match, evidence, aggregation.
 - AC: progress events are broadcast to the user.
 - AC: confirmed and self-added rows are never overwritten.
 - AC: unit tests on the mappers and aggregation with fixtures; an import completes in under 30s for 40 repos.
 
 **T-205 · Embedding service** · P0 · IN · 2h · T-004
-- AC: `EmbeddingProvider` implementations for the HF router, OpenAI-compatible (AMD) and Workers AI, all using the same model and dimension.
+- Status: implemented with provider, cache, fallback/breaker, batch-job and health-probe tests. Live HF Qwen3 1024-dimensional embedding and a small semantic matching example verified; live Tiger/Queue deployment verification remains pending. AMD and Workers AI providers removed (D-8). See `docs/EMBEDDING-VERIFICATION.md`.
+- AC: `EmbeddingProvider` for the HF router (Qwen3-Embedding-0.6B, 1024d); typed error so callers fall back to keyword matching. (AMD/Workers AI dropped, D-8.)
 - AC: content-hash cache, circuit breaker, Qwen3 query instruction prefix.
 - AC: test that the fallback produces 1024-dim vectors.
 
 **T-206 · Capability API** · P0 · IN · 2h · T-204
+- Status: implemented on `t-206-capability-api`, based on T-204/T-205. Real skill/evidence reads, protected self-edits/removal reports, literal/alias search with optional semantic fallback, and deterministic coverage/availability calculations tested with fixtures and isolated WASM Postgres. UI integration and deployed verification remain pending. See `docs/CAPABILITY-VERIFICATION.md`.
 - AC: member skills with evidence; skill upsert and delete (delete stores a negative report); taxonomy search.
 - AC: `/capability` computes coverage, bus factor, overlaps, availability curve and effective hours (AI.md §A.3), with an engine unit test.
 
@@ -179,9 +182,10 @@ Also in the scaffold:
 ## Phase 3 — Planning & Assignment
 
 **T-301 · LLM provider layer** · P0 · IN · 2h · T-004
+- Status: Gemini REST generation/streaming, Zod revalidation with one repair retry, cached provider router with circuit breakers/backoff and safe metadata logging implemented. 37 fake-provider tests; opt-in live Gemini generation/streaming check passed with the locally configured model/key. Full planning-schema verification remains pending. Gemini is the only LLM provider (D-8). See `docs/LLM-VERIFICATION.md`.
 - AC: `GeminiProvider.generateStructured` with `responseJsonSchema`, `thinkingLevel` and streaming.
 - AC: Zod re-validation with one repair retry.
-- AC: OpenAI-compatible provider; router with circuit breakers; call logging.
+- AC: router with circuit breakers; call logging. (OpenAI-compatible/AMD provider dropped, D-8.)
 - AC: mock provider for tests.
 
 **T-302 · Constraint selection (S7) + API** · P0 · PL+FE · 3h · T-005, T-104
@@ -189,6 +193,7 @@ Also in the scaffold:
 - AC: pinned constraints panel; fit meter (deterministic coverage of the required tech).
 
 **T-303 · Idea generation & refinement** · P0 · IN · 3h · T-301, T-206
+- Status: implemented on `t-303-idea-generation` in an isolated checkout. Pseudonymized server context, remaining availability, deterministic stack coverage, saved manual/generated/refined ideas and validated SSE events tested without live providers. 22 API/context tests and 6 engine tests; Frontend/live idea-quality verification remain pending. See `docs/IDEA-VERIFICATION.md`.
 - AC: `PlanningContext` builder with pseudonymized members.
 - AC: SSE endpoint streams 3 `IdeaCandidate`s; deterministic `team_fit` = coverage of the idea's stack skills.
 - AC: refine endpoint; ideas persisted.
@@ -198,11 +203,13 @@ Also in the scaffold:
 - AC: pick, refine and regenerate one.
 
 **T-305 · Plan generation pipeline** · P0 · IN · 4h · T-303
+- Status: Streamed outline + epic calls (concurrency 3), injected deliverables, validation/repair, editable template fallback, and versioned draft persistence implemented; see `docs/INTELLIGENCE-IMPLEMENTATION.md`.
 - AC: outline call, then per-epic task calls in parallel (concurrency 3), streamed as `PlanStreamEvent`s.
 - AC: required-deliverable tasks injected; plan versioned and stored.
 - AC: template-plan fallback when the provider is unavailable.
 
 **T-306 · Plan validators** · P0 · IN · 3h · T-004
+- Status: earlier validator implementation restored on `t-301-306-ai-providers-and-plan-validation`; duplicate epic/milestone references and invalid team effective levels additionally guarded. 40 tests and 100% validator branch coverage. Pipeline integration remains T-305. See `docs/PLAN-VALIDATION.md`.
 - AC: AI.md §B.3 checks 1–8 as pure functions returning `Feasibility` (issues with codes and the numbers involved) and automatic cut-line adjustment.
 - AC: 100% branch coverage on the cycle, capacity and coverage checks.
 
@@ -215,11 +222,13 @@ Also in the scaffold:
 - AC: `embed.batch` enqueued; board returned; DO broadcasts `board.changed`.
 
 **T-309 · Assignment solver** · P0 · IN · 4h · T-206, T-004
+- Status: Deterministic skill/embedding scoring, capacity and calendar constraints, preserved manual/locked work, greedy + bounded moves/swaps, alternatives and warnings implemented with invariant and 6×60 performance tests.
 - AC: AI.md §C.1–C.2: relevance, hard constraints, greedy plus local search, top-2 alternatives, reason codes.
 - AC: deterministic for the same input; under 200ms for 6×60.
 - AC: property tests: no capacity violation, locks respected, avoid list honoured.
 
 **T-310 · Explanations** · P0 · IN · 1.5h · T-309, T-301
+- Status: Fact-only templates, manual override score deltas, and optional background batch phrasing implemented. Model output selects vetted prose variants; arbitrary factual additions are disallowed.
 - AC: deterministic templates from reason codes.
 - AC: optional batch polish (fast model) constrained to the facts, with the deterministic fallback.
 
@@ -279,6 +288,7 @@ Also in the scaffold:
 ## Phase 5 — Mission Control & Adaptive
 
 **T-501 · Engine: critical path, velocity, health** · P0 · IN · 3h · T-004
+- Status: Resource-constrained CPM, calendar windows, task slack, measured completion velocity, forecast, and reason-coded health implemented and connected to Mission Control.
 - AC: CPM over the DAG with parallelism capped at team size; slack per task.
 - AC: rolling velocity; forecast finish (labelled as an estimate).
 - AC: health classification with a reason code; unit tests.

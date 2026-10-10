@@ -6,7 +6,9 @@ import * as fx from '@hakit/contracts/fixtures';
 import { schema, type Db } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
-import { mockOr } from '../lib/mock';
+import { solveAssignments, explainAssignment, scorePair } from '@hakit/engine';
+import { loadProjectState } from '../lib/project-state';
+import { polishExplanations } from '../services/ai/explanations';
 import { conflict, HttpError, notFound } from '../lib/errors';
 import { loadBoard, toAssignment, toTask } from '../lib/board';
 import { addDependency, allocateTaskNumbers, assignTask, memberLogin } from '../lib/board-mutations';
@@ -201,18 +203,92 @@ route(tasks, 'deleteDependency', async ({ c, params }) => {
 
 /* -------------------------------- assignment -------------------------------- */
 
-route(tasks, 'solveAssignments', ({ c }) =>
-  mockOr(c, 'T-309', () => ({
-    assignments: fx.assignments.map((a) => ({ ...a, status: 'proposed' as const })),
-    unassignedTaskIds: [],
-    warnings: [],
-    load: fx.missionControl.lanes.map((l) => ({
-      userId: l.userId,
-      assignedHours: l.assignedHours,
-      availableHours: l.availableHours,
-    })),
-  })),
-);
+route(tasks, 'solveAssignments', async ({ c, params, body }) => {
+  if (c.var.mocks)
+    return {
+      assignments: fx.assignments.map((a) => ({ ...a, status: 'proposed' as const })),
+      unassignedTaskIds: [],
+      warnings: [],
+      load: fx.missionControl.lanes.map((l) => ({
+        userId: l.userId,
+        assignedHours: l.assignedHours,
+        availableHours: l.availableHours,
+      })),
+    };
+  await assertProjectMember(c, params.pid);
+  const db = c.var.db();
+  const { assignments, solved, proposals, ctx } = await db.transaction(async (tx) => {
+    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
+    await tx
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.projectId, params.pid))
+      .orderBy(schema.tasks.id)
+      .for('update');
+    const { state, users, board, taxonomy } = await loadProjectState(tx, params.pid, new Date());
+    const solved = solveAssignments(state, body);
+    const ctx = {
+      memberName: (id: string) =>
+        users.find((u) => u.id === id)?.name ?? users.find((u) => u.id === id)?.githubLogin ?? id,
+      taskKey: (id: string) => board.tasks.find((t) => t.id === id)?.key ?? id,
+      skillName: (slug: string) => taxonomy.find((s) => s.slug === slug)?.name ?? slug,
+    };
+    const proposals = solved.assignments.filter((a) => {
+      const active = board.assignments.find((r) => r.taskId === a.taskId);
+      return !(
+        active &&
+        (body.scope === 'unassigned' || active.source === 'manual' || (body.respectLocks && active.locked))
+      );
+    });
+    if (board.tasks.length)
+      await tx
+        .update(schema.assignments)
+        .set({ status: 'rejected' })
+        .where(
+          and(
+            inArray(
+              schema.assignments.taskId,
+              board.tasks.map((t) => t.id),
+            ),
+            eq(schema.assignments.status, 'proposed'),
+          ),
+        );
+    if (!proposals.length) return { assignments: [], solved, proposals, ctx };
+    const rows = await tx
+      .insert(schema.assignments)
+      .values(
+        proposals.map((a) => ({
+          ...a,
+          status: 'proposed' as const,
+          source: 'solver' as const,
+          locked: false,
+          score: a.breakdown.total,
+          explanation: explainAssignment({ ...a, score: a.breakdown.total }, a.alternatives, ctx),
+          explanationSource: 'template',
+          createdBy: c.var.user!.id,
+        })),
+      )
+      .returning();
+    return { assignments: rows.map(toAssignment), solved, proposals, ctx };
+  });
+  if (assignments.length)
+    c.executionCtx.waitUntil(
+      (async () => {
+        const polished = await polishExplanations(proposals, ctx, c.var.services.llm);
+        for (let i = 0; i < assignments.length; i++) {
+          const text = polished[proposals.findIndex((a) => a.taskId === assignments[i]!.taskId)]!;
+          if (text.explanationSource === 'ai')
+            await db
+              .update(schema.assignments)
+              .set(text)
+              .where(
+                and(eq(schema.assignments.id, assignments[i]!.id), eq(schema.assignments.status, 'proposed')),
+              );
+        }
+      })().catch(() => {}),
+    );
+  return { ...solved, assignments };
+});
 
 /**
  * T-311: activate solver proposals. Each must be `proposed` and belong to this project. The task's current active
@@ -224,6 +300,7 @@ route(tasks, 'acceptAssignments', async ({ c, params, body }) => {
   const db = c.var.db();
   const ids = [...new Set(body.assignmentIds)];
   await db.transaction(async (tx) => {
+    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
     const proposals = await tx
       .select({ a: schema.assignments })
       .from(schema.assignments)
@@ -293,6 +370,7 @@ route(tasks, 'manualAssign', async ({ c, params, body }) => {
   }
   const login = await memberLogin(db, workspaceId, userId);
   const { task, assignment } = await db.transaction(async (tx) => {
+    await tx.select().from(schema.projects).where(eq(schema.projects.id, projectId)).for('update');
     const [t] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
     const a = await assignTask(tx, {
       taskId: params.tid,
@@ -302,16 +380,65 @@ route(tasks, 'manualAssign', async ({ c, params, body }) => {
       locked: body.lock,
       actorId: c.var.user!.id,
     });
-    return { task: toTask(t!, userId), assignment: toAssignment(a) };
+    const { state, users, board, taxonomy } = await loadProjectState(tx, projectId, new Date());
+    const scored = scorePair(state, params.tid, userId);
+    const reasonCodes = [...scored.reasonCodes, 'MANUAL', ...(body.lock ? ['OVERRIDE_LOCKED'] : [])];
+    const explanation = explainAssignment(
+      { userId: userId, reasonCodes, score: scored.breakdown.total },
+      [],
+      {
+        memberName: (id) => users.find((u) => u.id === id)?.name ?? login,
+        taskKey: (id) => board.tasks.find((t) => t.id === id)?.key ?? id,
+        skillName: (slug) => taxonomy.find((s) => s.slug === slug)?.name ?? slug,
+      },
+    );
+    const [updated] = await tx
+      .update(schema.assignments)
+      .set({ score: scored.breakdown.total, breakdown: scored.breakdown, reasonCodes, explanation })
+      .where(eq(schema.assignments.id, a.id))
+      .returning();
+    return { task: toTask(t!, userId), assignment: toAssignment(updated!) };
   });
   notify(c, projectId, { type: 'task.updated', data: { task, assignment } });
   return assignment;
 });
 
-route(tasks, 'explainAssignment', ({ c, params }) =>
-  mockOr(c, 'T-310', () => {
+route(tasks, 'explainAssignment', async ({ c, params }) => {
+  if (c.var.mocks) {
     const assignment = fx.assignments.find((a) => a.taskId === params.tid);
     if (!assignment) throw notFound('Assignment');
     return { assignment, solverPick: null };
-  }),
-);
+  }
+  const { projectId } = await assertTaskMember(c, params.tid);
+  const db = c.var.db();
+  const active = await activeAssignment(db, params.tid);
+  const [proposal] = active
+    ? []
+    : await db
+        .select()
+        .from(schema.assignments)
+        .where(and(eq(schema.assignments.taskId, params.tid), eq(schema.assignments.status, 'proposed')))
+        .orderBy(schema.assignments.createdAt)
+        .limit(1);
+  const row = active ?? proposal;
+  if (!row) throw notFound('Assignment');
+  const assignment = toAssignment(row);
+  let solverPick = null;
+  if (row.source === 'manual') {
+    const { state } = await loadProjectState(db, projectId, new Date());
+    const unlocked = {
+      ...state,
+      activeAssignments: state.activeAssignments.filter((a) => a.taskId !== params.tid),
+    };
+    const pick = solveAssignments(unlocked, { scope: 'unassigned', respectLocks: true }).assignments.find(
+      (a) => a.taskId === params.tid,
+    );
+    if (pick && pick.userId !== row.userId)
+      solverPick = {
+        userId: pick.userId,
+        score: pick.breakdown.total,
+        delta: pick.breakdown.total - scorePair(unlocked, params.tid, row.userId).breakdown.total,
+      };
+  }
+  return { assignment, solverPick };
+});

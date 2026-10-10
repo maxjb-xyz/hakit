@@ -113,23 +113,23 @@ Each checkpoint has a 10-minute all-hands sync with a go/no-go on cuts. **Deploy
 |---|---|---|---|
 | 0:00 | Problem | One sentence and the team photo | |
 | 0:20 | Team joins | Invite link; three members' imported skills with evidence; one member confirms or edits | D1 |
-| 1:00 | Constraints | Select the Hugging Face and AMD challenges, plus a deadline already filled in | D1 |
+| 1:00 | Constraints | Select the Hugging Face challenge, plus a deadline already filled in | D1 |
 | 1:20 | Plan | Ideas → pick → plan streams in; feasibility banner shows cuts with numbers | D1 |
 | 2:10 | **Same idea, different team** | Swap one member (prepared second workspace); stack and assignments change, and the explanation says why | D1 + D2 |
 | 2:50 | Assignment | Open an explanation: score breakdown, alternatives; override and lock | D2 |
 | 3:20 | Live | Teammate pushes to `hk-4-auth`; commit appears in MC in about 2s, linked as confirmed; Claude Code session flips to "awaiting input" (P1) | Live tracking |
 | 4:00 | **Adaptive** | Stalled critical task, then a recommendation to reassign to an idle teammate (82% match); accept; card animates across lanes | D3 |
-| 4:40 | Close | Sponsor tech callouts (HF Qwen3 embeddings on AMD MI300X, Tiger hypertables, Gemini structured planning); the line "It understands the team…" | |
+| 4:40 | Close | Sponsor tech callouts (HF Qwen3 embeddings, Tiger hypertables, Gemini structured planning); the line "It understands the team…" | |
 
 **Fallbacks:**
 - **Network or GitHub slow:** `scripts/demo-push.sh` pre-staged. If webhooks lag more than 10s, narrate and show the already-ingested event. The MC polling fallback is on.
 - **Gemini down or slow:** the prompt-hash cache returns the rehearsed plan instantly (seeded). Template plan as a second layer.
-- **HF or AMD down:** the embedding router fails over to Workers AI (same model). The AI status panel shows the switch, which is a good talking point.
+- **HF down:** matching falls back to keyword/alias rules; skill fit still works, only semantic fit drops. The AI status panel shows it.
 - **Total outage:** the Tiger fork demo workspace plus `?demo=1` static Mission Control, then the recorded backup video (made at H33).
 - **The stall rule needs time to trigger:** the demo kit's `stall` switch backdates `started_at` and the last activity for the chosen task.
 
 ## 9. Pre-demo checklist (T-30 min)
-- [ ] `/health/deep` green; AMD droplet up (if used); Workers AI fallback tested
+- [ ] `/health/deep` green; HF and Gemini keys valid; keyword fallback tested
 - [ ] Demo accounts signed in on two browsers plus a phone (MC mobile)
 - [ ] Demo repo clean; `hk-4-auth` branch prepared locally; push script tested
 - [ ] Claude Code session running with the Hakit plugin on the demo laptop

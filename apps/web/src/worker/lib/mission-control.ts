@@ -10,7 +10,7 @@ import {
   type ProjectBoard,
   type Recommendation,
 } from '@hakit/contracts';
-import { classifyHealth, computeSchedule, NotImplementedError, type ProjectState } from '@hakit/engine';
+import { classifyHealth, computeSchedule, type ProjectState } from '@hakit/engine';
 import { schema, type Db } from '@hakit/db';
 import { loadBoard } from './board';
 
@@ -188,6 +188,12 @@ export async function buildSnapshot(db: Db, projectId: string, now: Date): Promi
     now,
     deadlineAt,
     submissionBufferHours: SUBMISSION_BUFFER_HOURS,
+    executionStartedAt: board.tasks
+      .filter((t) => t.startedAt)
+      .reduce<Date | undefined>(
+        (first, t) => (!first || Date.parse(t.startedAt!) < first.getTime() ? new Date(t.startedAt!) : first),
+        undefined,
+      ),
     members: members.map(({ userId, p }) => ({
       userId,
       skills: [],
@@ -206,6 +212,7 @@ export async function buildSnapshot(db: Db, projectId: string, now: Date): Promi
       estimateHours: t.estimateHours,
       requiredSkills: t.requiredSkills,
       startedAt: t.startedAt,
+      completedAt: t.completedAt,
       embedding: null,
     })),
     dependencies: board.dependencies,
@@ -222,36 +229,17 @@ export async function buildSnapshot(db: Db, projectId: string, now: Date): Promi
     taxonomy: new Map(),
   };
 
-  let schedule: Pick<MissionControlSnapshot, 'health' | 'criticalPath'> & {
-    forecastFinishAt: string | null;
-    velocityHoursPerHour: number | null;
+  const computed = computeSchedule(state);
+  const schedule = {
+    health: classifyHealth(state, computed),
+    criticalPath: {
+      taskIds: computed.criticalPathTaskIds,
+      remainingHours: computed.remainingCriticalHours,
+      slackHours: computed.slackHours,
+    },
+    forecastFinishAt: computed.forecastFinishAt?.toISOString() ?? null,
+    velocityHoursPerHour: computed.velocityHoursPerHour,
   };
-  try {
-    const s = computeSchedule(state);
-    schedule = {
-      health: classifyHealth(state, s),
-      criticalPath: {
-        taskIds: s.criticalPathTaskIds,
-        remainingHours: s.remainingCriticalHours,
-        slackHours: s.slackHours,
-      },
-      forecastFinishAt: s.forecastFinishAt?.toISOString() ?? null,
-      velocityHoursPerHour: s.velocityHoursPerHour,
-    };
-  } catch (e) {
-    if (!(e instanceof NotImplementedError)) throw e;
-    // Engine pending (T-501): say so instead of inventing a forecast.
-    schedule = {
-      health: {
-        status: 'on_track',
-        reasonCode: 'SCHEDULE_PENDING',
-        reason: 'Schedule engine not available yet',
-      },
-      criticalPath: { taskIds: [], remainingHours: 0, slackHours: 0 },
-      forecastFinishAt: null,
-      velocityHoursPerHour: null,
-    };
-  }
 
   return {
     projectId,
