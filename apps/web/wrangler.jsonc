@@ -38,35 +38,4 @@
     "EMBED_DIM": "1024",
     "WORKERS_AI_EMBED_MODEL": "@cf/qwen/qwen3-embedding-0.6b",
   },
-  // Preview: `pnpm deploy:preview` → worker `hakit-preview`, backed by the `hakit-preview` Tiger fork,
-  // its own Hyperdrive config and queues, and the "Hakit Dev" GitHub App (docs/SETUP.md §4).
-  // Bindings and vars are not inherited by environments, so everything is repeated here.
-  "env": {
-    "preview": {
-      "name": "hakit-preview",
-      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "b6b5b8d17744423ebb81e50206d48a68" }],
-      "durable_objects": { "bindings": [{ "name": "PROJECT_ROOM", "class_name": "ProjectRoom" }] },
-      "queues": {
-        "producers": [{ "binding": "JOBS", "queue": "hakit-preview-jobs" }],
-        "consumers": [
-          {
-            "queue": "hakit-preview-jobs",
-            "max_batch_size": 10,
-            "max_retries": 5,
-            "dead_letter_queue": "hakit-preview-dlq",
-          },
-        ],
-      },
-      "ai": { "binding": "AI" },
-      "vars": {
-        "APP_URL": "https://hakit-preview.CHANGE-ME.workers.dev",
-        "HAKIT_MOCKS": "0",
-        "GEMINI_MODEL_PLAN": "gemini-flash-latest",
-        "GEMINI_MODEL_FAST": "gemini-flash-lite-latest",
-        "EMBED_MODEL": "Qwen/Qwen3-Embedding-0.6B",
-        "EMBED_DIM": "1024",
-        "WORKERS_AI_EMBED_MODEL": "@cf/qwen/qwen3-embedding-0.6b",
-      },
-    },
-  },
 }
