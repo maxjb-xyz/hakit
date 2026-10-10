@@ -41,6 +41,7 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-502 MC snapshot | ✅ measured progress, lanes (activity_hourly sparkline, agent sessions), blockers, recent activity, open recs | Schedule/health come from T-501 (IN); until then `SCHEDULE_PENDING` |
 | T-505 API | ✅ accept applies typed actions in one transaction (reassign, priority/cut, status, split, dependency); dismiss stores a reason | FE: RecommendationCard |
 | T-601 Agent tokens | ✅ create (shown once, SHA-256 stored), list/revoke own, `authenticateAgentToken` + `AGENT_RATE_LIMITER` | GH: call it from `/agent/events` (T-602) |
+| T-702 Security tests | ✅ authZ matrix over every endpoint (anonymous/non-member/member/owner), CSRF, webhook HMAC, token revocation, log grep + runtime capture; central route guard; log redaction | – |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 

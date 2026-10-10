@@ -64,6 +64,14 @@ export function assertOwner(c: Context<AppEnv>) {
 
 /** Project-scoped routes: 404 unless the project exists and the caller is a member of its workspace. */
 export async function assertProjectMember(c: Context<AppEnv>, projectId: string) {
+  const cached = c.var.access?.get(`project:${projectId}`);
+  if (cached) return cached;
+  const result = await loadProjectAccess(c, projectId);
+  c.set('access', (c.var.access ?? new Map()).set(`project:${projectId}`, result));
+  return result;
+}
+
+async function loadProjectAccess(c: Context<AppEnv>, projectId: string) {
   if (c.var.mocks) {
     if (projectId !== ids.project) throw notFound('Project');
     return { workspaceId: ids.workspace, role: 'owner' as Role };
@@ -93,4 +101,48 @@ export async function assertTaskMember(c: Context<AppEnv>, taskId: string) {
   if (!t) throw notFound('Task');
   const { workspaceId } = await assertProjectMember(c, t.projectId);
   return { projectId: t.projectId, workspaceId };
+}
+
+/** Resolve the project that owns a row, or 404. */
+async function projectOf(
+  c: Context<AppEnv>,
+  table: typeof schema.recommendations | typeof schema.activityEvents,
+  id: string,
+  what: string,
+) {
+  if (!Id.safeParse(id).success) throw notFound(what);
+  const [row] = await c.var
+    .db()
+    .select({ projectId: table.projectId })
+    .from(table)
+    .where(eq(table.id, id))
+    .limit(1);
+  if (!row) throw notFound(what);
+  return row.projectId;
+}
+
+/**
+ * Central authorization for resource-scoped paths, run by `route()`/`sseRoute()` BEFORE input parsing, so every
+ * handler (whichever stream owns it) is membership-checked and non-members get 404, never a 400 or a stream.
+ * `/w/:wid/*` is covered by `requireMember`. Mock mode skips (fake auth over fixtures).
+ */
+export async function authorizePath(c: Context<AppEnv>, path: string, params: Record<string, string>) {
+  if (c.var.mocks || !c.var.user) return;
+  if (params.pid) await assertProjectMember(c, params.pid);
+  if (params.tid) await assertTaskMember(c, params.tid);
+  if (params.rid)
+    await assertProjectMember(c, await projectOf(c, schema.recommendations, params.rid, 'Recommendation'));
+  if (params.eid)
+    await assertProjectMember(c, await projectOf(c, schema.activityEvents, params.eid, 'Activity'));
+  if (path.startsWith('/agent-sessions/') && params.id) {
+    if (!Id.safeParse(params.id).success) throw notFound('Session');
+    const [s] = await c.var
+      .db()
+      .select({ workspaceId: schema.agentSessions.workspaceId })
+      .from(schema.agentSessions)
+      .where(eq(schema.agentSessions.id, params.id))
+      .limit(1);
+    if (!s) throw notFound('Session');
+    await assertMember(c, s.workspaceId);
+  }
 }

@@ -2,6 +2,7 @@
  * Queue consumer (ARCHITECTURE §8). One handler per JobMessage type; handlers must be idempotent.
  * Unknown/invalid messages are acked and logged (never retried forever); thrown errors → retry → DLQ.
  */
+import { redact } from '../lib/redact';
 import { JobMessage, type JobType } from '@hakit/contracts';
 import type { Env } from '../env';
 import { getServices } from '../services';
@@ -55,7 +56,7 @@ export async function handleQueue(batch: MessageBatch<unknown>, env: Env): Promi
           msg: 'job failed',
           type: parsed.data.type,
           attempt: message.attempts,
-          error: String(err),
+          error: redact(String(err)),
         }),
       );
       message.retry({ delaySeconds: Math.min(60, 2 ** message.attempts) });
