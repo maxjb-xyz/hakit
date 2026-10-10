@@ -1075,7 +1075,7 @@ export const stallRecommendation: Recommendation = {
   dedupeKey: `stall:${ids.task(4)}`,
   headline: 'HK-4 GitHub OAuth has stalled on the critical path',
   rationale:
-    'No linked commits for 3h 10m while 3 tasks wait on it. Sam is idle with an 82% match and owns HK-9, which depends on HK-4.',
+    'No linked commits for 3h 10m while 3 tasks wait on it. Sam is blocked by it (HK-9 depends on HK-4) and has an 82% match.',
   impact: { criticalPathHoursSaved: 2, tasksUnblocked: 3 },
   actions: [{ op: 'reassign', taskId: ids.task(4), toUserId: ids.users.sam }],
   signals: [
