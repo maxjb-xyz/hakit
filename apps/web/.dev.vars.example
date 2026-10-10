@@ -7,7 +7,7 @@ APP_URL=http://localhost:5173
 SESSION_SECRET=
 TOKEN_ENC_KEY=
 
-# GitHub App "Hakit Dev" (docs/SETUP.md §3). Private key must be PKCS#8, newlines as \n.
+# GitHub App "Hakit Dev" (docs/SETUP.md §4). Private key must be PKCS#8, newlines as \n.
 GITHUB_APP_ID=
 GITHUB_APP_SLUG=
 GITHUB_CLIENT_ID=

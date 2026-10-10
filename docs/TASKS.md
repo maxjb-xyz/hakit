@@ -23,11 +23,11 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | Task | Status | Remaining |
 |---|---|---|
 | T-001 Monorepo | ✅ done | – |
-| T-002 Bindings | 🟡 config written | Create the Hyperdrive config + queues; put the real Hyperdrive id in `wrangler.jsonc` (SETUP §4) |
+| T-002 Bindings | 🟡 config written | Create the Hyperdrive config + queues; put the real Hyperdrive id in `wrangler.jsonc` (SETUP §3) |
 | T-003 DB package | 🟡 schema + migrations written | Run them on Tiger dev. `0001_init.sql` passed on plain Postgres 16; `0002_timescale.sql` is untested on TimescaleDB |
 | T-004 Contracts v1 | ✅ done | Freeze at C1 after the team reviews it |
 | T-005 Seeds | 🟡 286 skills, 1,678 dependency mappings, Knight Hacks IX template | Taxonomy embeddings (embed.batch job); verify challenges on Devpost |
-| T-006 GitHub Apps | ⬜ manual | SETUP §3 |
+| T-006 GitHub Apps | ⬜ manual | SETUP §4 |
 | T-007 CI/CD | 🟡 check job | Deploy job gated on `vars.DEPLOY_ENABLED` + Cloudflare secrets |
 | T-008 Deep health | 🟡 DO, DB, queue checks | GitHub JWT, Gemini and HF pings |
 | T-101 Tokens | ✅ done | Sync Figma variables |
@@ -79,7 +79,7 @@ Also in the scaffold:
 **T-006 · GitHub Apps registration** · P0 · GH · 1h · T-002
 - AC: two apps, "Hakit" and "Hakit Dev", with permissions and events per INTEGRATIONS §1.3.
 - AC: private key converted to PKCS#8 and stored as a secret.
-- AC: dev webhook goes through a cloudflared tunnel.
+- AC: Hakit Dev webhooks reach the preview worker; local webhook work replays signed fixtures (no tunnel).
 - AC: a test delivery reaches the Worker.
 
 **T-007 · CI/CD** · P0 · PL · 1h · T-001
