@@ -3,43 +3,52 @@
  * Use Tailwind utilities generated from @theme (bg-surface, text-muted, border-default, rounded-sm, …)
  * or the CSS variables directly. Never hard-code hex/px outside these scales (DESIGN §12).
  */
-@theme {
+@theme static {
   /* Neutrals (charcoal, dark-first) */
-  --color-canvas: #0b0c0e;
-  --color-sunken: #111215;
-  --color-surface: #16181c;
-  --color-raised: #1c1f24;
-  --color-hover: #24272d;
-  --color-border: #2e323a;
-  --color-border-strong: #3d424c;
-  --color-disabled: #5b616d;
-  --color-subtle: #8a909c; /* tuned up from #808794 for ≥4.5:1 on surface */
-  --color-muted: #a4aab5;
-  --color-default: #d3d7de;
-  --color-strong: #f3f4f6;
+  --color-canvas: #0d0d0f;
+  --color-sunken: #08080a;
+  --color-surface: #111114;
+  --color-raised: #151518;
+  --color-hover: #18181b;
+  --color-border: #1c1c1f;
+  --color-border-strong: #2a2a2e;
+  --color-disabled: #55555c;
+  --color-subtle: #85858c; /* labels, meta; ≥4.5:1 on surface */
+  --color-muted: #a2a2a8;
+  --color-default: #c4c4c9;
+  --color-strong: #ededef;
+  --color-faint: #66666d; /* meta only, ≥12px (handoff a11y rule) */
+  --color-on-light: #08080a; /* text on member avatars and level-5 cells */
+
+  /* Capability scale, levels 1–5 (handoff §tokens) */
+  --color-level-1: #1c1c1f;
+  --color-level-2: #2a2a2e;
+  --color-level-3: #3a3a40;
+  --color-level-4: #64646b;
+  --color-level-5: #a8a8ae;
 
   /* Accent (D-9: Indigo) */
-  --color-accent-400: #8b93ff;
-  --color-accent-500: #6e78ff;
-  --color-accent-600: #5560e8;
-  --color-accent-a12: rgb(110 120 255 / 0.12);
+  --color-accent-400: #8b89f0;
+  --color-accent-500: #5e5ce6;
+  --color-accent-600: #6b69ee;
+  --color-accent-a12: rgb(94 92 230 / 0.12);
 
   /* Semantic */
-  --color-success: #3fb97a;
-  --color-warning: #e5a93b;
-  --color-danger: #e5534b;
-  --color-info: #4aa8d8;
-  --color-ai: #b48cf2; /* AI-originated marker: 2px rule or glyph only, never a fill/glow */
+  --color-success: #6fae8c;
+  --color-warning: #d4a04a;
+  --color-danger: #d45f58;
+  --color-info: #8db8d8;
+  --color-ai: #8e8ac0; /* AI-originated marker: 2px rule or glyph only, never a fill/glow */
 
   /* Member identity palette (index = membership.colorIndex) */
-  --color-member-0: #6e78ff;
-  --color-member-1: #3fb97a;
-  --color-member-2: #e5a93b;
-  --color-member-3: #e5534b;
-  --color-member-4: #4aa8d8;
-  --color-member-5: #b48cf2;
-  --color-member-6: #e07bb5;
-  --color-member-7: #9bb84a;
+  --color-member-0: #9a98e8;
+  --color-member-1: #86c2a2;
+  --color-member-2: #d6b47e;
+  --color-member-3: #8db8d8;
+  --color-member-4: #d89ebc;
+  --color-member-5: #b8a6d9;
+  --color-member-6: #c9a08a;
+  --color-member-7: #a6b88a;
 
   /* Typography */
   --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
@@ -58,6 +67,9 @@
   --text-title--line-height: 26px;
   --text-display-sm: 24px;
   --text-display-sm--line-height: 32px;
+  --text-hero: 48px;
+  --text-hero--line-height: 1;
+  --text-hero--letter-spacing: -0.035em;
   --text-display-lg: 32px;
   --text-display-lg--line-height: 40px;
 
@@ -66,6 +78,7 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-hairline: 1px;
 
   /* Elevation (dark UIs: luminance + border; shadow only from e2) */
   --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45);
@@ -80,9 +93,33 @@
   --duration-deliberate: 360ms;
 
   /* Layout */
-  --spacing-sidebar: 232px;
+  --spacing-sidebar: 224px;
   --spacing-rail: 56px;
-  --spacing-inspector: 400px;
+  --spacing-inspector: 360px;
+  --spacing-topbar: 48px;
+  --spacing-row-compact: 34px;
+  --spacing-dot: 7px;
+  --spacing-meter: 3px;
+  --spacing-tick: 11px;
+  --spacing-glyph: 18px;
+  --spacing-table-min: 560px;
+
+  /* Stroke widths: border-(length:--border-width-emphasis) */
+  --border-width-emphasis: 1.5px;
+
+  /* Grid templates: grid-cols-(--grid-…) / grid-rows-(--grid-…) */
+  --grid-side-312: minmax(0, 1fr) 312px;
+  --grid-side-320: minmax(0, 1fr) 320px;
+  --grid-side-360: minmax(0, 1fr) 360px;
+  --grid-shell-mobile: 1fr 56px;
+  --grid-shell-main: 48px 1fr;
+  --grid-skill-row: minmax(96px, 150px) minmax(0, 1fr) 40px;
+  --grid-member-row: 24px minmax(0, 1fr) auto;
+  --grid-member-row-sm: 24px 200px minmax(0, 1fr) 80px;
+  --grid-lane: 24px minmax(0, 104px) minmax(0, 1fr) 68px;
+  --grid-lane-md: 24px 104px minmax(0, 1fr) 80px 28px 68px;
+  --grid-lane-legend: minmax(96px, 152px) minmax(0, 1fr);
+  --grid-up-next: 24px minmax(0, 1fr) auto 56px;
 }
 
 /* Control heights (DESIGN §4): h-control-sm/md/lg/xl */
@@ -104,6 +141,20 @@
   background-image: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 6px);
   opacity: 0.6;
 }
+/* Forecast segments: neutral hatch from the handoff, no opacity so it composes with siblings. */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(135deg, #4a4a50 0 1.5px, transparent 1.5px 4px);
+}
+/* The one allowed effect: faint top-down light on interactive surfaces. */
+@utility hover-light {
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+  &:hover {
+    background: radial-gradient(120% 120% at 50% 0%, rgb(255 255 255 / 0.045), transparent 70%), #131316;
+    border-color: var(--color-border-strong);
+  }
+}
 
 @layer base {
   :root {
@@ -116,6 +167,8 @@
     font-family: var(--font-sans);
     font-size: var(--text-body);
     line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
   }
   :focus-visible {
     outline: 2px solid var(--color-accent-500);

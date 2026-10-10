@@ -226,7 +226,8 @@ test('UI: the signed-in shell renders Mission Control', async ({ browser, baseUR
   await page.goto(`/w/${run.wid}/mc`);
   await expect(page.getByRole('heading', { name: /Mission Control/ })).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Primary' })).toBeVisible();
-  // The placeholder fetched the snapshot through the typed client and it parsed.
-  await expect(page.getByText('ok', { exact: true })).toBeVisible();
+  // The screen fetched the snapshot through the typed client, parsed it and rendered the status band.
+  await expect(page.getByText('Critical-path slack')).toBeVisible();
+  await expect(page.getByText('until submission', { exact: false })).toBeVisible();
   await context.close();
 });

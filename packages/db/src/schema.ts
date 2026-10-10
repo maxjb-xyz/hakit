@@ -450,6 +450,10 @@ export const tasks = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'`),
+    labels: text('labels')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
     status: taskStatusEnum('status').notNull().default('todo'),
     priority: priorityEnum('priority').notNull().default('should'),
     estimateHours: numeric('estimate_hours', { mode: 'number' }).notNull().default(2),

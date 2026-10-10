@@ -81,7 +81,8 @@ export type AssignmentProposal = z.infer<typeof AssignmentProposal>;
 export const AcceptAssignments = z.object({ assignmentIds: z.array(Id).min(1) });
 export type AcceptAssignments = z.infer<typeof AcceptAssignments>;
 
-export const ManualAssign = z.object({ userId: Id, lock: z.boolean().default(true) });
+/** `userId` null or absent unassigns the task (additive; the response is then null). */
+export const ManualAssign = z.object({ userId: Id.nullish(), lock: z.boolean().default(true) });
 export type ManualAssign = z.infer<typeof ManualAssign>;
 
 export const AssignmentExplanation = z.object({
