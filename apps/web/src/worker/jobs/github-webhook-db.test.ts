@@ -69,7 +69,11 @@ function setup(responses: unknown[][]) {
   const notify = vi.fn(async () => {
     trace.push('broadcast');
   });
+  const send = vi.fn(async () => {
+    trace.push('link');
+  });
   const env = {
+    JOBS: { send },
     PROJECT_ROOM: {
       idFromName: (id: string) => id,
       get: () => ({ broadcast: notify }),
@@ -80,6 +84,7 @@ function setup(responses: unknown[][]) {
     insert,
     updated,
     notify,
+    send,
     execute,
     trace,
     queries: () => conditions.map((c) => new PgDialect().sqlToQuery(c)),
@@ -89,7 +94,7 @@ const ledger = { receivedAt: new Date(receivedAt), processedAt: null };
 
 describe('GitHub database adapter (mocked database, real Drizzle predicates)', () => {
   it('uses ledger, author and project lookups, SHA locking and post-commit broadcasting', async () => {
-    const s = setup([[ledger], [{ id: user }], [{ id: project }], [], []]);
+    const s = setup([[ledger], [{ id: user }], [{ id: project }], [], [], []]);
     await processGithubWebhook(job, s.deps);
     expect(s.insert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -99,7 +104,12 @@ describe('GitHub database adapter (mocked database, real Drizzle predicates)', (
         ts: new Date('2026-10-10T14:00:00Z'),
       }),
     );
-    expect(s.trace).toEqual(['commit', 'broadcast', 'processed']);
+    expect(s.trace).toEqual(['commit', 'broadcast', 'link', 'processed']);
+    expect(s.send).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'activity.link', projectId: project }),
+    );
+    const taskLookup = s.queries()[3]!;
+    expect(taskLookup.params).toEqual([project, 12]);
     expect(s.notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'activity.created' }));
     const locks = s.execute.mock.calls.map(([query]) => new PgDialect().sqlToQuery(query));
     expect(locks.every((q) => q.sql.includes('pg_advisory_xact_lock'))).toBe(true);
@@ -112,7 +122,7 @@ describe('GitHub database adapter (mocked database, real Drizzle predicates)', (
     expect(dedupe.sql).not.toContain('"ts"');
   });
   it('skips a commit already stored by another delivery', async () => {
-    const s = setup([[ledger], [{ id: user }], [{ id: project }], [], [{ id: 'existing' }]]);
+    const s = setup([[ledger], [{ id: user }], [{ id: project }], [], [], [{ id: 'existing' }]]);
     await processGithubWebhook(job, s.deps);
     expect(s.insert).not.toHaveBeenCalled();
     expect(s.notify).not.toHaveBeenCalled();

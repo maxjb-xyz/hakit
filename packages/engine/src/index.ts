@@ -11,3 +11,4 @@ export * from './assign/solve';
 export * from './assign/explain';
 export * from './adaptive/rules';
 export * from './linking/refs';
+export * from './linking/infer';

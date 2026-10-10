@@ -5,18 +5,23 @@ import { synchronizeGithub } from '../services/github/lifecycle';
 import type { Env } from '../env';
 import { broadcast } from '../lib/broadcast';
 import { normalizeGithub, resolveAuthor, type AuthorLookup } from '../services/github/normalize';
+import { activityFromRow, referencedTaskNumbers, taskForReferences } from '../services/github/linking';
 
 type WebhookJob = Extract<JobMessage, { type: 'github.webhook' }>;
 export interface ActivityTransaction extends AuthorLookup {
   synchronize?(event: string, payload: unknown, receivedAt: string): Promise<void>;
   delivery(id: string): Promise<{ receivedAt: string; processed: boolean }>;
   projects(repoId: number): Promise<string[]>;
+  /** The first of the referenced task numbers that exists in the project (T-406 confirmed link). */
+  taskByNumber(projectId: string, numbers: number[]): Promise<string | null>;
   /** Returns the stored event, or null when the same commit came from another delivery. */
   save(event: Activity): Promise<Activity | null>;
 }
 export interface WebhookDependencies {
   transaction<T>(run: (tx: ActivityTransaction) => Promise<T>): Promise<T>;
   publish(event: Activity): Promise<void>;
+  /** Queue inferred linking (T-406) for stored events without an explicit reference. */
+  requestLink(event: Activity): Promise<void>;
   markProcessed(deliveryId: string): Promise<void>;
 }
 
@@ -49,10 +54,13 @@ export async function processGithubWebhook(input: WebhookJob, deps: WebhookDepen
     for (const [index, item] of normalized.entries()) {
       const author = await resolveAuthor(item.actor, tx);
       const projects = await tx.projects(item.activity.repoId!);
+      const references = referencedTaskNumbers(item.activity.ref, item.linkText);
       for (const projectId of projects) {
+        const taskId = await tx.taskByNumber(projectId, references);
         const activity = ActivityEvent.parse({
           ...item.activity,
           ...author,
+          ...(taskId ? { taskId, linkKind: 'confirmed', linkConfidence: null } : {}),
           projectId,
           id: await eventId(job.deliveryId, projectId, index),
         });
@@ -63,12 +71,11 @@ export async function processGithubWebhook(input: WebhookJob, deps: WebhookDepen
     return saved;
   });
   if (events === null) return;
-  for (const event of events) await deps.publish(event);
+  for (const event of events) {
+    await deps.publish(event);
+    if (event.linkKind === 'none') await deps.requestLink(event);
+  }
   await deps.markProcessed(job.deliveryId);
-}
-
-function activityFromRow(row: typeof schema.activityEvents.$inferSelect): Activity {
-  return ActivityEvent.parse({ ...row, ts: row.ts.toISOString() });
 }
 
 export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependencies {
@@ -103,6 +110,7 @@ export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependenci
                 )
                 .orderBy(schema.projectRepos.projectId)
             ).map((r) => r.id),
+          taskByNumber: (projectId, numbers) => taskForReferences(tx, projectId, numbers),
           byGithubId: async (id) =>
             (
               await tx
@@ -159,6 +167,11 @@ export function databaseWebhookDependencies(db: Db, env: Env): WebhookDependenci
       ),
     publish: async (event) => {
       await broadcast(env, event.projectId, WsPayload.parse({ type: 'activity.created', data: { event } }));
+    },
+    requestLink: async (event) => {
+      await env.JOBS.send(
+        JobMessage.parse({ type: 'activity.link', eventId: event.id, projectId: event.projectId }),
+      );
     },
     markProcessed: async (deliveryId) => {
       await db
