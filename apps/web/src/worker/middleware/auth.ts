@@ -61,3 +61,36 @@ export const requireMember: MiddlewareHandler<AppEnv> = async (c, next) => {
 export function assertOwner(c: Context<AppEnv>) {
   if (c.var.role !== 'owner') throw forbidden();
 }
+
+/** Project-scoped routes: 404 unless the project exists and the caller is a member of its workspace. */
+export async function assertProjectMember(c: Context<AppEnv>, projectId: string) {
+  if (c.var.mocks) {
+    if (projectId !== ids.project) throw notFound('Project');
+    return { workspaceId: ids.workspace, role: 'owner' as Role };
+  }
+  if (!Id.safeParse(projectId).success) throw notFound('Project');
+  const [p] = await c.var
+    .db()
+    .select({ workspaceId: schema.projects.workspaceId })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, projectId))
+    .limit(1);
+  if (!p) throw notFound('Project');
+  const role = await assertMember(c, p.workspaceId);
+  return { workspaceId: p.workspaceId, role };
+}
+
+/** Task-scoped routes: resolve the task's project, then apply assertProjectMember. */
+export async function assertTaskMember(c: Context<AppEnv>, taskId: string) {
+  if (c.var.mocks) return { projectId: ids.project, workspaceId: ids.workspace };
+  if (!Id.safeParse(taskId).success) throw notFound('Task');
+  const [t] = await c.var
+    .db()
+    .select({ projectId: schema.tasks.projectId })
+    .from(schema.tasks)
+    .where(eq(schema.tasks.id, taskId))
+    .limit(1);
+  if (!t) throw notFound('Task');
+  const { workspaceId } = await assertProjectMember(c, t.projectId);
+  return { projectId: t.projectId, workspaceId };
+}

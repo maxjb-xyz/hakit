@@ -35,6 +35,9 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-201 Sign-in & sessions | ✅ OAuth + state cookie, AES-GCM tokens, lazy locked refresh, hashed sessions | Live test against the GitHub App |
 | T-202 Workspaces & invites | ✅ templates, invites (expiry, max uses), `requireMember`/`assertOwner` | – |
 | T-203 Profile & availability | ✅ GET/PATCH, window validation, `available_hours` | – |
+| T-302 API | ✅ hackathon, projects, constraints (challenge refs checked against the workspace template) | FE: S7 screen, fit meter |
+| T-308 Plan materialization | ✅ one transaction, HK numbers from the project counter, `embed.batch`, `board.changed` | Re-planning after acceptance (409 today) |
+| T-311 API | ✅ accept (locks win), manual assign + lock; board CRUD and cycle-checked dependencies | Solver proposals (T-309, IN) must be stored as `proposed` rows |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 

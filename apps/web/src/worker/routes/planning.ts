@@ -1,11 +1,25 @@
 /** Hackathons, projects, constraints, ideas, plans. Owners: PL (projects), IN (ideas/plans). */
 import { Hono } from 'hono';
 import * as fx from '@hakit/contracts/fixtures';
-import type { Feasibility, PlanStreamEvent } from '@hakit/contracts';
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import {
+  PlanDocument,
+  type Feasibility,
+  type HackathonTemplate,
+  type PlanStreamEvent,
+  type Project,
+} from '@hakit/contracts';
+import { schema } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route, sseRoute } from '../lib/route';
 import { mockOr } from '../lib/mock';
-import { notImplemented } from '../lib/errors';
+import { conflict, HttpError, notFound, notImplemented } from '../lib/errors';
+import { loadBoard } from '../lib/board';
+import { broadcast } from '../lib/broadcast';
+import { planRows } from '../lib/materialize';
+import { assertProjectMember } from '../middleware/auth';
+
+const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
 export const planning = new Hono<AppEnv>();
 
@@ -38,13 +52,110 @@ const mockPlan = () => ({
   createdAt: fx.project.createdAt,
 });
 
-route(planning, 'getHackathon', ({ c }) => mockOr(c, 'T-302', () => fx.knightHacksIX));
-route(planning, 'listProjects', ({ c }) => mockOr(c, 'T-302', () => [fx.project]));
-route(planning, 'createProject', ({ c, body }) =>
-  mockOr(c, 'T-302', () => ({ ...fx.project, name: body.name, status: 'ideating' as const })),
-);
-route(planning, 'getProject', ({ c }) => mockOr(c, 'T-302', () => fx.project));
-route(planning, 'putConstraints', ({ c, body }) => mockOr(c, 'T-302', () => body));
+const toProject = (p: typeof schema.projects.$inferSelect): Project => ({
+  id: p.id,
+  workspaceId: p.workspaceId,
+  name: p.name,
+  pitch: p.pitch,
+  status: p.status,
+  repoId: p.repoId,
+  currentPlanId: p.currentPlanId,
+  createdAt: p.createdAt.toISOString(),
+});
+
+route(planning, 'getHackathon', async ({ c, params }) => {
+  if (c.var.mocks) return fx.knightHacksIX;
+  const db = c.var.db();
+  const [t] = await db
+    .select()
+    .from(schema.hackathonTemplates)
+    .where(eq(schema.hackathonTemplates.slug, params.slug))
+    .limit(1);
+  if (!t) throw notFound('Hackathon');
+  const challenges = await db
+    .select()
+    .from(schema.challenges)
+    .where(eq(schema.challenges.hackathonTemplateId, t.id))
+    .orderBy(asc(schema.challenges.key));
+  return {
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    startsAt: t.startsAt.toISOString(),
+    endsAt: t.endsAt.toISOString(),
+    timezone: t.timezone,
+    tracks: t.tracks as HackathonTemplate['tracks'],
+    judgingCriteria: t.judgingCriteria as HackathonTemplate['judgingCriteria'],
+    challenges: challenges.map((ch) => ({
+      id: ch.id,
+      sponsor: ch.sponsor,
+      title: ch.title,
+      description: ch.description,
+      requirements: ch.requirements,
+      requiredTech: ch.requiredTech,
+      prize: ch.prize,
+      url: ch.url,
+      verified: ch.verified,
+    })),
+    sourceUrl: t.sourceUrl,
+  };
+});
+
+route(planning, 'listProjects', async ({ c, params }) => {
+  if (c.var.mocks) return [fx.project];
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.projects)
+    .where(eq(schema.projects.workspaceId, params.wid))
+    .orderBy(asc(schema.projects.createdAt));
+  return rows.map(toProject);
+});
+
+route(planning, 'createProject', async ({ c, params, body }) => {
+  if (c.var.mocks) return { ...fx.project, name: body.name, status: 'ideating' as const };
+  const [p] = await c.var
+    .db()
+    .insert(schema.projects)
+    .values({ workspaceId: params.wid, name: body.name, pitch: body.pitch ?? null })
+    .returning();
+  return toProject(p!);
+});
+
+route(planning, 'getProject', async ({ c, params }) => {
+  if (c.var.mocks) return fx.project;
+  await assertProjectMember(c, params.pid);
+  const [p] = await c.var.db().select().from(schema.projects).where(eq(schema.projects.id, params.pid));
+  return toProject(p!);
+});
+
+/** Replace the project's pinned constraints. Challenge refs must belong to the workspace's hackathon template. */
+route(planning, 'putConstraints', async ({ c, params, body }) => {
+  if (c.var.mocks) return body;
+  const { workspaceId } = await assertProjectMember(c, params.pid);
+  const db = c.var.db();
+  const refIds = [...new Set(body.constraints.filter((k) => k.kind === 'challenge').map((k) => k.refId))];
+  if (refIds.includes(null)) throw badRequest('Challenge constraints need refId');
+  if (refIds.length) {
+    const valid = await db
+      .select({ id: schema.challenges.id })
+      .from(schema.challenges)
+      .innerJoin(
+        schema.workspaces,
+        eq(schema.workspaces.hackathonTemplateId, schema.challenges.hackathonTemplateId),
+      )
+      .where(and(eq(schema.workspaces.id, workspaceId), inArray(schema.challenges.id, refIds as string[])));
+    if (valid.length !== refIds.length) throw badRequest('Unknown challenge for this hackathon');
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.projectConstraints).where(eq(schema.projectConstraints.projectId, params.pid));
+    if (body.constraints.length)
+      await tx
+        .insert(schema.projectConstraints)
+        .values(body.constraints.map((k) => ({ projectId: params.pid, ...k })));
+  });
+  return body;
+});
 
 route(planning, 'listIdeas', ({ c }) => mockOr(c, 'T-303', () => [mockIdea()]));
 route(planning, 'submitIdea', ({ c }) =>
@@ -77,4 +188,112 @@ sseRoute(planning, 'generatePlan', async ({ c, send }) => {
 
 route(planning, 'getPlan', ({ c }) => mockOr(c, 'T-305', () => mockPlan()));
 route(planning, 'patchPlan', ({ c }) => mockOr(c, 'T-307', () => mockPlan()));
-route(planning, 'acceptPlan', ({ c }) => mockOr(c, 'T-308', () => fx.board));
+/**
+ * T-308: accept a draft plan and materialize it in one transaction. The project row is locked so concurrent accepts
+ * serialize; a project with an accepted plan must re-plan explicitly (409), so tasks are never duplicated.
+ */
+route(planning, 'acceptPlan', async ({ c, params }) => {
+  if (c.var.mocks) return fx.board;
+  await assertProjectMember(c, params.pid);
+  const db = c.var.db();
+  const taskIds = await db.transaction(async (tx) => {
+    const [project] = await tx
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, params.pid))
+      .for('update');
+    const [plan] = await tx
+      .select()
+      .from(schema.plans)
+      .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+      .limit(1);
+    if (!plan) throw notFound('Plan');
+    if (plan.status !== 'draft') throw conflict(`Plan is already ${plan.status}`);
+    const [accepted] = await tx
+      .select({ id: schema.plans.id })
+      .from(schema.plans)
+      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
+      .limit(1);
+    if (accepted) throw conflict('This project already has an accepted plan');
+
+    const doc = PlanDocument.parse(plan.payload);
+    const [ws] = await tx
+      .select({ startsAt: schema.workspaces.startsAt })
+      .from(schema.workspaces)
+      .where(eq(schema.workspaces.id, project!.workspaceId));
+    const rows = planRows(doc, project!.nextTaskNumber, ws?.startsAt ?? null);
+
+    const milestoneIds = new Map<string, string>();
+    for (const m of rows.milestones) {
+      const [r] = await tx
+        .insert(schema.milestones)
+        .values({
+          projectId: params.pid,
+          planId: plan.id,
+          title: m.title,
+          ordinal: m.ordinal,
+          targetAt: m.targetAt,
+        })
+        .returning({ id: schema.milestones.id });
+      milestoneIds.set(m.key, r!.id);
+    }
+    const inserted = rows.tasks.length
+      ? await tx
+          .insert(schema.tasks)
+          .values(
+            rows.tasks.map(({ key: _key, milestoneKey, ...t }) => ({
+              ...t,
+              projectId: params.pid,
+              milestoneId: milestoneKey ? (milestoneIds.get(milestoneKey) ?? null) : null,
+              source: 'plan' as const,
+            })),
+          )
+          .returning({ id: schema.tasks.id, number: schema.tasks.number })
+      : [];
+    const idByKey = new Map(rows.tasks.map((t) => [t.key, inserted.find((r) => r.number === t.number)!.id]));
+    if (rows.dependencies.length)
+      await tx.insert(schema.taskDependencies).values(
+        rows.dependencies.map(([t, d]) => ({
+          taskId: idByKey.get(t)!,
+          dependsOnTaskId: idByKey.get(d)!,
+          kind: 'blocks' as const,
+        })),
+      );
+    await tx.update(schema.plans).set({ status: 'accepted' }).where(eq(schema.plans.id, plan.id));
+    await tx
+      .update(schema.plans)
+      .set({ status: 'superseded' })
+      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'draft')));
+    await tx
+      .update(schema.projects)
+      .set({
+        currentPlanId: plan.id,
+        status: 'active',
+        nextTaskNumber: project!.nextTaskNumber + rows.tasks.length,
+      })
+      .where(eq(schema.projects.id, params.pid));
+    return inserted.map((r) => r.id);
+  });
+
+  // After commit: embeddings for the solver, then tell open dashboards.
+  // A failed enqueue must not fail an already-committed accept; embeddings can be backfilled.
+  try {
+    for (let i = 0; i < taskIds.length; i += 100)
+      await c.env.JOBS.send({ type: 'embed.batch', target: 'task', ids: taskIds.slice(i, i + 100) });
+  } catch (e) {
+    console.error(
+      JSON.stringify({
+        level: 'warn',
+        msg: 'embed_enqueue_failed',
+        requestId: c.var.requestId,
+        error: String(e),
+      }),
+    );
+  }
+  c.executionCtx.waitUntil(
+    broadcast(c.env, params.pid, { type: 'board.changed', data: { reason: 'plan_accepted' } }).catch(
+      () => {},
+    ),
+  );
+  return loadBoard(db, params.pid);
+});
