@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { AgentSessionStatus, MissionControlSnapshot } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { SectionHead } from './TeamLanes';
-import { firstName, type Lookup } from './shared';
+import { firstName, taskHref, type Lookup } from './shared';
 
 const STATUS: Record<Exclude<AgentSessionStatus, 'ended'>, { label: string; dot: string; text: string }> = {
   awaiting_input: { label: 'waiting for input', dot: 'bg-warning', text: 'text-warning' },
@@ -53,8 +53,8 @@ export function AgentList({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
                   {"'s agent on "}
                   {task ? (
                     <Link
-                      to={`/w/${lookup.wid}/tasks?task=${task.key}`}
-                      className="rounded-xs text-default hover:text-strong"
+                      to={taskHref(task.key)}
+                      className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
                     >
                       {task.key}
                     </Link>

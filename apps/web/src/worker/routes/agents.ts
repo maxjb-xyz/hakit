@@ -6,12 +6,15 @@ import * as fx from '@hakit/contracts/fixtures';
 import { schema } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
-import { mockOr } from '../lib/mock';
-import { notFound } from '../lib/errors';
+import { forbidden, notFound } from '../lib/errors';
 import { newAgentToken } from '../lib/agent-token';
+import { readSummary, toAgentSession } from '../lib/agent-session';
+import { broadcast } from '../lib/broadcast';
+import { assertMember } from '../middleware/auth';
 
 export const agents = new Hono<AppEnv>();
 
+const SESSION_LIST_LIMIT = 200;
 const INSTALL = '/plugin marketplace add <org>/hakit-plugins && /plugin install hakit';
 
 /** Tokens are personal: created for, listed for and revocable by their owner only. */
@@ -32,7 +35,7 @@ route(agents, 'createAgentToken', async ({ c, params, body }) => {
 });
 
 route(agents, 'listAgentTokens', async ({ c, params }) => {
-  if (c.var.mocks) return [];
+  if (c.var.mocks) return fx.agentTokens;
   const rows = await c.var
     .db()
     .select()
@@ -65,11 +68,75 @@ route(agents, 'revokeAgentToken', async ({ c, params }) => {
   return { ok: true as const };
 });
 
-route(agents, 'listAgentSessions', ({ c }) => mockOr(c, 'T-602', () => fx.agentSessions));
-route(agents, 'linkAgentSession', ({ c, body }) =>
-  mockOr(c, 'T-602', () => ({
-    ...fx.agentSessions[0]!,
-    taskId: body.taskId,
-    linkKind: body.taskId ? ('confirmed' as const) : ('none' as const),
-  })),
-);
+/** Sessions exist only for members who created a token (opt-in), so every row here is shareable with the team. */
+route(agents, 'listAgentSessions', async ({ c, params }) => {
+  if (c.var.mocks) return fx.agentSessions;
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.agentSessions)
+    .where(eq(schema.agentSessions.projectId, params.pid))
+    .orderBy(desc(schema.agentSessions.lastEventAt))
+    .limit(SESSION_LIST_LIMIT);
+  return rows.map(toAgentSession);
+});
+
+/**
+ * Confirm (or clear) a session's task link. Only the session's owner or a workspace owner may change it; the
+ * link is pinned (`linkedBy: 'user'`) so later hook events don't re-infer over it.
+ */
+route(agents, 'linkAgentSession', async ({ c, params, body }) => {
+  if (c.var.mocks)
+    return {
+      ...fx.agentSessions[0]!,
+      taskId: body.taskId,
+      linkKind: body.taskId ? ('confirmed' as const) : ('none' as const),
+    };
+  const db = c.var.db();
+  // Ownership never changes, so check it before taking the row lock (authorizePath already proved membership).
+  const [owned] = await db
+    .select({ userId: schema.agentSessions.userId, workspaceId: schema.agentSessions.workspaceId })
+    .from(schema.agentSessions)
+    .where(eq(schema.agentSessions.id, params.id))
+    .limit(1);
+  if (!owned) throw notFound('Session');
+  if (owned.userId !== c.var.user!.id && (await assertMember(c, owned.workspaceId)) !== 'owner')
+    throw forbidden();
+  const session = await db.transaction(async (tx) => {
+    const [s] = await tx
+      .select()
+      .from(schema.agentSessions)
+      .where(eq(schema.agentSessions.id, params.id))
+      .for('update');
+    if (!s) throw notFound('Session');
+    let projectId = s.projectId;
+    if (body.taskId) {
+      const [t] = await tx
+        .select({ projectId: schema.tasks.projectId })
+        .from(schema.tasks)
+        .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
+        .where(and(eq(schema.tasks.id, body.taskId), eq(schema.projects.workspaceId, s.workspaceId)))
+        .limit(1);
+      if (!t) throw notFound('Task');
+      projectId = t.projectId;
+    }
+    const [saved] = await tx
+      .update(schema.agentSessions)
+      .set({
+        taskId: body.taskId,
+        projectId,
+        linkKind: body.taskId ? 'confirmed' : 'none',
+        summary: { ...readSummary(s.summary), linkedBy: 'user' },
+      })
+      .where(eq(schema.agentSessions.id, s.id))
+      .returning();
+    return toAgentSession(saved!);
+  });
+  if (session.projectId) {
+    const projectId = session.projectId;
+    c.executionCtx.waitUntil(
+      broadcast(c.env, projectId, { type: 'agent_session.updated', data: { session } }).catch(() => {}),
+    );
+  }
+  return session;
+});

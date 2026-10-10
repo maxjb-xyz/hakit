@@ -8,7 +8,9 @@ const user = '20000000-0000-4000-8000-000000000001';
 type Job = Extract<JobMessage, { type: 'github.webhook' }>;
 const job: Job = { type: 'github.webhook', deliveryId: 'delivery-1', event: 'push', payload: pushFixture };
 
-function setup(projectIds = [project]) {
+const task = '30000000-0000-4000-8000-000000000012';
+
+function setup(projectIds = [project], tasks: Record<number, string> = {}) {
   let events: Activity[] = [];
   const processed = new Set<string>();
   const trace: string[] = [];
@@ -32,6 +34,10 @@ function setup(projectIds = [project]) {
     projects: async () => projectIds,
     byGithubId: async (id) => (id === 200 ? user : null),
     byAlias: async () => null,
+    taskByNumber: vi.fn(async (_projectId: string, numbers: number[]) => {
+      const n = numbers.find((number) => tasks[number]);
+      return n === undefined ? null : tasks[n]!;
+    }),
     save,
   };
   const deps: WebhookDependencies = {
@@ -47,12 +53,15 @@ function setup(projectIds = [project]) {
       }
     },
     publish,
+    requestLink: vi.fn(async () => {
+      trace.push('link');
+    }),
     markProcessed: vi.fn(async (id) => {
       processed.add(id);
       trace.push('processed');
     }),
   };
-  return { deps, publish, save, processed, trace, rows: () => events };
+  return { deps, tx, publish, save, processed, trace, rows: () => events };
 }
 
 describe('GitHub webhook processing', () => {
@@ -62,7 +71,7 @@ describe('GitHub webhook processing', () => {
     expect(s.rows()).toHaveLength(1);
     expect(ActivityEvent.safeParse(s.rows()[0]).success).toBe(true);
     expect(s.rows()[0]).toMatchObject({ actorUserId: user, projectId: project });
-    expect(s.trace).toEqual(['commit', 'publish', 'processed']);
+    expect(s.trace).toEqual(['commit', 'publish', 'link', 'processed']);
   });
   it('does not repeat completed deliveries', async () => {
     const s = setup();
@@ -139,5 +148,31 @@ describe('GitHub webhook processing', () => {
     await processGithubWebhook(job, s.deps);
     expect(s.rows()).toHaveLength(1);
     expect(s.processed.size).toBe(1);
+  });
+  it('confirms a link from the branch reference and skips inferred linking', async () => {
+    const s = setup([project], { 12: task });
+    await processGithubWebhook(job, s.deps);
+    expect(s.rows()[0]).toMatchObject({ taskId: task, linkKind: 'confirmed', linkConfidence: null });
+    expect(s.tx.taskByNumber).toHaveBeenCalledWith(project, [12]);
+    expect(s.deps.requestLink).not.toHaveBeenCalled();
+  });
+  it('reads references from the full commit message and PR text', async () => {
+    const s = setup([project], { 7: task });
+    const payload = {
+      ...pushFixture,
+      ref: 'refs/heads/main',
+      commits: [{ ...pushFixture.commits[0]!, message: 'Subject\n\nCloses HK-7' }],
+    };
+    await processGithubWebhook({ ...job, payload }, s.deps);
+    expect(s.rows()[0]).toMatchObject({ taskId: task, linkKind: 'confirmed', title: 'Subject' });
+    const pr = { ...prFixture, pull_request: { ...prFixture.pull_request, title: 'x', body: 'Fixes HK-7' } };
+    await processGithubWebhook({ ...job, deliveryId: 'pr', event: 'pull_request', payload: pr }, s.deps);
+    expect(s.rows()[1]).toMatchObject({ kind: 'pr_opened', taskId: task, linkKind: 'confirmed' });
+  });
+  it('queues inferred linking after broadcast when no referenced task exists', async () => {
+    const s = setup();
+    await processGithubWebhook(job, s.deps);
+    expect(s.rows()[0]).toMatchObject({ taskId: null, linkKind: 'none' });
+    expect(s.deps.requestLink).toHaveBeenCalledWith(s.rows()[0]);
   });
 });

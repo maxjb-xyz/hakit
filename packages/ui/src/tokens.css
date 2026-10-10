@@ -17,7 +17,7 @@
   --color-muted: #a2a2a8;
   --color-default: #c4c4c9;
   --color-strong: #ededef;
-  --color-faint: #66666d; /* meta only, ≥12px (handoff a11y rule) */
+  --color-faint: #808086; /* quietest text; ≥4.5:1 on canvas, surface, raised and hover (T-704) */
   --color-on-light: #08080a; /* text on member avatars and level-5 cells */
 
   /* Capability scale, levels 1–5 (handoff §tokens) */
@@ -29,8 +29,8 @@
 
   /* Accent (D-9: Indigo) */
   --color-accent-400: #8b89f0;
-  --color-accent-500: #5e5ce6;
-  --color-accent-600: #6b69ee;
+  --color-accent-500: #5a58e0; /* ≥4.5:1 under text-strong (T-704) */
+  --color-accent-600: #4c4ad0; /* hover/pressed fill: darker than 500 so text contrast rises (5.6:1) */
   --color-accent-a12: rgb(94 92 230 / 0.12);
 
   /* Semantic */
@@ -96,6 +96,8 @@
   --spacing-sidebar: 224px;
   --spacing-rail: 56px;
   --spacing-inspector: 360px;
+  --spacing-palette: 420px; /* ⌘K result list max height */
+  --spacing-palette-offset: 12vh;
   --spacing-topbar: 48px;
   --spacing-row-compact: 34px;
   --spacing-dot: 7px;
@@ -156,6 +158,47 @@
   }
 }
 
+/*
+ * Purposeful motion (DESIGN §5): (a) a new feed row slides in with a 1s accent tint fade;
+ * (b) a reassigned task slides into its new lane. Reduced motion collapses both (see base layer).
+ */
+@keyframes hk-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    background-color: var(--color-accent-a12);
+  }
+  20% {
+    opacity: 1;
+    transform: none;
+    background-color: var(--color-accent-a12);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes hk-reassign {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+    background-color: var(--color-accent-a12);
+  }
+  30% {
+    opacity: 1;
+    transform: none;
+    background-color: var(--color-accent-a12);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@utility animate-arrive {
+  animation: hk-arrive 1s var(--ease-enter) both;
+}
+@utility animate-reassign {
+  animation: hk-reassign 1.2s var(--ease-enter) both;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
@@ -179,7 +222,10 @@
     *::before,
     *::after {
       animation-duration: 1ms !important;
+      /* One run, not a 1ms infinite loop: looping skeleton pulses would otherwise flicker (T-704). */
+      animation-iteration-count: 1 !important;
       transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }

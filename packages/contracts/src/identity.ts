@@ -21,6 +21,8 @@ export const Workspace = z.object({
   startsAt: Timestamp.nullable(),
   deadlineAt: Timestamp,
   createdAt: Timestamp,
+  /** Slug of `hackathonTemplateId`, for `getHackathon` (additive; set by getWorkspace). */
+  hackathonSlug: z.string().nullable().optional(),
 });
 export type Workspace = z.infer<typeof Workspace>;
 
@@ -77,6 +79,8 @@ export const InvitePreview = z.object({
   workspaceName: z.string(),
   memberAvatars: z.array(z.object({ login: z.string(), avatarUrl: z.url().nullable() })),
   expired: z.boolean(),
+  /** The invite's workspace, so a signed-in visitor can tell they're already a member (additive). */
+  workspaceId: Id.optional(),
 });
 export type InvitePreview = z.infer<typeof InvitePreview>;
 
@@ -109,7 +113,12 @@ export const UpdateMemberProfile = MemberProfile.pick({
   learningGoals: true,
   avoid: true,
   availability: true,
-}).partial();
+})
+  .partial()
+  .extend({
+    /** Marks onboarding finished (sets onboardingCompletedAt once; additive). */
+    completeOnboarding: z.literal(true).optional(),
+  });
 export type UpdateMemberProfile = z.infer<typeof UpdateMemberProfile>;
 
 /** Row in the team list: profile + skill summary + what they're on now. */

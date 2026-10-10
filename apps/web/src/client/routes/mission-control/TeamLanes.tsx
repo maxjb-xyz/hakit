@@ -1,9 +1,10 @@
 /** S11 main-left: one row per member (task, activity bars, agents, load) + milestone timeline. */
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { AgentSessionStatus, MissionControlSnapshot } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { MemberAvatar } from '../tasks/meta';
-import { ago, duration, fmtHours, memberName, minutesSince, type Lookup } from './shared';
+import { ago, duration, fmtHours, memberName, minutesSince, taskHref, type Lookup } from './shared';
 
 type Lane = MissionControlSnapshot['lanes'][number];
 
@@ -51,9 +52,25 @@ function ActivityBars({ values }: { values: number[] }) {
   );
 }
 
+/**
+ * The task id that just moved into this lane (reassignment, DESIGN §5b), or null. The first value is the
+ * baseline; only later changes animate. The link is keyed by task id so the animation replays per move.
+ */
+function useArrived(taskId: string | null) {
+  const prev = useRef(taskId);
+  const [arrived, setArrived] = useState<string | null>(null);
+  useEffect(() => {
+    if (prev.current === taskId) return;
+    prev.current = taskId;
+    setArrived(taskId);
+  }, [taskId]);
+  return arrived;
+}
+
 function LaneRow({ lane, lookup, s }: { lane: Lane; lookup: Lookup; s: MissionControlSnapshot }) {
   const member = lookup.member(lane.userId);
   const task = lookup.task(lane.currentTaskId);
+  const arrived = useArrived(lane.currentTaskId);
   const quietFor = minutesSince(lane.lastActivityAt, lookup.now);
   const quiet = task && (quietFor === null || quietFor >= QUIET_MINUTES);
   // Quiet only matters when other work waits on it: critical path, or something depends on it.
@@ -99,8 +116,12 @@ function LaneRow({ lane, lookup, s }: { lane: Lane; lookup: Lookup; s: MissionCo
       <span className="min-w-0">
         {task ? (
           <Link
-            to={`/w/${lookup.wid}/tasks?task=${task.key}`}
-            className="block truncate rounded-xs text-body text-default hover:text-strong"
+            key={task.id}
+            to={taskHref(task.key)}
+            className={cn(
+              'block truncate rounded-xs text-body text-default hover:text-strong',
+              arrived === task.id && 'animate-reassign',
+            )}
           >
             <span className="text-faint">{task.key}</span> {task.title}
           </Link>
@@ -244,7 +265,7 @@ export function MilestoneList({
                       />
                     )}
                     <span
-                      className="absolute top-1/2 flex h-2 -translate-y-1/2 overflow-hidden rounded-full"
+                      className="absolute top-1/2 flex h-2 -translate-y-1/2 overflow-hidden rounded-full max-sm:top-3"
                       style={{ left: `${pct(from)}%`, width: `${Math.max(1, pct(to) - pct(from))}%` }}
                     >
                       <span className="h-full bg-level-5/80" style={{ width: `${m.measuredDone * 100}%` }} />
@@ -255,6 +276,8 @@ export function MilestoneList({
                         'absolute top-1/2 -translate-y-1/2 pl-2 text-label whitespace-nowrap',
                         risky ? 'text-warning' : 'text-subtle',
                         pct(to) > 80 && 'pr-2 pl-0 -translate-x-full',
+                        // Phones: no room beside the bar, so the note sits under it and truncates.
+                        'max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0.5 max-sm:left-0! max-sm:translate-0 max-sm:truncate max-sm:px-0',
                       )}
                       style={{ left: `${pct(to) > 80 ? pct(from) : pct(to)}%` }}
                     >

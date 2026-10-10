@@ -7,7 +7,6 @@ export interface Env {
   HYPERDRIVE: Hyperdrive;
   PROJECT_ROOM: DurableObjectNamespace<ProjectRoom>;
   JOBS: Queue<JobMessage>;
-  AI: Ai;
   /** Per-agent-token ingestion limit (wrangler `ratelimits`). Optional so tests and local dev run without it. */
   AGENT_RATE_LIMITER?: RateLimit;
 
@@ -18,7 +17,6 @@ export interface Env {
   GEMINI_MODEL_FAST: string;
   EMBED_MODEL: string;
   EMBED_DIM: string;
-  WORKERS_AI_EMBED_MODEL: string;
 
   SESSION_SECRET?: string;
   TOKEN_ENC_KEY?: string;
@@ -30,9 +28,6 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY?: string;
   GEMINI_API_KEY?: string;
   HF_TOKEN?: string;
-  AMD_LLM_BASE_URL?: string;
-  AMD_EMBED_BASE_URL?: string;
-  AMD_LLM_KEY?: string;
   /** E2E only (T-701): enables POST /auth/test-login. Set on preview/local runs, NEVER in production. */
   E2E_LOGIN_SECRET?: string;
 }

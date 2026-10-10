@@ -7,7 +7,7 @@ import type { MissionControlSnapshot, Task } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
 import { MemberAvatar } from '../tasks/meta';
 import { SectionHead } from './TeamLanes';
-import type { Lookup } from './shared';
+import { taskHref, type Lookup } from './shared';
 
 const PRIORITY: Record<string, number> = { must: 0, should: 1, could: 2 };
 
@@ -41,7 +41,7 @@ export function UpNext({ s, tasks, lookup }: { s: MissionControlSnapshot; tasks:
           {queue.map(({ t, waits }) => (
             <li key={t.id}>
               <Link
-                to={`/w/${lookup.wid}/tasks?task=${t.key}`}
+                to={taskHref(t.key)}
                 className="hover-light grid h-11 grid-cols-(--grid-up-next) items-center gap-3 border-b border-border px-5 text-body last:border-b-0"
               >
                 <MemberAvatar member={lookup.member(t.assigneeId)} className="size-5" />

@@ -2,27 +2,18 @@
  * Application shell (DESIGN §6). Owner: FE (T-104). Sidebar + top bar + main + optional inspector.
  * Sidebar: wordmark + workspace, countdown, primary nav, settings pinned to the bottom.
  */
-import type { ComponentType } from 'react';
-import { NavLink, Outlet, useLocation, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useLocation, useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { Countdown } from './Countdown';
+import { CommandMenu } from './CommandMenu';
+import { Inspector } from './Inspector';
+import { ProjectSwitcher, WorkspaceSwitcher } from './ProjectSwitcher';
 import { Shortcuts } from './Shortcuts';
-import { IconAgents, IconCode, IconMission, IconPlan, IconSettings, IconTasks, IconTeam } from './icons';
-
-type NavItem = { to: string; label: string; icon: ComponentType };
-
-const NAV: NavItem[] = [
-  { to: 'mc', label: 'Mission Control', icon: IconMission },
-  { to: 'plan', label: 'Plan', icon: IconPlan },
-  { to: 'tasks', label: 'Tasks', icon: IconTasks },
-  { to: 'team', label: 'Team', icon: IconTeam },
-  { to: 'code', label: 'Code', icon: IconCode },
-  { to: 'agents', label: 'Agents', icon: IconAgents },
-];
-const SETTINGS: NavItem = { to: 'settings', label: 'Settings', icon: IconSettings };
+import { NAV, SETTINGS, type NavItem } from './nav';
 
 function SidebarLink({ item }: { item: NavItem }) {
   const Icon = item.icon;
@@ -59,6 +50,20 @@ export function AppShell() {
     queryFn: () => api('getWorkspace', { params: { wid } }),
   });
   const current = [...NAV, SETTINGS].find((n) => pathname.includes(`/${n.to}`));
+  const [search] = useSearchParams();
+  // The Tasks screen renders its own full inspector for `?task=`; everywhere else the shell peeks.
+  const inspect = current?.to === 'tasks' ? null : search.get('task');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      setPaletteOpen((o) => !o);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="grid h-dvh grid-cols-[var(--spacing-sidebar)_1fr] bg-sunken max-md:grid-cols-1 max-md:grid-rows-(--grid-shell-mobile)">
@@ -97,16 +102,23 @@ export function AppShell() {
         </nav>
       </aside>
 
-      <div className="m-2 ml-0 grid min-h-0 grid-rows-(--grid-shell-main) overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
-        <header className="flex items-center gap-2 border-b border-hover px-7 max-sm:px-4">
-          <span className="text-body text-subtle">{workspace.data?.name ?? '…'}</span>
+      <div className="m-2 ml-0 grid min-h-0 grid-cols-1 grid-rows-(--grid-shell-main) overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
+        <header className="flex min-w-0 items-center gap-2 border-b border-hover px-7 max-sm:px-4">
+          {/* Phones: the workspace crumb gives way to the page; switch workspaces from ⌘K or a wider screen. */}
+          <span className="flex min-w-0 items-center max-sm:hidden">
+            <WorkspaceSwitcher wid={wid} name={workspace.data?.name} />
+          </span>
+          <ProjectSwitcher wid={wid} />
           <span aria-hidden className="text-faint">
             ›
           </span>
-          <h1 className="text-body font-medium text-strong">{current?.label ?? ''}</h1>
+          {/* Visual breadcrumb only: each page renders its own h1. */}
+          <span aria-current="page" className="truncate text-body font-medium text-strong">
+            {current?.label ?? ''}
+          </span>
           <div className="ml-auto flex items-center gap-3">
             {/* Pages portal live status (e.g. "Synced 4s ago") here. */}
-            <div id="topbar-status" className="flex items-center" />
+            <div id="topbar-status" className="flex items-center max-sm:hidden" />
             {workspace.data && (
               <span className="md:hidden">
                 <Countdown deadlineAt={workspace.data.deadlineAt} />
@@ -115,14 +127,27 @@ export function AppShell() {
             <span className="text-label text-subtle max-sm:hidden">
               <kbd className="rounded-xs border border-border-strong px-1.5 text-caption">?</kbd> shortcuts
             </span>
-            <kbd className="rounded-xs border border-border-strong px-1.5 text-caption text-subtle">⌘K</kbd>
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-haspopup="dialog"
+              aria-keyshortcuts="Meta+K Control+K"
+              className="flex items-center gap-1.5 rounded-xs text-label text-subtle hover:text-strong"
+            >
+              <span className="max-sm:sr-only">Search</span>
+              <kbd className="rounded-xs border border-border-strong px-1.5 text-caption">⌘K</kbd>
+            </button>
           </div>
         </header>
 
-        <main className="min-h-0 overflow-auto">
-          <Outlet />
-        </main>
+        <div className="flex min-h-0">
+          <main className="min-h-0 min-w-0 flex-1 overflow-auto">
+            <Outlet />
+          </main>
+          {inspect && <Inspector key={inspect} taskKey={inspect} />}
+        </div>
         <Shortcuts />
+        <CommandMenu open={paletteOpen} onOpenChange={setPaletteOpen} />
       </div>
 
       <nav

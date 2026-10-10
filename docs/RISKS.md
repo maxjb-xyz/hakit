@@ -16,9 +16,9 @@ Status: **Planning draft v1.** Likelihood (L) and impact (I) are rated H/M/L.
 | R-7 | Tiger free-plan auto-pause or 750 MiB cap | L | M | Our data is tiny; ping via cron; verify pause behavior | Upgrade to paid; keep a fork |
 | R-8 | Gemini free-tier rate limits (429) during plan fan-out or the demo | H | H | Paid key with a spend cap (D-6); concurrency 3; backoff; prompt-hash cache | Template plans; cached demo plan |
 | R-9 | LLM output invalid or unrealistic (bad estimates, cycles, unknown skills) | M | H | Zod re-validation + repair retry; deterministic validators (DAG, capacity, coverage); per-epic generation keeps JSON small | Human edit; template plan |
-| R-10 | Embedding provider availability (HF router provider for Qwen3, AMD droplet) | M | M | Same model on HF, AMD and Workers AI; circuit breaker; content-hash cache | Keyword/alias matching (skill_fit still works without embeddings; only semantic_fit drops) |
-| R-11 | HF free account has no inference credits | H | M | HF PRO or prepaid credits (D-5) | Workers AI serves the same model (sponsor story weakens) |
-| R-12 | AMD credits not approved in time | M | L | Apply immediately (D-8); AMD is optional | Skip the AMD path; mention it as roadmap |
+| R-10 | Embedding provider availability (HF router provider for Qwen3) | M | M | Circuit breaker; content-hash cache | Keyword/alias matching (skill_fit still works without embeddings; only semantic_fit drops) |
+| R-11 | HF free account has no inference credits | H | M | HF PRO or prepaid credits (D-5) | Keyword/alias matching |
+| R-12 | ~~AMD credits not approved in time~~ | – | – | Closed: AMD dropped (D-8) | – |
 | R-13 | Skill inference feels wrong or offensive ("you're a 2/5 at Python") | M | M | Show evidence, not judgments; confidence labels; member edits are final; levels hidden from teammates unless confirmed (D-11) | Member can hide any skill |
 | R-14 | Workers CPU limits (free plan 10ms) on JSON-heavy routes or crons | M | M | Workers Paid (D-2) | – |
 | R-15 | Real-time WS drops on venue Wi-Fi | M | M | Replay buffer by sequence number; polling fallback after 15s | Phone hotspot for the demo |
@@ -50,10 +50,10 @@ Status: **Planning draft v1.** Likelihood (L) and impact (I) are rated H/M/L.
 | D-2 | Cloudflare Workers Paid ($5/mo) | Free vs Paid | **Paid** |
 | D-3 | Tiger Cloud plan | Free vs paid | **Free**, upgrade if pause or limits bite |
 | D-4 | Repo creation approach | Guided URL / App Administration:write / separate OAuth app | **Guided URL** for MVP; API only if verified and opt-in |
-| D-5 | Hugging Face billing | HF PRO ($9/mo) or prepaid credits / Workers AI only | **HF PRO or credits** (needed for the sponsor story) |
+| D-5 | Hugging Face billing | HF PRO ($9/mo) or prepaid credits | **HF PRO or credits** (needed for the sponsor story) |
 | D-6 | Gemini billing | Free tier vs paid key with cap; Flash vs Pro for planning | **Paid key with a $20 cap, Flash for everything**; Pro optional for the outline only |
-| D-7 | Embedding model | Qwen3-Embedding-0.6B (1024d) vs bge-small-en-v1.5 (384d) | **Qwen3-Embedding-0.6B** (same model on HF, AMD and Workers AI) |
-| D-8 | Pursue the AMD track | Apply for credits now and run vLLM on MI300X vs skip | **Apply now**; implement only if approved by ~H8 |
+| D-7 | Embedding model | Qwen3-Embedding-0.6B (1024d) vs bge-small-en-v1.5 (384d) | **Qwen3-Embedding-0.6B** on HF |
+| D-8 | AI providers | Gemini + HF, optionally AMD vLLM and Workers AI fallbacks vs Gemini + HF only | **Gemini + HF only.** No AMD, no Workers AI; degrade to templates and keyword matching |
 | D-9 | Brand: logo concept, accent colour, display font | DESIGN §1–3 | Monogram + Indigo + Inter/Inter Tight |
 | D-10 | Codex hook support (Codex is a sponsor) | P2 vs P1 stretch for the demo | **P1 stretch** after the Claude Code plugin |
 | D-11 | Skill-level visibility to teammates | Everyone sees levels vs only confirmed vs only categories | **Teammates see confirmed skills and levels; inferred-only skills are visible only to the member** |

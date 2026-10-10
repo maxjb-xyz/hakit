@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import type { AppEnv } from '../lib/context';
 import { githubAppJwt } from '../lib/github-app-jwt';
+import { hfEmbeddings } from '../services/embeddings';
 
 const TIMEOUT_MS = 5000;
 
@@ -75,18 +76,13 @@ health.get('/health/deep', async (c) => {
     });
     await run('hf_embed', async () => {
       if (!env.HF_TOKEN) throw new Error('HF_TOKEN not set');
-      const res = await probe(
-        `https://router.huggingface.co/hf-inference/models/${env.EMBED_MODEL}/pipeline/feature-extraction`,
-        {
-          method: 'POST',
-          headers: { authorization: `Bearer ${env.HF_TOKEN}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ inputs: ['ping'] }),
-        },
-      );
-      const vec = ((await res.json()) as number[][])[0];
-      if (vec?.length !== Number(env.EMBED_DIM))
-        throw new Error(`dim ${vec?.length} != EMBED_DIM ${env.EMBED_DIM}`);
-      return `dim ${vec.length}`;
+      const [vec] = await hfEmbeddings({
+        token: env.HF_TOKEN,
+        model: env.EMBED_MODEL,
+        dim: Number(env.EMBED_DIM),
+        timeoutMs: TIMEOUT_MS,
+      }).embed(['Health check'], 'document');
+      return `dim ${vec!.length}`;
     });
   }
   const ok = Object.values(checks).every((x) => x.ok);

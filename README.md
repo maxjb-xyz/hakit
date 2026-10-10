@@ -19,8 +19,10 @@ Start with [`CLAUDE.md`](./CLAUDE.md) (conventions and ownership) and [`docs/SET
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Cloudflare architecture, data model, API, real-time, jobs, security     |
 | [DESIGN](docs/DESIGN.md)             | Brand, tokens, components, screen specs, accessibility                  |
 | [AI](docs/AI.md)                     | Capability, planning, assignment and adaptive engines; model strategy   |
-| [INTEGRATIONS](docs/INTEGRATIONS.md) | GitHub, Hugging Face, Gemini, TigerData, AMD, agents, Figma, ElevenLabs |
+| [INTEGRATIONS](docs/INTEGRATIONS.md) | GitHub, Hugging Face, Gemini, TigerData, agents, Figma, ElevenLabs |
 | [PHASES](docs/PHASES.md)             | Phased plan and post-hackathon roadmap                                  |
 | [TASKS](docs/TASKS.md)               | Executable tasks with acceptance criteria                               |
 | [HACKATHON](docs/HACKATHON.md)       | 36-hour schedule, checkpoints, demo script, fallbacks                   |
 | [RISKS](docs/RISKS.md)               | Risks, mitigations, decisions awaiting approval                         |
+| [DEMO](docs/DEMO.md)                 | Demo click-path, real-mode seed/swap/stall, fallbacks                   |
+| [SUBMISSION](docs/SUBMISSION.md)     | Devpost write-up, built-with, capture checklist                         |

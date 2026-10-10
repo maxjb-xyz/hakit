@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import type { AiProviderStatus, AiTaskName } from '@hakit/contracts';
 
-/** Provider-agnostic LLM interface (docs/AI.md intro). Implementations: gemini, openai-compat (AMD), mock. */
+/** Provider-agnostic LLM interface (docs/AI.md intro). Implementations: gemini, mock. */
 export interface StructuredRequest<T extends z.ZodType> {
   task: AiTaskName;
   system: string;
@@ -12,11 +12,20 @@ export interface StructuredRequest<T extends z.ZodType> {
   temperature?: number;
 }
 
+/** Circuit-breaker view of one routed provider, as seen by this isolate. */
+export interface ProviderHealth {
+  name: AiProviderStatus['provider'];
+  healthy: boolean;
+  lastErrorAt: string | null;
+}
+
 export interface LlmProvider {
   readonly name: AiProviderStatus['provider'];
   generateStructured<T extends z.ZodType>(req: StructuredRequest<T>): Promise<z.output<T>>;
   /** Streams partial JSON text chunks; caller parses the final result with the schema. */
   streamStructured?<T extends z.ZodType>(req: StructuredRequest<T>): AsyncIterable<string>;
+  /** Routers only: breaker state per provider (GET /ai/status). */
+  health?(): ProviderHealth[];
 }
 
 export interface EmbeddingProvider {
@@ -24,4 +33,6 @@ export interface EmbeddingProvider {
   readonly model: string;
   readonly dim: number;
   embed(texts: string[], kind: 'query' | 'document'): Promise<number[][]>;
+  /** Routers only: breaker state per provider (GET /ai/status). */
+  health?(): ProviderHealth[];
 }

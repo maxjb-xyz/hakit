@@ -2,7 +2,7 @@
  * Small building blocks shared by the Plan, Team, Code and Agents screens:
  * a page header, and the loading / error / empty states every view needs (DESIGN §9).
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import type { LinkKind, Task } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
@@ -54,6 +54,40 @@ export function ErrorBox(props: { what: string; error: Error; onRetry: () => voi
       <Button size="sm" className="ml-auto" onClick={props.onRetry}>
         Retry
       </Button>
+    </div>
+  );
+}
+
+/**
+ * Stand-in for a project screen until `useProject` resolves a project: loading, error with retry, or an
+ * empty state pointing at the Plan flow (where a team creates its project).
+ */
+export function ProjectGate(props: {
+  query: { isPending: boolean; isError: boolean; error: Error | null; refetch: () => unknown };
+  title: string;
+}) {
+  const { wid = '' } = useParams();
+  const { query } = props;
+  return (
+    <div className="space-y-6 p-7 max-sm:p-4">
+      <PageHeader title={props.title} />
+      {query.isError && query.error ? (
+        <ErrorBox what="projects" error={query.error} onRetry={() => void query.refetch()} />
+      ) : query.isPending ? (
+        <LoadingBlocks label="Loading project" rows={3} />
+      ) : (
+        <EmptyBox
+          message="This workspace has no project yet. Plan one to get a board, a team view and live activity."
+          action={
+            <Link
+              to={`/w/${wid}/plan`}
+              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-600"
+            >
+              Plan a project
+            </Link>
+          }
+        />
+      )}
     </div>
   );
 }
@@ -127,5 +161,37 @@ export function Pill(props: {
     >
       {props.children}
     </span>
+  );
+}
+
+/** A read-only value (link, token, command) with a copy button and a fallback when the clipboard is blocked. */
+export function CopyField(props: { label: string; value: string }) {
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
+  return (
+    <div className="space-y-1">
+      <p className="text-label text-muted">{props.label}</p>
+      <div className="flex min-w-0 items-center gap-2">
+        <code className="min-w-0 flex-1 rounded-sm border border-border bg-sunken px-3 py-2 font-mono text-label break-all text-default">
+          {props.value}
+        </code>
+        <Button
+          size="sm"
+          aria-label={`Copy ${props.label.toLowerCase()}`}
+          onClick={() =>
+            navigator.clipboard.writeText(props.value).then(
+              () => setCopied('done'),
+              () => setCopied('failed'),
+            )
+          }
+        >
+          {copied === 'done' ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+      {copied === 'failed' && (
+        <p role="alert" className="text-label text-warning">
+          Couldn't copy automatically. Select the text and copy it.
+        </p>
+      )}
+    </div>
   );
 }

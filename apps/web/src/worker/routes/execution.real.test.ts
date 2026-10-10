@@ -113,9 +113,12 @@ describe('Mission Control snapshot (T-502)', () => {
     expect(res.status).toBe(200);
     const snap = (await res.json()) as MissionControlSnapshot;
     expect(endpoints.missionControl.response.safeParse(snap).success).toBe(true);
-    expect(snap.progress).toMatchObject({ tasksDone: 1, tasksTotal: 3, forecastFinishAt: null });
+    expect(snap.progress).toMatchObject({ tasksDone: 1, tasksTotal: 3 });
     expect(snap.progress.measuredDone).toBeCloseTo(1 / 3);
-    expect(snap.health.reasonCode).toBe('SCHEDULE_PENDING');
+    expect(snap.progress.forecastFinishAt).not.toBeNull();
+    expect(snap.progress.velocityHoursPerHour).toBeGreaterThan(0);
+    expect(snap.criticalPath.taskIds.length).toBeGreaterThan(0);
+    expect(snap.health.reasonCode).toBe('CRITICAL_PATH_BLOCKED');
     const lane = snap.lanes.find((l) => l.userId === mate.id)!;
     expect(lane.sparkline).toHaveLength(24);
     expect(lane.sparkline.reduce((a, b) => a + b, 0)).toBe(2); // the 7h-old commit is outside the window

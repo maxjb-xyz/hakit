@@ -13,7 +13,6 @@ const env = {
   APP_URL: 'http://localhost:5173',
   EMBED_DIM: '1024',
   EMBED_MODEL: 'mock',
-  WORKERS_AI_EMBED_MODEL: 'mock',
   GEMINI_MODEL_PLAN: 'mock',
   GEMINI_MODEL_FAST: 'mock',
 } as unknown as Env;
@@ -93,6 +92,36 @@ describe('mock-mode API satisfies contracts', () => {
     const text = await res.text();
     expect(text).toContain('event: outline');
     expect(text).toContain('event: done');
+  });
+
+  it('lists plan versions newest first, with a draft the review screen can edit', async () => {
+    const list = endpoints.listPlans.response.parse(
+      await (await call('GET', buildPath(endpoints.listPlans.path, params))).json(),
+    );
+    expect(list.map((p) => [p.version, p.status])).toEqual([
+      [2, 'draft'],
+      [1, 'accepted'],
+    ]);
+    const draft = endpoints.getPlan.response.parse(
+      await (await call('GET', buildPath(endpoints.getPlan.path, { ...params, planId: list[0]!.id }))).json(),
+    );
+    expect(draft.status).toBe('draft');
+    expect(draft.feasibility.cutTaskKeys.length).toBe(list[0]!.cutTaskCount);
+  });
+
+  it('filters activity by source', async () => {
+    const page = async (q: string) =>
+      endpoints.listActivity.response.parse(
+        await (await call('GET', buildPath(endpoints.listActivity.path, params) + q)).json(),
+      ).items;
+    const all = await page('');
+    const agent = await page('?source=agent');
+    expect(agent.length).toBeGreaterThan(0);
+    expect(agent.every((e) => e.source === 'agent')).toBe(true);
+    expect((await page('?source=github')).length + agent.length).toBe(all.length);
+    expect((await call('GET', buildPath(endpoints.listActivity.path, params) + '?source=x')).status).toBe(
+      400,
+    );
   });
 
   it('rejects invalid bodies with 400', async () => {

@@ -16,9 +16,9 @@ Status: **Planning draft v1.** Tasks are sized for one developer or one coding a
 - UI tasks meet the DESIGN §12 checklist
 - deployed to preview
 
-## Scaffold status (2026-10-10)
+## Scaffold status (2026-10-10, updated on `p3-demo`)
 
-The scaffold commit delivered the following. Remaining work for a partial task is listed under it.
+What has landed so far, verified against the code on this branch. Remaining work for a partial task is listed beside it. Every endpoint in the registry now has a real handler (no `mockOr` placeholders remain), so real mode no longer returns 501.
 
 | Task | Status | Remaining |
 |---|---|---|
@@ -31,7 +31,7 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-007 CI/CD | 🟡 check, approval-gated migrate, deploy (no preview env, so no PR previews) | Add required reviewers + `DATABASE_URL` secret to the `migrations` environment |
 | T-008 Deep health | 🟡 DO, DB, queue, GitHub App JWT, Gemini, HF embed checks | Run against prod; record ARCHITECTURE §13 results in RISKS §4 |
 | T-101 Tokens | ✅ done | Sync Figma variables |
-| T-104 App shell | 🟡 functional skeleton + routes + placeholders | Real design, inspector, ⌘K |
+| T-104 App shell | ✅ routes, nav, ⌘K palette (screens, `HK-n` tasks, people, actions), shell inspector with assignment explanation, `?` shortcut sheet | Screens still address the fixture workspace/project ids (`@hakit/contracts/fixtures` `ids`); add project selection |
 | T-201 Sign-in & sessions | ✅ OAuth + state cookie, AES-GCM tokens, lazy locked refresh, hashed sessions | Live test against the GitHub App |
 | T-202 Workspaces & invites | ✅ templates, invites (expiry, max uses), `requireMember`/`assertOwner` | – |
 | T-203 Profile & availability | ✅ GET/PATCH, window validation, `available_hours` | – |
@@ -42,9 +42,34 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-505 API | ✅ accept applies typed actions in one transaction (reassign, priority/cut, status, split, dependency); dismiss stores a reason | FE: RecommendationCard |
 | T-601 Agent tokens | ✅ create (shown once, SHA-256 stored), list/revoke own, `authenticateAgentToken` + `AGENT_RATE_LIMITER` | GH: call it from `/agent/events` (T-602) |
 | T-702 Security tests | ✅ authZ matrix over every endpoint (anonymous/non-member/member/owner), CSRF, webhook HMAC, token revocation, log grep + runtime capture; central route guard; log redaction | – |
-| T-701 E2E happy path | 🟡 Playwright spec + `POST /auth/test-login` (secret-gated, off in mock mode and on prod); mock mode runs in CI | Run real mode against a preview (`E2E_BASE_URL`, `E2E_LOGIN_SECRET`, `E2E_WEBHOOK_SECRET`, `E2E_REPO_ID`). Plan (T-305), solver (T-309) and recommendations (T-504) steps fall back or skip with a `pending` note until those merge |
-| T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
+| T-701 E2E happy path | 🟡 Playwright spec + `POST /auth/test-login` (secret-gated, off in mock mode and on prod); mock mode runs in CI | Run real mode against a preview (`E2E_BASE_URL`, `E2E_LOGIN_SECRET`, `E2E_WEBHOOK_SECRET`, `E2E_REPO_ID`). T-305, T-309 and T-504 have merged, so the `pending` fallbacks should no longer trigger; confirm on the first real run |
+| T-204 Skill import job | ✅ `skills.import` job (GitHub languages, manifests, topics → evidence, inferred levels), `importSkills` | Live run against real GitHub accounts |
+| T-205 Embedding service | ✅ HF Qwen3 provider, router with breaker, cache, keyword fallback, `embed.batch` job | Live check (`check:embeddings`) with a real `HF_TOKEN` |
+| T-206 Capability API | ✅ `teamCapability`, `memberSkills`, `upsertSkill`/`removeSkill`, `searchSkills` | – |
+| T-301 LLM providers | ✅ Gemini structured + streaming, router with retries and circuit breaker, mock provider, `aiStatus` | Live check (`check:gemini`) with a real key |
+| T-303 Ideas | ✅ `generateIdeas`/`refineIdea` (SSE), `submitIdea`, `listIdeas`; grounded schema (allowed slugs, challenges, required/excluded tech), engine team fit | – |
+| T-305 Plan pipeline | ✅ outline → per-epic tasks (≤ 3 in flight) → validate → one repair round; deliverable injection; template fallback | Prompt-hash cache (AI.md §B.4) not implemented |
+| T-306 Plan validators | ✅ `validatePlan`: DAG, skills, sizes, capacity cut line, schedule, challenges, deliverables | – |
+| T-307 Plan review | ✅ `patchPlan` (re-validated draft versions) + S8 review UI | – |
+| T-309 Solver | ✅ `solveAssignments` stores `proposed` rows; locks respected | – |
+| T-310 Explanations | ✅ deterministic templates + optional Gemini polish; `explainAssignment` | – |
+| T-404 ProjectRoom + WS client | ✅ DO (hibernation, replay, presence), membership check on upgrade, `useProjectSocket` with polling fallback | – |
+| T-405 Backfill | ✅ `github.backfill` job on connect | Live run against a real installation |
+| T-406 Activity linking | ✅ confirmed `hk-`/`HK-n` refs, inferred embedding links, `linkActivity` (manual), `mapAuthor` | – |
+| T-407 Code UI (S12) | ✅ real activity, repos, link confirm, author mapping, guided `createRepo` | – |
+| T-501 Schedule & health | ✅ `computeSchedule` (CPM, velocity, health) feeds the MC snapshot | – |
+| T-503 MC UI (S11) | ✅ live lanes, status band, up next, activity feed, agents, recommendations; `?demo=1` fixture fallback | – |
+| T-504 Adaptive rules | ✅ rules v1, `recs.evaluate` job (cron every 2 min + board changes), dedupe | – |
+| T-505 Recommendations | ✅ API + UI accept/dismiss | – |
+| T-602 Agent ingestion | ✅ `/agent/events` (token auth, rate limit, minimization), `agent.event` session state machine, task linking, timeouts | – |
+| Screens S1–S4, S12–S14 | ✅ Login, Join (invite landing), S2 create-workspace (`/new`, Knight Hacks template or custom deadline) and invite panel (Team, Settings), Onboarding with skill import, member profile, Code, Agents, Settings (repos, AI status, agent tokens) on real data | Invite QR code (needs a dependency) and live join presence; no list-invites endpoint, so a link shows only in the session that made it |
+| T-704 Responsive & a11y | ✅ `e2e/a11y.spec.ts`: axe (WCAG 2.1 A/AA) clean, no horizontal scroll, one main + one h1 on every route at 375/768/1440, visible focus; reduced motion stops looping animations. `SCREENSHOTS=1` writes docs/screenshots | Screen-reader pass by hand (VoiceOver/NVDA) |
+| T-703 Planning evals | ✅ golden team × idea harness (`services/ai/evals`): schema, stream, DAG, grounding, capacity, schedule, deliverables, challenges, coverage, privacy; offline in `pnpm test`, live `eval:planning` (needs `GEMINI_API_KEY`) | Run live and record pass rates per prompt version; ideas are golden inputs (the live run doesn't score `ideas.generate` yet) |
+| T-705 Demo kit | 🟡 docs/DEMO.md; `demo seed/swap/stall/reset` for a Tiger fork; `scripts/demo-push.sh` | Create the fork; record the backup video; dry-run timings |
+| T-706 Submission | 🟡 docs/SUBMISSION.md (Devpost text, built-with, sponsor paragraphs, capture checklist) | Screenshots, video, architecture PNG, Figma link |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
+
+**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. On the product side: project selection in place of the fixture ids, and the plan prompt-hash cache.
 
 Also in the scaffold:
 - **Mock mode** (`HAKIT_MOCKS=1`): every endpoint serves fixtures.
@@ -149,17 +174,20 @@ Also in the scaffold:
 - AC: availability windows validated (inside the event window, no overlaps); `available_hours` derived.
 
 **T-204 · Skill import job** · P0 · IN · 4h · T-005, T-201
+- Status: public-repo import route/job, deterministic inference, semantic matching, protected upserts and fixture/in-memory database tests implemented. Project progress broadcasts wired; pre-project onboarding progress requires PL/GH/FE transport coordination. Live 40-repo latency verification remains pending. See `docs/INTELLIGENCE-QA.md` for QA and implementation limits.
 - AC: implements AI.md §A.2: GraphQL repo fetch, manifest fetch, deterministic map, semantic match, evidence, aggregation.
 - AC: progress events are broadcast to the user.
 - AC: confirmed and self-added rows are never overwritten.
 - AC: unit tests on the mappers and aggregation with fixtures; an import completes in under 30s for 40 repos.
 
 **T-205 · Embedding service** · P0 · IN · 2h · T-004
-- AC: `EmbeddingProvider` implementations for the HF router, OpenAI-compatible (AMD) and Workers AI, all using the same model and dimension.
+- Status: implemented with provider, cache, fallback/breaker, batch-job and health-probe tests. Live HF Qwen3 1024-dimensional embedding and a small semantic matching example verified; live Tiger/Queue deployment verification remains pending. AMD and Workers AI providers removed (D-8). See `docs/EMBEDDING-VERIFICATION.md`.
+- AC: `EmbeddingProvider` for the HF router (Qwen3-Embedding-0.6B, 1024d); typed error so callers fall back to keyword matching. (AMD/Workers AI dropped, D-8.)
 - AC: content-hash cache, circuit breaker, Qwen3 query instruction prefix.
 - AC: test that the fallback produces 1024-dim vectors.
 
 **T-206 · Capability API** · P0 · IN · 2h · T-204
+- Status: implemented on `t-206-capability-api`, based on T-204/T-205. Real skill/evidence reads, protected self-edits/removal reports, literal/alias search with optional semantic fallback, and deterministic coverage/availability calculations tested with fixtures and isolated WASM Postgres. UI integration and deployed verification remain pending. See `docs/CAPABILITY-VERIFICATION.md`.
 - AC: member skills with evidence; skill upsert and delete (delete stores a negative report); taxonomy search.
 - AC: `/capability` computes coverage, bus factor, overlaps, availability curve and effective hours (AI.md §A.3), with an engine unit test.
 
@@ -179,9 +207,10 @@ Also in the scaffold:
 ## Phase 3 — Planning & Assignment
 
 **T-301 · LLM provider layer** · P0 · IN · 2h · T-004
+- Status: Gemini REST generation/streaming, Zod revalidation with one repair retry, cached provider router with circuit breakers/backoff and safe metadata logging implemented. 37 fake-provider tests; opt-in live Gemini generation/streaming check passed with the locally configured model/key. Full planning-schema verification remains pending. Gemini is the only LLM provider (D-8). See `docs/LLM-VERIFICATION.md`.
 - AC: `GeminiProvider.generateStructured` with `responseJsonSchema`, `thinkingLevel` and streaming.
 - AC: Zod re-validation with one repair retry.
-- AC: OpenAI-compatible provider; router with circuit breakers; call logging.
+- AC: router with circuit breakers; call logging. (OpenAI-compatible/AMD provider dropped, D-8.)
 - AC: mock provider for tests.
 
 **T-302 · Constraint selection (S7) + API** · P0 · PL+FE · 3h · T-005, T-104
@@ -189,6 +218,7 @@ Also in the scaffold:
 - AC: pinned constraints panel; fit meter (deterministic coverage of the required tech).
 
 **T-303 · Idea generation & refinement** · P0 · IN · 3h · T-301, T-206
+- Status: implemented on `t-303-idea-generation` in an isolated checkout. Pseudonymized server context, remaining availability, deterministic stack coverage, saved manual/generated/refined ideas and validated SSE events tested without live providers. 22 API/context tests and 6 engine tests; Frontend/live idea-quality verification remain pending. See `docs/IDEA-VERIFICATION.md`.
 - AC: `PlanningContext` builder with pseudonymized members.
 - AC: SSE endpoint streams 3 `IdeaCandidate`s; deterministic `team_fit` = coverage of the idea's stack skills.
 - AC: refine endpoint; ideas persisted.
@@ -198,11 +228,13 @@ Also in the scaffold:
 - AC: pick, refine and regenerate one.
 
 **T-305 · Plan generation pipeline** · P0 · IN · 4h · T-303
+- Status: Streamed outline + epic calls (concurrency 3), injected deliverables, validation/repair, editable template fallback, and versioned draft persistence implemented; see `docs/INTELLIGENCE-IMPLEMENTATION.md`.
 - AC: outline call, then per-epic task calls in parallel (concurrency 3), streamed as `PlanStreamEvent`s.
 - AC: required-deliverable tasks injected; plan versioned and stored.
 - AC: template-plan fallback when the provider is unavailable.
 
 **T-306 · Plan validators** · P0 · IN · 3h · T-004
+- Status: earlier validator implementation restored on `t-301-306-ai-providers-and-plan-validation`; duplicate epic/milestone references and invalid team effective levels additionally guarded. 40 tests and 100% validator branch coverage. Pipeline integration remains T-305. See `docs/PLAN-VALIDATION.md`.
 - AC: AI.md §B.3 checks 1–8 as pure functions returning `Feasibility` (issues with codes and the numbers involved) and automatic cut-line adjustment.
 - AC: 100% branch coverage on the cycle, capacity and coverage checks.
 
@@ -215,11 +247,13 @@ Also in the scaffold:
 - AC: `embed.batch` enqueued; board returned; DO broadcasts `board.changed`.
 
 **T-309 · Assignment solver** · P0 · IN · 4h · T-206, T-004
+- Status: Deterministic skill/embedding scoring, capacity and calendar constraints, preserved manual/locked work, greedy + bounded moves/swaps, alternatives and warnings implemented with invariant and 6×60 performance tests.
 - AC: AI.md §C.1–C.2: relevance, hard constraints, greedy plus local search, top-2 alternatives, reason codes.
 - AC: deterministic for the same input; under 200ms for 6×60.
 - AC: property tests: no capacity violation, locks respected, avoid list honoured.
 
 **T-310 · Explanations** · P0 · IN · 1.5h · T-309, T-301
+- Status: Fact-only templates, manual override score deltas, and optional background batch phrasing implemented. Model output selects vetted prose variants; arbitrary factual additions are disallowed.
 - AC: deterministic templates from reason codes.
 - AC: optional batch polish (fast model) constrained to the facts, with the deterministic fallback.
 
@@ -279,6 +313,7 @@ Also in the scaffold:
 ## Phase 5 — Mission Control & Adaptive
 
 **T-501 · Engine: critical path, velocity, health** · P0 · IN · 3h · T-004
+- Status: Resource-constrained CPM, calendar windows, task slack, measured completion velocity, forecast, and reason-coded health implemented and connected to Mission Control.
 - AC: CPM over the DAG with parallelism capped at team size; slack per task.
 - AC: rolling velocity; forecast finish (labelled as an estimate).
 - AC: health classification with a reason code; unit tests.

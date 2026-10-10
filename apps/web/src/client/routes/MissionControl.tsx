@@ -10,6 +10,7 @@ import * as fx from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
+import { useProject } from '../lib/project';
 import { useProjectSocket } from '../lib/ws';
 import { ActivityFeed } from './mission-control/ActivityFeed';
 import { RecommendationList } from './mission-control/RecommendationList';
@@ -19,9 +20,7 @@ import { AgentList } from './mission-control/AgentList';
 import { MilestoneList, TeamLanes } from './mission-control/TeamLanes';
 import { useNow, type Lookup } from './mission-control/shared';
 import { AiGlyph } from './mission-control/RecommendationList';
-
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = fx.ids.project;
+import { ProjectGate } from './page-states';
 
 function Skeleton() {
   const box = 'animate-pulse rounded-md bg-raised';
@@ -53,11 +52,15 @@ function TopbarStatus({ children }: { children: React.ReactNode }) {
 function SyncChip({
   demo,
   state,
+  online,
+  polling,
   at,
   now,
 }: {
   demo: boolean;
   state: 'connecting' | 'open' | 'closed';
+  online: number;
+  polling: boolean;
   at: string;
   now: number;
 }) {
@@ -70,9 +73,13 @@ function SyncChip({
       </span>
     );
   return state === 'open' ? (
-    <span className="text-body text-subtle">Synced {age} ago</span>
+    <span className="text-body text-subtle" role="status">
+      Live · {online} online · synced {age} ago
+    </span>
   ) : (
-    <span className="text-body text-warning">Reconnecting · data {age} old</span>
+    <span className="text-body text-warning" role="status">
+      {polling ? 'Reconnecting · updating every 10s' : 'Reconnecting'} · data {age} old
+    </span>
   );
 }
 
@@ -80,7 +87,23 @@ export function MissionControl() {
   const { wid = '' } = useParams();
   const [search] = useSearchParams();
   const demo = search.get('demo') === '1';
-  const { state } = useProjectSocket(demo ? undefined : pid);
+  const { pid, query } = useProject(wid);
+  if (!demo && !pid) return <ProjectGate query={query} title="Mission Control" />;
+  // The shell's breadcrumb is visual only; the page names itself for screen readers and the outline.
+  return (
+    <>
+      <h1 className="sr-only">Mission Control</h1>
+      {demo ? (
+        <MissionControlScreen wid={wid} pid={fx.ids.project} demo />
+      ) : (
+        <MissionControlScreen key={pid} wid={wid} pid={pid!} demo={false} />
+      )}
+    </>
+  );
+}
+
+function MissionControlScreen({ wid, pid, demo }: { wid: string; pid: string; demo: boolean }) {
+  const { state, presence, polling } = useProjectSocket(demo ? undefined : pid);
   const realNow = useNow();
   const tick = useNow(1000);
   const workspace = useQuery({
@@ -97,6 +120,13 @@ export function MissionControl() {
   const board = useQuery({
     queryKey: qk('getBoard', { pid }),
     queryFn: () => api('getBoard', { params: { pid } }),
+    enabled: !demo,
+  });
+  // Open suggestions come from their own endpoint (IN, T-504); the WS `recommendation.*` events
+  // invalidate it. The snapshot's copy is the fallback while it loads or if it fails.
+  const recs = useQuery({
+    queryKey: qk('listRecommendations', { pid }),
+    queryFn: () => api('listRecommendations', { params: { pid } }),
     enabled: !demo,
   });
   const members = useQuery({
@@ -136,7 +166,14 @@ export function MissionControl() {
   return (
     <div className="flex min-h-full flex-col gap-7 p-7 max-sm:p-4">
       <TopbarStatus>
-        <SyncChip demo={fallback} state={state} at={s.generatedAt} now={tick} />
+        <SyncChip
+          demo={fallback}
+          state={state}
+          online={presence.length}
+          polling={polling}
+          at={s.generatedAt}
+          now={tick}
+        />
       </TopbarStatus>
 
       {snap.isError && !demo && (
@@ -152,7 +189,7 @@ export function MissionControl() {
         </div>
       )}
 
-      <div className={cn('flex flex-1 flex-col gap-7 transition-opacity', stale && 'opacity-60')}>
+      <div className="flex flex-1 flex-col gap-7">
         <StatusBand s={s} lookup={lookup} staleSince={stale ? s.generatedAt : null} />
 
         <div className="grid flex-1 gap-6 lg:grid-cols-(--grid-side-312) xl:grid-cols-(--grid-side-360)">
@@ -167,7 +204,13 @@ export function MissionControl() {
             <UpNext s={s} tasks={tasks} lookup={lookup} />
           </div>
           <div className="flex min-w-0 flex-col gap-7">
-            <RecommendationList recs={s.openRecommendations} lookup={lookup} demo={fallback} />
+            <RecommendationList
+              recs={fallback || !recs.data ? s.openRecommendations : recs.data}
+              lookup={lookup}
+              demo={fallback}
+              pid={pid}
+              unavailable={!fallback && recs.isError ? () => void recs.refetch() : null}
+            />
             <AgentList s={s} lookup={lookup} />
             <ActivityFeed events={s.recentActivity} lookup={lookup} />
           </div>

@@ -144,7 +144,7 @@ function SubTasks(props: { items: string[]; onChange: (items: string[]) => void 
           }
         }}
         placeholder="+ Add sub-task and press Enter"
-        className="mt-1 h-control-md w-full rounded-xs bg-transparent px-1 text-body text-default placeholder:text-subtle hover:bg-hover focus:bg-hover focus:outline-none"
+        className="mt-1 h-control-md w-full rounded-xs bg-transparent px-1 text-body text-default placeholder:text-subtle hover:bg-hover focus:bg-hover"
       />
     </Section>
   );
@@ -302,7 +302,7 @@ export function TaskInspector(props: {
             onChange={(e) => setTitle(e.target.value)}
             onBlur={commitTitle}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            className="w-full rounded-xs bg-transparent text-title font-semibold text-strong hover:bg-hover focus:bg-hover focus:outline-none"
+            className="w-full rounded-xs bg-transparent text-title font-semibold text-strong hover:bg-hover focus:bg-hover"
           />
           <label htmlFor={`${headingId}-desc`} className="sr-only">
             Description
@@ -314,7 +314,7 @@ export function TaskInspector(props: {
             onChange={(e) => setDescription(e.target.value)}
             onBlur={commitDescription}
             placeholder="Add a description…"
-            className="mt-2 w-full resize-y rounded-xs bg-transparent text-body-lg text-default placeholder:text-subtle hover:bg-hover focus:bg-hover focus:outline-none"
+            className="mt-2 w-full resize-y rounded-xs bg-transparent text-body-lg text-default placeholder:text-subtle hover:bg-hover focus:bg-hover"
           />
 
           <SubTasks

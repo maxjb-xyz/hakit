@@ -1,24 +1,31 @@
 /** Hackathons, projects, constraints, ideas, plans. Owners: PL (projects), IN (ideas/plans). */
 import { Hono } from 'hono';
 import * as fx from '@hakit/contracts/fixtures';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
   PlanDocument,
-  type Feasibility,
+  IdeaStreamEvent,
+  Feasibility,
+  Plan,
+  type PlanSummary,
   type HackathonTemplate,
   type PlanStreamEvent,
   type Project,
 } from '@hakit/contracts';
 import { schema } from '@hakit/db';
+import { validatePlan } from '@hakit/engine';
 import type { AppEnv } from '../lib/context';
 import { route, sseRoute } from '../lib/route';
-import { mockOr } from '../lib/mock';
-import { conflict, HttpError, notFound, notImplemented } from '../lib/errors';
+import { conflict, HttpError, notFound } from '../lib/errors';
 import { loadBoard } from '../lib/board';
 import { broadcast } from '../lib/broadcast';
 import { planRows } from '../lib/materialize';
 import { redact } from '../lib/redact';
 import { assertProjectMember } from '../middleware/auth';
+import * as ideas from '../services/ideas';
+import { planningInput, planValidationInput } from '../services/planning/context';
+import { applyPlanPatch } from '../services/planning/patch';
+import { generatePlanPipeline } from '../services/planning/pipeline';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
@@ -51,6 +58,84 @@ const mockPlan = () => ({
   feasibility: mockFeasibility,
   model: 'mock',
   createdAt: fx.project.createdAt,
+});
+
+/** Mock draft v2: more tasks than v1 and one optional task cut by the validator, so review has something to show. */
+const t1 = fx.planDocument.tasks[0]!;
+const mockDraftDoc: PlanDocument = {
+  ...fx.planDocument,
+  outline: {
+    ...fx.planDocument.outline,
+    epics: [
+      ...fx.planDocument.outline.epics,
+      { key: 'E2', title: 'Plan & assign', milestoneKey: 'M2', scopeTier: 'must', challengeKeys: ['C1'] },
+    ],
+  },
+  tasks: [
+    t1,
+    {
+      ...t1,
+      key: 'T2',
+      epicKey: 'E2',
+      title: 'Plan review screen',
+      description: 'Stream plan sections, feasibility banner, inline edits.',
+      acceptanceCriteria: ['Edits save as one new plan version'],
+      estimateHours: 4,
+      requiredSkills: [{ slug: 'react', level: 3, weight: 1 }],
+      dependsOn: ['T1'],
+    },
+    {
+      ...t1,
+      key: 'T3',
+      epicKey: 'E2',
+      title: 'Skill embeddings for matching',
+      description: 'Embed tasks and member evidence with an open-weight Hub model.',
+      acceptanceCriteria: ['Solver uses semantic fit'],
+      estimateHours: 3,
+      requiredSkills: [{ slug: 'embeddings', level: 3, weight: 1 }],
+      dependsOn: [],
+      priority: 'should',
+    },
+  ],
+};
+const mockDraftFeasibility: Feasibility = {
+  ok: true,
+  requiredHours: 74.1,
+  availableEffectiveHours: 79.8,
+  criticalPathHours: 9.1,
+  hoursUntilFinalMilestone: 30,
+  cutTaskKeys: ['T4'],
+  issues: [
+    {
+      code: 'OVER_CAPACITY',
+      severity: 'warn',
+      message: 'Optional task T4 (voice briefing) moved below the cut line to fit team capacity',
+      refs: ['T4'],
+    },
+  ],
+};
+const mockDraftPlan = (id: string = fx.ids.planDraft): Plan => ({
+  id,
+  projectId: fx.ids.project,
+  version: 2,
+  status: 'draft',
+  payload: mockDraftDoc,
+  feasibility: mockDraftFeasibility,
+  model: 'mock',
+  createdAt: '2026-10-10T10:30:00-04:00',
+});
+const summarize = (p: Plan): PlanSummary => ({
+  id: p.id,
+  projectId: p.projectId,
+  version: p.version,
+  status: p.status,
+  model: p.model,
+  createdAt: p.createdAt,
+  taskCount: p.payload.tasks.length,
+  feasibilityOk: p.feasibility.ok,
+  requiredHours: p.feasibility.requiredHours,
+  availableEffectiveHours: p.feasibility.availableEffectiveHours,
+  cutTaskCount: p.feasibility.cutTaskKeys.length,
 });
 
 const toProject = (p: typeof schema.projects.$inferSelect): Project => ({
@@ -130,6 +215,24 @@ route(planning, 'getProject', async ({ c, params }) => {
   return toProject(p!);
 });
 
+route(planning, 'getConstraints', async ({ c, params }) => {
+  if (c.var.mocks) return fx.constraints;
+  await assertProjectMember(c, params.pid);
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.projectConstraints)
+    .where(eq(schema.projectConstraints.projectId, params.pid));
+  return {
+    constraints: rows.map((k) => ({
+      kind: k.kind,
+      refId: k.refId,
+      value: k.value,
+      weight: Number(k.weight),
+    })),
+  };
+});
+
 /** Replace the project's pinned constraints. Challenge refs must belong to the workspace's hackathon template. */
 route(planning, 'putConstraints', async ({ c, params, body }) => {
   if (c.var.mocks) return body;
@@ -158,37 +261,251 @@ route(planning, 'putConstraints', async ({ c, params, body }) => {
   return body;
 });
 
-route(planning, 'listIdeas', ({ c }) => mockOr(c, 'T-303', () => [mockIdea()]));
-route(planning, 'submitIdea', ({ c }) =>
-  mockOr(c, 'T-303', () => ({ ...mockIdea(), source: 'user' as const })),
+route(planning, 'listIdeas', ({ c, params }) => {
+  if (c.var.mocks) return [mockIdea()];
+  c.header('Cache-Control', 'no-store');
+  return ideas.listIdeas(c.var.db(), params.pid);
+});
+route(planning, 'submitIdea', ({ c, params, body }) =>
+  c.var.mocks
+    ? { ...mockIdea(), source: 'user' as const }
+    : ideas.submitIdea(c.var.db(), params.pid, c.var.user!.id, body),
 );
 
-sseRoute(planning, 'generateIdeas', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-303');
+sseRoute(planning, 'generateIdeas', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    const emit = (event: IdeaStreamEvent) => send(IdeaStreamEvent.parse(event));
+    try {
+      await ideas.generateIdeas(
+        c.var.db(),
+        c.var.services.llm,
+        params.pid,
+        c.var.user!.id,
+        body,
+        emit,
+        new Date(),
+      );
+    } catch (error) {
+      await ideas.ideaError(emit, error);
+    }
+    return;
+  }
   await send({ type: 'stage', message: 'Reading team capability' });
+  for (let i = 0; i < body.count; i++) {
+    const idea = mockIdea();
+    await send({
+      type: 'idea',
+      idea: {
+        ...idea,
+        id: idea.id.replace(/[0-9a-f]{12}$/i, String(i + 1).padStart(12, '0')),
+        candidate: { ...idea.candidate, title: `${idea.candidate.title} ${i + 1}` },
+      },
+    });
+  }
+  await send({ type: 'done' });
+});
+sseRoute(planning, 'refineIdea', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    const emit = (event: IdeaStreamEvent) => send(IdeaStreamEvent.parse(event));
+    try {
+      await ideas.refineIdea(
+        c.var.db(),
+        c.var.services.llm,
+        params.pid,
+        params.iid,
+        c.var.user!.id,
+        body,
+        emit,
+        new Date(),
+      );
+    } catch (error) {
+      await ideas.ideaError(emit, error);
+    }
+    return;
+  }
   await send({ type: 'idea', idea: mockIdea() });
   await send({ type: 'done' });
 });
-sseRoute(planning, 'refineIdea', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-303');
-  await send({ type: 'idea', idea: mockIdea() });
-  await send({ type: 'done' });
-});
-sseRoute(planning, 'generatePlan', async ({ c, send }) => {
-  if (!c.var.mocks) throw notImplemented('T-305');
+sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
+  if (!c.var.mocks) {
+    await assertProjectMember(c, params.pid);
+    const emit = (event: PlanStreamEvent) => send(event);
+    try {
+      await emit({ type: 'stage', stage: 'context', message: 'Reading team capability and selected idea' });
+      const db = c.var.db();
+      const input = await planningInput(db, params.pid, body.ideaId, new Date(), body.guidance);
+      const result = await generatePlanPipeline(input, c.var.services.llm, emit);
+      await emit({ type: 'stage', stage: 'save', message: 'Saving a versioned draft plan' });
+      const saved = await db.transaction(async (tx) => {
+        await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
+        const [latest] = await tx
+          .select({ version: schema.plans.version })
+          .from(schema.plans)
+          .where(eq(schema.plans.projectId, params.pid))
+          .orderBy(desc(schema.plans.version))
+          .limit(1);
+        const [plan] = await tx
+          .insert(schema.plans)
+          .values({
+            projectId: params.pid,
+            version: (latest?.version ?? 0) + 1,
+            ...result,
+            createdBy: c.var.user!.id,
+          })
+          .returning();
+        await tx.update(schema.ideas).set({ selected: false }).where(eq(schema.ideas.projectId, params.pid));
+        await tx.update(schema.ideas).set({ selected: true }).where(eq(schema.ideas.id, body.ideaId));
+        return plan!;
+      });
+      c.executionCtx.waitUntil(
+        broadcast(c.env, params.pid, {
+          type: 'plan.progress',
+          data: { planId: saved.id, stage: 'done' },
+        }).catch(() => {}),
+      );
+      await emit({ type: 'done', planId: saved.id });
+    } catch (error) {
+      await emit({
+        type: 'error',
+        code: error instanceof HttpError ? error.code : 'PLAN_GENERATION_FAILED',
+        message:
+          error instanceof HttpError
+            ? error.message
+            : 'Plan generation failed; try again or edit a draft manually',
+        fallbackAvailable: false,
+      });
+    }
+    return;
+  }
   const events: PlanStreamEvent[] = [
     { type: 'stage', stage: 'outline', message: 'Drafting scope and architecture' },
-    { type: 'outline', outline: fx.planDocument.outline },
+    { type: 'outline', outline: mockDraftDoc.outline },
     { type: 'stage', stage: 'tasks', message: 'Breaking epics into tasks' },
-    { type: 'epic_tasks', epicKey: 'E1', tasks: fx.planDocument.tasks },
-    { type: 'validation', feasibility: mockFeasibility },
-    { type: 'done', planId: fx.ids.plan },
+    { type: 'epic_tasks', epicKey: 'E1', tasks: mockDraftDoc.tasks.filter((t) => t.epicKey === 'E1') },
+    { type: 'epic_tasks', epicKey: 'E2', tasks: mockDraftDoc.tasks.filter((t) => t.epicKey === 'E2') },
+    { type: 'stage', stage: 'validate', message: 'Checking capacity, skills and dependencies' },
+    { type: 'validation', feasibility: mockDraftFeasibility },
+    { type: 'done', planId: fx.ids.planDraft },
   ];
   for (const e of events) await send(e);
 });
 
-route(planning, 'getPlan', ({ c }) => mockOr(c, 'T-305', () => mockPlan()));
-route(planning, 'patchPlan', ({ c }) => mockOr(c, 'T-307', () => mockPlan()));
+/** Version switcher: every plan version of the project, newest first. */
+route(planning, 'listPlans', async ({ c, params }) => {
+  if (c.var.mocks) return [summarize(mockDraftPlan()), summarize(mockPlan())];
+  await assertProjectMember(c, params.pid);
+  c.header('Cache-Control', 'no-store');
+  const rows = await c.var
+    .db()
+    .select()
+    .from(schema.plans)
+    .where(eq(schema.plans.projectId, params.pid))
+    .orderBy(desc(schema.plans.version));
+  return rows.map((p) => {
+    // Older rows may predate validation (feasibility `{}`); summarize them as unchecked rather than failing.
+    const f = Feasibility.safeParse(p.feasibility);
+    const doc = PlanDocument.safeParse(p.payload);
+    return {
+      id: p.id,
+      projectId: p.projectId,
+      version: p.version,
+      status: p.status,
+      model: p.model,
+      createdAt: p.createdAt.toISOString(),
+      taskCount: doc.success ? doc.data.tasks.length : 0,
+      feasibilityOk: f.success && f.data.ok,
+      requiredHours: f.success ? f.data.requiredHours : 0,
+      availableEffectiveHours: f.success ? f.data.availableEffectiveHours : 0,
+      cutTaskCount: f.success ? f.data.cutTaskKeys.length : 0,
+    };
+  });
+});
+
+route(planning, 'getPlan', async ({ c, params }) => {
+  if (c.var.mocks) return params.planId === fx.ids.plan ? mockPlan() : mockDraftPlan(params.planId);
+  await assertProjectMember(c, params.pid);
+  const [plan] = await c.var
+    .db()
+    .select()
+    .from(schema.plans)
+    .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+    .limit(1);
+  if (!plan) throw notFound('Plan');
+  return Plan.parse({ ...plan, createdAt: plan.createdAt.toISOString() });
+});
+/**
+ * T-307: apply inline edits to a draft plan. Every patch saves a new draft version (the source draft is kept, so the
+ * review screen's version switcher can go back), re-validated by the engine against the current team so the
+ * feasibility banner's numbers are deterministic. Accepted or superseded plans are immutable (409).
+ */
+route(planning, 'patchPlan', async ({ c, params, body }) => {
+  if (c.var.mocks) {
+    // Stateless mock: apply the edits to the demo draft so the review screen shows them saved as v3.
+    const base = params.planId === fx.ids.plan ? mockPlan() : mockDraftPlan();
+    return {
+      ...base,
+      id: params.planId,
+      version: 3,
+      status: 'draft' as const,
+      payload: applyPlanPatch(base.payload, body),
+    };
+  }
+  await assertProjectMember(c, params.pid);
+  const db = c.var.db();
+  const saved = await db.transaction(async (tx) => {
+    // Lock the project so patches serialize with each other, with generation and with accept.
+    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
+    const [source] = await tx
+      .select()
+      .from(schema.plans)
+      .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+      .limit(1);
+    if (!source) throw notFound('Plan');
+    if (source.status !== 'draft') throw conflict(`Plan is ${source.status}; only draft plans can be edited`);
+    const [accepted] = await tx
+      .select({ id: schema.plans.id })
+      .from(schema.plans)
+      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
+      .limit(1);
+    if (accepted) throw conflict('This project already has an accepted plan');
+
+    const edited = applyPlanPatch(PlanDocument.parse(source.payload), body);
+    const checked = validatePlan({
+      ...(await planValidationInput(tx, params.pid, new Date())),
+      outline: edited.outline,
+      tasks: edited.tasks,
+    });
+    // Same rule as generation: persist the validator's retained scope; cut keys stay in feasibility.
+    const payload = PlanDocument.safeParse({ ...edited, tasks: checked.tasks });
+    if (!payload.success)
+      throw new HttpError(422, 'invalid_plan', 'Edited plan is not valid', checked.feasibility.issues);
+    const [latest] = await tx
+      .select({ version: schema.plans.version })
+      .from(schema.plans)
+      .where(eq(schema.plans.projectId, params.pid))
+      .orderBy(desc(schema.plans.version))
+      .limit(1);
+    const [plan] = await tx
+      .insert(schema.plans)
+      .values({
+        projectId: params.pid,
+        version: latest!.version + 1,
+        payload: payload.data,
+        feasibility: checked.feasibility,
+        model: source.model,
+        createdBy: c.var.user!.id,
+      })
+      .returning();
+    return plan!;
+  });
+  c.executionCtx.waitUntil(
+    broadcast(c.env, params.pid, {
+      type: 'plan.progress',
+      data: { planId: saved.id, stage: 'edited' },
+    }).catch(() => {}),
+  );
+  return Plan.parse({ ...saved, createdAt: saved.createdAt.toISOString() });
+});
 /**
  * T-308: accept a draft plan and materialize it in one transaction. The project row is locked so concurrent accepts
  * serialize; a project with an accepted plan must re-plan explicitly (409), so tasks are never duplicated.

@@ -14,7 +14,16 @@ import {
 } from './identity';
 import { MemberSkill, Skill, TeamCapability, UpsertMemberSkill } from './capability';
 import { CreateProject, HackathonTemplate, Project, PutConstraints } from './hackathon';
-import { GenerateIdeas, GeneratePlan, Idea, Plan, PlanPatch, RefineIdea, SubmitIdea } from './planning';
+import {
+  GenerateIdeas,
+  GeneratePlan,
+  Idea,
+  Plan,
+  PlanPatch,
+  PlanSummary,
+  RefineIdea,
+  SubmitIdea,
+} from './planning';
 import { CreateTask, PutDependency, Task, TaskHistory, UpdateTask } from './tasks';
 import {
   AcceptAssignments,
@@ -151,6 +160,13 @@ export const endpoints = {
     owner: 'PL',
   },
   getProject: { method: 'GET', path: '/projects/:pid', response: Project, owner: 'PL' },
+  /** The project's pinned constraints (additive; pairs with putConstraints). */
+  getConstraints: {
+    method: 'GET',
+    path: '/projects/:pid/constraints',
+    response: PutConstraints,
+    owner: 'PL',
+  },
   putConstraints: {
     method: 'PUT',
     path: '/projects/:pid/constraints',
@@ -183,6 +199,8 @@ export const endpoints = {
     kind: 'sse',
     owner: 'IN',
   },
+  /** Plan versions for the review screen's version switcher, newest first (additive, T-307). */
+  listPlans: { method: 'GET', path: '/projects/:pid/plans', response: z.array(PlanSummary), owner: 'IN' },
   getPlan: { method: 'GET', path: '/projects/:pid/plans/:planId', response: Plan, owner: 'IN' },
   patchPlan: {
     method: 'PATCH',
@@ -267,6 +285,8 @@ export const endpoints = {
   listActivity: {
     method: 'GET',
     path: '/projects/:pid/activity',
+    /** Optional source filter (additive). */
+    query: z.object({ source: z.enum(['github', 'agent']).optional() }),
     response: Page(ActivityEvent),
     owner: 'GH',
   },

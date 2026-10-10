@@ -104,6 +104,7 @@ export function MemberAvatar({ member, className }: { member: Member | undefined
   if (!member) {
     return (
       <span
+        role="img"
         title="Unassigned"
         aria-label="Unassigned"
         className={cn('size-5 shrink-0 rounded-full border border-dashed border-border-strong', className)}
