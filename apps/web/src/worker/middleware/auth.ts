@@ -1,11 +1,15 @@
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
+import { and, eq } from 'drizzle-orm';
+import { Id, type Role } from '@hakit/contracts';
 import { ids, members } from '@hakit/contracts/fixtures';
+import { schema } from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { forbidden, notFound, unauthorized } from '../lib/errors';
+import { loadSession, readSessionCookie } from '../lib/session';
 
 /**
  * Session loading (T-201). Mock mode: everyone is the fixture owner (priya).
- * Real mode: read `hakit_session` cookie → sha256 → sessions table → user.
+ * Real mode: `hakit_session` cookie → sha256 → sessions table → user; absent or expired leaves user null.
  */
 export const session: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (c.var.mocks) {
@@ -13,7 +17,8 @@ export const session: MiddlewareHandler<AppEnv> = async (c, next) => {
     c.set('user', { id: priya.id, githubLogin: priya.githubLogin });
     return next();
   }
-  // TODO(T-201): load session from cookie; leave user null when absent.
+  const token = readSessionCookie(c);
+  if (token) c.set('user', await loadSession(c.var.db(), token, new Date()));
   return next();
 };
 
@@ -25,15 +30,34 @@ export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
 };
 
 /**
- * Workspace membership guard for /w/:wid/* (T-202). Projects/tasks/etc. resolve their workspace first.
- * Non-members get 404 (don't leak existence).
+ * The caller's role in `workspaceId`, or 404 when they aren't a member (existence is never leaked).
+ * Routes keyed by project/task resolve their workspace and call this directly.
  */
-export const requireMember: MiddlewareHandler<AppEnv> = async (c, next) => {
+export async function assertMember(c: Context<AppEnv>, workspaceId: string): Promise<Role> {
+  const user = c.var.user;
+  if (!user) throw unauthorized();
   if (c.var.mocks) {
-    const wid = c.req.param('wid');
-    if (wid && wid !== ids.workspace) throw notFound('Workspace');
-    return next();
+    if (workspaceId !== ids.workspace) throw notFound('Workspace');
+    return 'owner';
   }
-  // TODO(T-202): check memberships(workspace_id, user_id).
+  if (!Id.safeParse(workspaceId).success) throw notFound('Workspace');
+  const [m] = await c.var
+    .db()
+    .select({ role: schema.memberships.role })
+    .from(schema.memberships)
+    .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, user.id)))
+    .limit(1);
+  if (!m) throw notFound('Workspace');
+  return m.role;
+}
+
+/** Workspace membership guard for /w/:wid/* (T-202). Sets c.var.role. */
+export const requireMember: MiddlewareHandler<AppEnv> = async (c, next) => {
+  c.set('role', await assertMember(c, c.req.param('wid') ?? ''));
   return next();
 };
+
+/** Owner-only routes; call after requireMember. */
+export function assertOwner(c: Context<AppEnv>) {
+  if (c.var.role !== 'owner') throw forbidden();
+}

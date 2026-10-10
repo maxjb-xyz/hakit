@@ -32,6 +32,9 @@ The scaffold commit delivered the following. Remaining work for a partial task i
 | T-008 Deep health | 🟡 DO, DB, queue, GitHub App JWT, Gemini, HF embed checks | Run against prod; record ARCHITECTURE §13 results in RISKS §4 |
 | T-101 Tokens | ✅ done | Sync Figma variables |
 | T-104 App shell | 🟡 functional skeleton + routes + placeholders | Real design, inspector, ⌘K |
+| T-201 Sign-in & sessions | ✅ OAuth + state cookie, AES-GCM tokens, lazy locked refresh, hashed sessions | Live test against the GitHub App |
+| T-202 Workspaces & invites | ✅ templates, invites (expiry, max uses), `requireMember`/`assertOwner` | – |
+| T-203 Profile & availability | ✅ GET/PATCH, window validation, `available_hours` | – |
 | T-404 ProjectRoom + WS client | 🟡 DO (hibernation, replay, presence) + `useProjectSocket` implemented | Membership check on upgrade; polling fallback |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 

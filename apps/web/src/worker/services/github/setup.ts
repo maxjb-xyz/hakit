@@ -78,7 +78,7 @@ export async function installationSetup(c: Context<AppEnv>): Promise<Response> {
   deleteCookie(c, cookieName, { path: cookiePath });
   const db = c.var.db();
   await requireWorkspaceMember(db, c.var.user.id, state.data.workspaceId);
-  const token = await githubUserToken(db, c.var.user.id, c.env.TOKEN_ENC_KEY);
+  const token = await githubUserToken(db, c.var.user.id, c.env.TOKEN_ENC_KEY, c.var.services.github);
   const installation = (await c.var.services.github.listInstallations(token)).find(
     (i) => i.id === query.data.installation_id && i.suspended_at === null,
   );

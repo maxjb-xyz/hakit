@@ -24,7 +24,7 @@ route(github, 'listRepos', async ({ c }) => {
   if (c.var.mocks) return [fixtureRepo];
   if (!c.var.user) throw unauthorized();
   c.header('Cache-Control', 'no-store');
-  const token = await githubUserToken(c.var.db(), c.var.user.id, c.env.TOKEN_ENC_KEY);
+  const token = await githubUserToken(c.var.db(), c.var.user.id, c.env.TOKEN_ENC_KEY, c.var.services.github);
   return c.var.services.github.listInstallationRepos(token);
 });
 route(github, 'createRepo', ({ c, body }) =>
@@ -38,7 +38,7 @@ route(github, 'connectRepo', async ({ c, params, body }) => {
   if (!c.var.user) throw unauthorized();
   const db = c.var.db();
   await requireProjectMember(db, c.var.user.id, params.pid);
-  const token = await githubUserToken(db, c.var.user.id, c.env.TOKEN_ENC_KEY);
+  const token = await githubUserToken(db, c.var.user.id, c.env.TOKEN_ENC_KEY, c.var.services.github);
   const repo = (await c.var.services.github.listInstallationRepos(token)).find((r) => r.id === body.repoId);
   if (!repo) throw notFound('Repository');
   const installation = (await c.var.services.github.listInstallations(token)).find(
