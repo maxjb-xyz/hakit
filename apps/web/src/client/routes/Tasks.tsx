@@ -1,13 +1,27 @@
 /** S10 Tasks — list view grouped by status (DESIGN §8, T-312). Fixture data until getBoard is wired. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
 import { board, members } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
-import { LabelPill, MemberAvatar, STATUS_LABEL, STATUS_ORDER, StatusIcon, inferLabel } from './tasks/meta';
+import {
+  LabelPill,
+  MemberAvatar,
+  STATUS_LABEL,
+  STATUS_ORDER,
+  StatusIcon,
+  inferLabel,
+  type TaskLabel,
+} from './tasks/meta';
+import { NewTaskDialog, type NewTaskInput } from './tasks/NewTaskDialog';
 
-function TaskRow({ task, assignee }: { task: Task; assignee: Member | undefined }) {
-  const label = inferLabel(task);
+/** Labels set by a person (not in the contract yet), keyed by task id. Beats the inferred label. */
+type LabelOverrides = Record<string, TaskLabel | null>;
+
+function TaskRow(props: { task: Task; assignee: Member | undefined; labels: LabelOverrides }) {
+  const { task, assignee } = props;
+  const set = task.id in props.labels;
+  const label = set ? props.labels[task.id] : inferLabel(task);
   return (
     <li>
       <Link
@@ -22,7 +36,7 @@ function TaskRow({ task, assignee }: { task: Task; assignee: Member | undefined 
         </span>
         {label && (
           <span className="max-sm:hidden">
-            <LabelPill label={label} inferred />
+            <LabelPill label={label} inferred={!set} />
           </span>
         )}
         <span
@@ -37,7 +51,12 @@ function TaskRow({ task, assignee }: { task: Task; assignee: Member | undefined 
   );
 }
 
-function StatusGroup(props: { status: TaskStatus; tasks: Task[]; memberById: Map<string, Member> }) {
+function StatusGroup(props: {
+  status: TaskStatus;
+  tasks: Task[];
+  memberById: Map<string, Member>;
+  labels: LabelOverrides;
+}) {
   const [open, setOpen] = useState(true);
   const id = `group-${props.status}`;
   return (
@@ -71,6 +90,7 @@ function StatusGroup(props: { status: TaskStatus; tasks: Task[]; memberById: Map
               key={t.id}
               task={t}
               assignee={t.assigneeId ? props.memberById.get(t.assigneeId) : undefined}
+              labels={props.labels}
             />
           ))}
         </ul>
@@ -79,7 +99,15 @@ function StatusGroup(props: { status: TaskStatus; tasks: Task[]; memberById: Map
   );
 }
 
-export function TaskList({ tasks, members }: { tasks: Task[]; members: Member[] }) {
+export function TaskList({
+  tasks,
+  members,
+  labels = {},
+}: {
+  tasks: Task[];
+  members: Member[];
+  labels?: LabelOverrides;
+}) {
   const memberById = useMemo(() => new Map(members.map((m) => [m.user.id, m])), [members]);
   const groups = useMemo(
     () =>
@@ -103,24 +131,84 @@ export function TaskList({ tasks, members }: { tasks: Task[]; members: Member[] 
   return (
     <div>
       {groups.map((g) => (
-        <StatusGroup key={g.status} status={g.status} tasks={g.tasks} memberById={memberById} />
+        <StatusGroup
+          key={g.status}
+          status={g.status}
+          tasks={g.tasks}
+          memberById={memberById}
+          labels={labels}
+        />
       ))}
     </div>
   );
 }
 
+/** Local-only create until createTask is wired (step 5). Next key = highest HK-n + 1. */
+function draftTask(input: NewTaskInput, existing: Task[]): Task {
+  const next = Math.max(0, ...existing.map((t) => Number(t.key.slice(3)))) + 1;
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    projectId: board.projectId,
+    key: `HK-${next}`,
+    milestoneId: null,
+    title: input.title,
+    description: input.description,
+    acceptanceCriteria: [],
+    status: input.status,
+    priority: 'should',
+    estimateHours: 2,
+    requiredSkills: [],
+    source: 'manual',
+    assigneeId: input.assigneeId,
+    startedAt: input.status === 'todo' ? null : now,
+    completedAt: input.status === 'done' ? now : null,
+    updatedAt: now,
+  };
+}
+
+const isTyping = (el: EventTarget | null) =>
+  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+
 export function Tasks() {
-  const tasks = board.tasks;
+  const [tasks, setTasks] = useState<Task[]>(board.tasks);
+  const [labels, setLabels] = useState<LabelOverrides>({});
+  const [creating, setCreating] = useState(false);
+
+  // DESIGN §6/§8: `c` opens quick-create from anywhere on the list.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      e.preventDefault();
+      setCreating(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const create = (input: NewTaskInput) => {
+    const task = draftTask(input, tasks);
+    setTasks((ts) => [...ts, task]);
+    setLabels((ls) => ({ ...ls, [task.id]: input.label }));
+  };
+
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex items-center gap-3 border-b border-border px-6 py-3 max-sm:px-4">
         <h1 className="text-body font-medium text-strong">All tasks</h1>
         <span className="text-label text-subtle">{tasks.length}</span>
-        <Button variant="primary" size="sm" className="ml-auto">
+        <Button
+          variant="primary"
+          size="sm"
+          className="ml-auto"
+          onClick={() => setCreating(true)}
+          title="New task (C)"
+        >
           + New task
         </Button>
       </div>
-      <TaskList tasks={tasks} members={members} />
+      <TaskList tasks={tasks} members={members} labels={labels} />
+      <NewTaskDialog open={creating} onClose={() => setCreating(false)} onCreate={create} members={members} />
     </div>
   );
 }
