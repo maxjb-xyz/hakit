@@ -6,16 +6,13 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ids } from '@hakit/contracts/fixtures';
 import type { AgentTokenCreated, AgentTokenSummary, AiProviderStatus } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
+import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { Panel, ago, useNow } from './mission-control/shared';
 import { EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill } from './page-states';
-
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
 
 export function Settings() {
   const { wid = '' } = useParams();
@@ -47,16 +44,14 @@ function Section(props: { title: string; description: ReactNode; children: React
 /* ----------------------------- GitHub ----------------------------- */
 
 function GithubSection({ wid }: { wid: string }) {
-  const project = useQuery({
-    queryKey: qk('getProject', { pid }),
-    queryFn: () => api('getProject', { params: { pid } }),
-  });
+  // The project in view; the projects list already carries its repoId.
+  const { project: current, query: project } = useProject(wid);
   const repos = useQuery({ queryKey: qk('listRepos'), queryFn: () => api('listRepos') });
   const install = useMutation({
     mutationFn: () => api('installUrl', { query: { workspaceId: wid } }),
     onSuccess: ({ url }) => window.location.assign(url),
   });
-  const repoId = project.data?.repoId ?? null;
+  const repoId = current?.repoId ?? null;
   const repo = repos.data?.find((r) => r.id === repoId);
 
   return (

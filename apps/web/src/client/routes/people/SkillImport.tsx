@@ -4,11 +4,12 @@
  * project; without one (or without events) it polls `memberSkills` so results still appear.
  */
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SkillImportProgress, WsEnvelope } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
+import { useProject } from '../../lib/project';
 import { useProjectSocket } from '../../lib/ws';
 import { IMPORT_STEPS, countsLine, stepState, type ImportStage, type StepState } from './import-progress';
 
@@ -28,12 +29,8 @@ interface Run {
 export function useImportSkills(wid: string, uid: string) {
   const qc = useQueryClient();
   const [run, setRun] = useState<Run | null>(null);
-  const projects = useQuery({
-    queryKey: qk('listProjects', { wid }),
-    queryFn: () => api('listProjects', { params: { wid } }),
-    enabled: !!wid,
-  });
-  const pid = projects.data?.[0]?.id;
+  // Progress is broadcast to a project room; any project of the workspace will do, so use the one in view.
+  const { pid } = useProject(wid);
   const finished = run?.latest?.stage === 'done' || run?.latest?.stage === 'error';
 
   const onEvent = (e: WsEnvelope) => {
@@ -47,7 +44,7 @@ export function useImportSkills(wid: string, uid: string) {
     if (p.stage === 'done') void qc.invalidateQueries({ queryKey: qk('teamCapability', { wid }) });
   };
   // Connected for the whole step so no early stage is missed between the POST and the first event.
-  const socket = useProjectSocket(pid, onEvent);
+  const socket = useProjectSocket(pid ?? undefined, onEvent);
 
   const start = useMutation({
     mutationFn: () => api('importSkills', { params: { wid }, body: {} }),

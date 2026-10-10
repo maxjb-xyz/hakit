@@ -109,6 +109,21 @@ describe('mock-mode API satisfies contracts', () => {
     expect(draft.feasibility.cutTaskKeys.length).toBe(list[0]!.cutTaskCount);
   });
 
+  it('filters activity by source', async () => {
+    const page = async (q: string) =>
+      endpoints.listActivity.response.parse(
+        await (await call('GET', buildPath(endpoints.listActivity.path, params) + q)).json(),
+      ).items;
+    const all = await page('');
+    const agent = await page('?source=agent');
+    expect(agent.length).toBeGreaterThan(0);
+    expect(agent.every((e) => e.source === 'agent')).toBe(true);
+    expect((await page('?source=github')).length + agent.length).toBe(all.length);
+    expect((await call('GET', buildPath(endpoints.listActivity.path, params) + '?source=x')).status).toBe(
+      400,
+    );
+  });
+
   it('rejects invalid bodies with 400', async () => {
     const res = await call('POST', '/workspaces', { name: '' });
     expect(res.status).toBe(400);

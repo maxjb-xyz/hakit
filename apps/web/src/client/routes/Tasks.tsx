@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
-import { ids } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
 import {
   LabelPill,
@@ -20,6 +19,8 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { TaskInspector } from './tasks/TaskInspector';
 import { useTaskBoard, type LabelOverrides } from './tasks/useTaskBoard';
+import { useProject } from '../lib/project';
+import { ProjectGate } from './page-states';
 import { useProjectSocket } from '../lib/ws';
 import { useNow, type Lookup } from './mission-control/shared';
 
@@ -165,9 +166,6 @@ export function TaskList({
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
-
 function ListSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading tasks">
@@ -207,6 +205,12 @@ function Banner(props: { tone: 'warning' | 'danger'; children: ReactNode; action
 
 export function Tasks() {
   const { wid = '' } = useParams();
+  const { pid, query } = useProject(wid);
+  if (!pid) return <ProjectGate query={query} title="Tasks" />;
+  return <TasksScreen key={pid} wid={wid} pid={pid} />;
+}
+
+function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
   const [search, setSearch] = useSearchParams();
   const selectedKey = search.get('task');
   const b = useTaskBoard(pid, wid, selectedKey);

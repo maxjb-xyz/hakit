@@ -4,6 +4,7 @@
  *   2. Skill import (S3): `importSkills` with a staged checklist, then review inferred skills
  *      (confirm / adjust / remove / add via `upsertSkill`, `removeSkill`, `searchSkills`).
  *   3. Availability & preferences: hour timeline of the event + want-to-learn / prefer-to-avoid tags.
+ *      Finishing (or skipping) marks onboarding complete (`completeOnboarding`) and opens the workspace.
  * Workspace comes from `?wid=` (set by the invite flow) or the member's first workspace.
  */
 import { useState, type FormEvent } from 'react';
@@ -345,6 +346,14 @@ export function Onboarding() {
     queryFn: () => api('getProfile', { params: { wid, uid } }),
     enabled: !!wid && !!uid,
   });
+  const invalidate = useInvalidateMember();
+  const finish = useMutation({
+    mutationFn: () => api('updateProfile', { params: { wid, uid }, body: { completeOnboarding: true } }),
+    onSuccess: () => {
+      invalidate(wid, uid);
+      navigate(`/w/${wid}/mc`);
+    },
+  });
   const stepParam = search.get('step');
   const step: Step = (STEPS as readonly string[]).includes(stepParam ?? '') ? (stepParam as Step) : 'profile';
   const index = STEPS.indexOf(step);
@@ -408,7 +417,7 @@ export function Onboarding() {
 
   const user = me.data.user;
   const workspaceName = me.data.memberships.find((m) => m.workspaceId === wid)?.workspaceName;
-  const done = () => navigate(`/w/${wid}/mc`);
+  const done = () => finish.mutate();
 
   return (
     <Frame wide={step !== 'profile'}>
@@ -445,6 +454,14 @@ export function Onboarding() {
       )}
       {step === 'availability' && (
         <AvailabilityStep wid={wid} uid={uid} profile={profile.data} back={() => go('skills')} done={done} />
+      )}
+      {finish.isError && (
+        <p role="alert" className="text-label text-danger">
+          Couldn't finish setup ({finish.error.message}).{' '}
+          <Link to={`/w/${wid}/mc`} className="underline hover:text-strong">
+            Go to the workspace anyway
+          </Link>
+        </p>
       )}
     </Frame>
   );

@@ -8,24 +8,35 @@
 import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ids } from '@hakit/contracts/fixtures';
 import type { ActivityEvent, AgentSession, Member, Task } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
+import { useProject } from '../lib/project';
 import { useProjectSocket } from '../lib/ws';
 import { AGENT_NAME, SESSION_ORDER, SessionStatusPill, toolSummary } from './agents/meta';
 import { Panel, ago, duration, memberName, minutesSince, useNow } from './mission-control/shared';
 import { MemberAvatar } from './tasks/meta';
-import { EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill, TaskLinkChip } from './page-states';
-
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
+import {
+  EmptyBox,
+  ErrorBox,
+  LoadingBlocks,
+  PageHeader,
+  Pill,
+  ProjectGate,
+  TaskLinkChip,
+} from './page-states';
 
 /* ----------------------------- page ----------------------------- */
 
 export function Agents() {
   const { wid = '' } = useParams();
+  const { pid, query } = useProject(wid);
+  if (!pid) return <ProjectGate query={query} title="Agents" />;
+  return <AgentsScreen key={pid} wid={wid} pid={pid} />;
+}
+
+function AgentsScreen({ wid, pid }: { wid: string; pid: string }) {
   const now = useNow();
   const { state } = useProjectSocket(pid);
 
@@ -34,8 +45,8 @@ export function Agents() {
     queryFn: () => api('listAgentSessions', { params: { pid } }),
   });
   const activity = useQuery({
-    queryKey: qk('listActivity', { pid }),
-    queryFn: () => api('listActivity', { params: { pid } }),
+    queryKey: qk('listActivity', { pid, source: 'agent' }),
+    queryFn: () => api('listActivity', { params: { pid }, query: { source: 'agent' } }),
     select: (page) => page.items.filter((e) => e.source === 'agent'),
   });
   const board = useQuery({
@@ -200,6 +211,8 @@ function useLinkSession(sessionId: string) {
     mutationFn: (taskId: string | null) =>
       api('linkAgentSession', { params: { id: sessionId }, body: { taskId } }),
     onSuccess: (updated) => {
+      const pid = updated.projectId;
+      if (!pid) return;
       qc.setQueryData<AgentSession[]>(qk('listAgentSessions', { pid }), (old) =>
         old?.map((s) => (s.id === updated.id ? updated : s)),
       );

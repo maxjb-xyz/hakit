@@ -2,7 +2,7 @@
  * S2 Invite landing `/j/:code` (DESIGN §8, T-207). Works signed out: shows the team from `previewInvite`,
  * then GitHub sign-in (returning here) or, when signed in, `acceptInvite` → onboarding for that workspace.
  */
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_PREFIX } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
@@ -76,6 +76,9 @@ export function Join() {
     );
 
   const p = preview.data;
+  const memberOf = p.workspaceId
+    ? me.data?.memberships.find((m) => m.workspaceId === p.workspaceId)
+    : undefined;
   const acceptError =
     accept.error instanceof ApiRequestError && accept.error.status === 410
       ? 'This invite expired while you were signing in. Ask for a new link.'
@@ -113,7 +116,23 @@ export function Join() {
           <p className="mt-5 text-body text-muted">You'll be the first one here.</p>
         )}
 
-        {p.expired ? (
+        {memberOf ? (
+          <div className="mt-6 space-y-3">
+            <p role="status" className="text-body text-muted">
+              You're already a member of {p.workspaceName}
+              {me.data && (
+                <>
+                  {' '}
+                  as <span className="text-default">@{me.data.user.githubLogin}</span>
+                </>
+              )}
+              .
+            </p>
+            <Link to={`/w/${memberOf.workspaceId}/mc`} className={linkButton}>
+              Open {p.workspaceName}
+            </Link>
+          </div>
+        ) : p.expired ? (
           <div role="alert" className="mt-6 rounded-sm border border-warning px-3 py-2.5">
             <p className="text-body font-medium text-strong">This invite has expired</p>
             <p className="mt-0.5 text-label text-muted">

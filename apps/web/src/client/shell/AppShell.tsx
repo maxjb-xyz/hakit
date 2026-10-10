@@ -11,6 +11,7 @@ import { qk } from '../lib/query';
 import { Countdown } from './Countdown';
 import { CommandMenu } from './CommandMenu';
 import { Inspector } from './Inspector';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import { Shortcuts } from './Shortcuts';
 import { NAV, SETTINGS, type NavItem } from './nav';
 
@@ -104,6 +105,7 @@ export function AppShell() {
       <div className="m-2 ml-0 grid min-h-0 grid-rows-(--grid-shell-main) overflow-hidden rounded-md border border-hover bg-canvas max-md:m-0 max-md:rounded-none max-md:border-0">
         <header className="flex items-center gap-2 border-b border-hover px-7 max-sm:px-4">
           <span className="text-body text-subtle">{workspace.data?.name ?? '…'}</span>
+          <ProjectSwitcher wid={wid} />
           <span aria-hidden className="text-faint">
             ›
           </span>

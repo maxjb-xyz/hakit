@@ -180,7 +180,18 @@ route(identity, 'createWorkspace', async ({ c, body }) => {
 
 route(identity, 'getWorkspace', async ({ c, params }) => {
   if (c.var.mocks) return fx.workspace;
-  return toWorkspace(await loadWorkspace(c.var.db(), params.wid));
+  const db = c.var.db();
+  const w = await loadWorkspace(db, params.wid);
+  let hackathonSlug: string | null = null;
+  if (w.hackathonTemplateId) {
+    const [t] = await db
+      .select({ slug: hackathonTemplates.slug })
+      .from(hackathonTemplates)
+      .where(eq(hackathonTemplates.id, w.hackathonTemplateId))
+      .limit(1);
+    hackathonSlug = t?.slug ?? null;
+  }
+  return { ...toWorkspace(w), hackathonSlug };
 });
 
 route(identity, 'updateWorkspace', async ({ c, params, body }) => {
@@ -236,6 +247,7 @@ route(identity, 'previewInvite', async ({ c, params }) => {
       workspaceName: fx.workspace.name,
       memberAvatars: fx.members.map((m) => ({ login: m.user.githubLogin, avatarUrl: m.user.avatarUrl })),
       expired: false,
+      workspaceId: fx.workspace.id,
     };
   const db = c.var.db();
   const [row] = await db
@@ -252,7 +264,12 @@ route(identity, 'previewInvite', async ({ c, params }) => {
     .where(eq(memberships.workspaceId, row.i.workspaceId))
     .orderBy(asc(memberships.joinedAt))
     .limit(8);
-  return { workspaceName: row.workspaceName, memberAvatars: avatars, expired: inviteDead(row.i, new Date()) };
+  return {
+    workspaceName: row.workspaceName,
+    memberAvatars: avatars,
+    expired: inviteDead(row.i, new Date()),
+    workspaceId: row.i.workspaceId,
+  };
 });
 
 route(identity, 'acceptInvite', async ({ c, params }) => {
@@ -380,12 +397,16 @@ route(identity, 'getProfile', async ({ c, params }) => {
 });
 
 route(identity, 'updateProfile', async ({ c, params, body }) => {
-  if (c.var.mocks)
-    return { ...(fx.members.find((m) => m.user.id === params.uid) ?? fx.members[0]!).profile, ...body };
+  const { completeOnboarding, ...fields } = body;
+  if (c.var.mocks) {
+    const current = (fx.members.find((m) => m.user.id === params.uid) ?? fx.members[0]!).profile;
+    return { ...current, ...fields };
+  }
   const db = c.var.db();
-  await loadProfile(db, params.wid, params.uid); // 404 for non-members first, then 403 for someone else's profile
+  const current = await loadProfile(db, params.wid, params.uid); // 404 for non-members first, then 403 for someone else's profile
   if (params.uid !== me(c).id) throw forbidden();
-  const patch: Partial<typeof memberProfiles.$inferInsert> = { ...body };
+  const patch: Partial<typeof memberProfiles.$inferInsert> = { ...fields };
+  if (completeOnboarding && !current.onboardingCompletedAt) patch.onboardingCompletedAt = new Date();
   if (body.availability) {
     const w = await loadWorkspace(db, params.wid);
     const windows = validateAvailability(body.availability, {

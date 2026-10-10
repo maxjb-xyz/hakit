@@ -69,7 +69,7 @@ const resolvedBroadcasts = (
   );
 /** Open recommendations, newest first. Resolved ones reach clients via `recommendation.resolved`. */
 route(execution, 'listRecommendations', async ({ c, params }) => {
-  if (c.var.mocks) return [fx.stallRecommendation];
+  if (c.var.mocks) return fx.recommendations;
   await assertProjectMember(c, params.pid);
   const rows = await c.var
     .db()

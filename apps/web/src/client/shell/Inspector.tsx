@@ -9,17 +9,14 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { Assignment, AssignmentExplanation, Member, ScoreBreakdown, Task } from '@hakit/contracts';
-import { ids } from '@hakit/contracts/fixtures';
 import { Button, cn } from '@hakit/ui';
 import { api, ApiRequestError } from '../lib/api';
+import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
 import { AiGlyph } from '../routes/mission-control/RecommendationList';
 import { fmtHours, memberName } from '../routes/mission-control/shared';
 import { STATUS_LABEL, StatusIcon } from '../routes/tasks/meta';
 import { isTyping } from './keys';
-
-/** Until project selection exists (T-302), screens use the fixture project id. */
-const pid = ids.project;
 
 const REASON: Record<string, string> = {
   STRONG_SKILL_MATCH: 'Strong skill match',
@@ -202,9 +199,11 @@ export function Inspector({ taskKey }: { taskKey: string }) {
   const [, setSearch] = useSearchParams();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
+  const { pid } = useProject(wid);
   const board = useQuery({
-    queryKey: qk('getBoard', { pid }),
-    queryFn: () => api('getBoard', { params: { pid } }),
+    queryKey: qk('getBoard', { pid: pid ?? '' }),
+    queryFn: () => api('getBoard', { params: { pid: pid! } }),
+    enabled: !!pid,
   });
   const members = useQuery({
     queryKey: qk('listMembers', { wid }),

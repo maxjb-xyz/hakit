@@ -58,6 +58,40 @@ export function ErrorBox(props: { what: string; error: Error; onRetry: () => voi
   );
 }
 
+/**
+ * Stand-in for a project screen until `useProject` resolves a project: loading, error with retry, or an
+ * empty state pointing at the Plan flow (where a team creates its project).
+ */
+export function ProjectGate(props: {
+  query: { isPending: boolean; isError: boolean; error: Error | null; refetch: () => unknown };
+  title: string;
+}) {
+  const { wid = '' } = useParams();
+  const { query } = props;
+  return (
+    <div className="space-y-6 p-7 max-sm:p-4">
+      <PageHeader title={props.title} />
+      {query.isError && query.error ? (
+        <ErrorBox what="projects" error={query.error} onRetry={() => void query.refetch()} />
+      ) : query.isPending ? (
+        <LoadingBlocks label="Loading project" rows={3} />
+      ) : (
+        <EmptyBox
+          message="This workspace has no project yet. Plan one to get a board, a team view and live activity."
+          action={
+            <Link
+              to={`/w/${wid}/plan`}
+              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-400"
+            >
+              Plan a project
+            </Link>
+          }
+        />
+      )}
+    </div>
+  );
+}
+
 /** One sentence explaining why the view is empty, plus an optional action. */
 export function EmptyBox(props: { message: string; action?: ReactNode }) {
   return (

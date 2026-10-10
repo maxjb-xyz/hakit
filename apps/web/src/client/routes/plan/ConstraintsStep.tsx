@@ -1,10 +1,10 @@
 /**
  * S7 Constraints (T-302): sponsor challenge catalog, required/excluded tech, judging weights, a pinned constraints
  * panel and the deterministic fit meter against the current idea. Saved with `putConstraints`; the plan generator
- * reads the saved set. There is no GET for constraints yet, so the unsaved selection is kept per browser tab.
+ * reads the saved set, and `getConstraints` restores it when the step opens.
  */
-import { useEffect, useId, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useId, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Challenge, HackathonTemplate, Idea, Member, PutConstraints } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
@@ -14,8 +14,8 @@ import { EmptyBox, ErrorBox, LoadingBlocks, Pill } from '../page-states';
 import { constraintFit, type FitState } from './fit';
 import { SectionHead, StatusMark, fieldClass, pct, type Mark } from './ui';
 
-/** Workspaces reference their template by id, but `getHackathon` is keyed by slug; one template is seeded. */
-export const HACKATHON_SLUG = 'knight-hacks-ix';
+/** Used when the workspace response predates `hackathonSlug` (only one template is seeded). */
+export const DEFAULT_HACKATHON_SLUG = 'knight-hacks-ix';
 
 export interface ConstraintState {
   challengeIds: string[];
@@ -25,16 +25,18 @@ export interface ConstraintState {
   /** Judging criterion key → weight 0..1. */
   judging: Record<string, number>;
 }
-const empty: ConstraintState = { challengeIds: [], required: [], excluded: [], custom: [], judging: {} };
 
-const storageKey = (pid: string) => `hakit.constraints.${pid}`;
-function load(pid: string): ConstraintState {
-  try {
-    const raw = sessionStorage.getItem(storageKey(pid));
-    return raw ? { ...empty, ...(JSON.parse(raw) as Partial<ConstraintState>) } : empty;
-  } catch {
-    return empty;
+/** Inverse of `toPutConstraints`: the saved set back into editor state. */
+export function fromPutConstraints(saved: PutConstraints): ConstraintState {
+  const s: ConstraintState = { challengeIds: [], required: [], excluded: [], custom: [], judging: {} };
+  for (const k of saved.constraints) {
+    if (k.kind === 'challenge' && k.refId) s.challengeIds.push(k.refId);
+    else if (k.kind === 'required_tech') s.required.push(k.value);
+    else if (k.kind === 'excluded_tech') s.excluded.push(k.value);
+    else if (k.kind === 'judging') s.judging[k.value] = k.weight;
+    else if (k.kind === 'custom') s.custom.push(k.value);
   }
+  return s;
 }
 
 export function toPutConstraints(s: ConstraintState, h: HackathonTemplate): PutConstraints {
@@ -61,28 +63,45 @@ const FIT_MARK: Record<FitState, Mark> = { satisfied: 'ok', risky: 'warn', confl
 export function ConstraintsStep(props: {
   pid: string;
   wid: string;
+  /** From the workspace; null when it has no hackathon template, undefined while unknown. */
+  hackathonSlug: string | null | undefined;
   idea: Idea | null;
   members: Member[];
   onContinue: () => void;
 }) {
+  const saved = useQuery({
+    queryKey: qk('getConstraints', { pid: props.pid }),
+    queryFn: () => api('getConstraints', { params: { pid: props.pid } }),
+  });
+  if (saved.isError)
+    return <ErrorBox what="saved constraints" error={saved.error} onRetry={() => void saved.refetch()} />;
+  if (saved.isPending) return <LoadingBlocks label="Loading constraints" rows={3} />;
+  return <ConstraintsEditor {...props} initial={fromPutConstraints(saved.data)} />;
+}
+
+function ConstraintsEditor(props: {
+  pid: string;
+  wid: string;
+  hackathonSlug: string | null | undefined;
+  idea: Idea | null;
+  members: Member[];
+  onContinue: () => void;
+  initial: ConstraintState;
+}) {
   const { pid, wid } = props;
+  const qc = useQueryClient();
+  const slug = props.hackathonSlug === undefined ? DEFAULT_HACKATHON_SLUG : props.hackathonSlug;
   const hackathon = useQuery({
-    queryKey: qk('getHackathon', { slug: HACKATHON_SLUG }),
-    queryFn: () => api('getHackathon', { params: { slug: HACKATHON_SLUG } }),
+    queryKey: qk('getHackathon', { slug: slug ?? '' }),
+    queryFn: () => api('getHackathon', { params: { slug: slug! } }),
+    enabled: !!slug,
   });
   const cap = useQuery({
     queryKey: qk('teamCapability', { wid }),
     queryFn: () => api('teamCapability', { params: { wid } }),
   });
-  const [state, setState] = useState<ConstraintState>(() => load(pid));
+  const [state, setState] = useState<ConstraintState>(props.initial);
   const [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(storageKey(pid), JSON.stringify(state));
-    } catch {
-      /* storage unavailable: selection just isn't remembered */
-    }
-  }, [pid, state]);
   const update = (patch: Partial<ConstraintState>) => {
     setState((s) => ({ ...s, ...patch }));
     setDirty(true);
@@ -91,8 +110,16 @@ export function ConstraintsStep(props: {
   const save = useMutation({
     mutationFn: (h: HackathonTemplate) =>
       api('putConstraints', { params: { pid }, body: toPutConstraints(state, h) }),
-    onSuccess: () => setDirty(false),
+    onSuccess: (data) => {
+      setDirty(false);
+      qc.setQueryData(qk('getConstraints', { pid }), data);
+    },
   });
+
+  if (slug === null)
+    return (
+      <EmptyBox message="This workspace isn't linked to a hackathon, so there are no sponsor challenges to pick. Set one in Settings, or continue without constraints." />
+    );
 
   if (hackathon.isError)
     return (

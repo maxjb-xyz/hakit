@@ -27,7 +27,10 @@ type Opt<K extends string, T> = [T] extends [undefined]
   ? { [P in K]?: never }
   : keyof T extends never
     ? { [P in K]?: T }
-    : { [P in K]: T };
+    : // All-optional objects (e.g. filter queries) may be omitted.
+      Record<string, never> extends T
+      ? { [P in K]?: T }
+      : { [P in K]: T };
 export type CallArgs<N extends EndpointName> = Opt<'params', EndpointParams<N>> &
   Opt<'body', EndpointBody<N>> &
   Opt<'query', EndpointQuery<N>> & { signal?: AbortSignal };

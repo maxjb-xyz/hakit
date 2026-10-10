@@ -160,6 +160,13 @@ export const endpoints = {
     owner: 'PL',
   },
   getProject: { method: 'GET', path: '/projects/:pid', response: Project, owner: 'PL' },
+  /** The project's pinned constraints (additive; pairs with putConstraints). */
+  getConstraints: {
+    method: 'GET',
+    path: '/projects/:pid/constraints',
+    response: PutConstraints,
+    owner: 'PL',
+  },
   putConstraints: {
     method: 'PUT',
     path: '/projects/:pid/constraints',
@@ -278,6 +285,8 @@ export const endpoints = {
   listActivity: {
     method: 'GET',
     path: '/projects/:pid/activity',
+    /** Optional source filter (additive). */
+    query: z.object({ source: z.enum(['github', 'agent']).optional() }),
     response: Page(ActivityEvent),
     owner: 'GH',
   },

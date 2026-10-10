@@ -181,7 +181,11 @@ describe('T-202 workspaces, invites, membership', () => {
 
     const preview = await call(`/invites/${inv.code}`);
     expect(preview.status).toBe(200);
-    expect(await preview.json()).toMatchObject({ workspaceName: 'Orbit Crew', expired: false });
+    expect(await preview.json()).toMatchObject({
+      workspaceName: 'Orbit Crew',
+      expired: false,
+      workspaceId: w.id,
+    });
 
     const a = await signIn(21);
     expect(
@@ -289,5 +293,27 @@ describe('T-203 profile & availability', () => {
       .from(schema.memberProfiles)
       .where(eq(schema.memberProfiles.userId, owner.id));
     expect(row!.headline).toBe('Backend');
+  });
+
+  it('completeOnboarding stamps onboardingCompletedAt once', async () => {
+    const owner = await signIn(52);
+    const w = await newWorkspace(owner.token);
+    const url = `/w/${w.id}/members/${owner.id}/profile`;
+    const finish = async () => {
+      const res = await call(url, {
+        method: 'PATCH',
+        token: owner.token,
+        json: { completeOnboarding: true },
+      });
+      expect(res.status).toBe(200);
+      return endpoints.updateProfile.response.parse(await res.json()).onboardingCompletedAt;
+    };
+    const before = endpoints.getProfile.response.parse(
+      await (await call(url, { token: owner.token })).json(),
+    );
+    expect(before.onboardingCompletedAt).toBeNull();
+    const first = await finish();
+    expect(first).not.toBeNull();
+    expect(await finish()).toBe(first);
   });
 });
