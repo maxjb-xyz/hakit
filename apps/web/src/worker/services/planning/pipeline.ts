@@ -28,7 +28,12 @@ const deliverables = [
 ];
 
 /** Every generated plan includes mandatory delivery work, even when the provider omits it. */
-export function injectDeliverables(outline: PlanOutline, tasks: TaskDraft[], allowed: string[]) {
+export function injectDeliverables(
+  outline: PlanOutline,
+  tasks: TaskDraft[],
+  allowed: string[],
+  teamSkillLevels?: ReadonlyMap<string, number>,
+) {
   const result = tasks.map((t) => ({ ...t, dependsOn: [...t.dependsOn] }));
   const unique = (prefix: string, used: Set<string>) => {
     let key = prefix;
@@ -40,11 +45,10 @@ export function injectDeliverables(outline: PlanOutline, tasks: TaskDraft[], all
   const milestoneKey = unique('M-delivery', new Set(outline.milestones.map((m) => m.key)));
   const epicKey = unique('E-delivery', new Set(outline.epics.map((e) => e.key)));
   const keys = new Set(tasks.map((t) => t.key));
-  const skill = allowed.includes('technical-writing')
-    ? 'technical-writing'
-    : allowed.includes('git')
-      ? 'git'
-      : allowed[0];
+  // Prefer a delivery skill the team already has, so mandatory paperwork never reads as a skill gap.
+  const candidates = ['technical-writing', 'git'].filter((slug) => allowed.includes(slug));
+  const skill =
+    candidates.find((slug) => (teamSkillLevels?.get(slug) ?? 0) >= 1) ?? candidates[0] ?? allowed[0];
   if (!skill) throw new RangeError('Planning needs a nonempty skill taxonomy');
   const missing = deliverables.filter(
     (title) =>
@@ -191,7 +195,12 @@ export function templatePlan(input: PipelineInput): PlanDocument {
   }
   return {
     idea: input.idea,
-    ...injectDeliverables(outline, tasks, input.context.taxonomy.allowedSkillSlugs),
+    ...injectDeliverables(
+      outline,
+      tasks,
+      input.context.taxonomy.allowedSkillSlugs,
+      input.validation.teamSkillLevels,
+    ),
   };
 }
 
@@ -255,7 +264,12 @@ export async function generatePlanPipeline(
     if (workers.some((r) => r.status === 'rejected')) throw new Error('Epic generation failed');
     doc = {
       idea: input.idea,
-      ...injectDeliverables(outline, batches.flat(), input.context.taxonomy.allowedSkillSlugs),
+      ...injectDeliverables(
+        outline,
+        batches.flat(),
+        input.context.taxonomy.allowedSkillSlugs,
+        input.validation.teamSkillLevels,
+      ),
     };
     model = llm.name;
   } catch {
@@ -293,7 +307,12 @@ export async function generatePlanPipeline(
       );
       doc = {
         idea: input.idea,
-        ...injectDeliverables(repaired.outline, repaired.tasks, input.context.taxonomy.allowedSkillSlugs),
+        ...injectDeliverables(
+          repaired.outline,
+          repaired.tasks,
+          input.context.taxonomy.allowedSkillSlugs,
+          input.validation.teamSkillLevels,
+        ),
       };
       checked = validatePlan({ ...input.validation, outline: doc.outline, tasks: doc.tasks });
     } catch {

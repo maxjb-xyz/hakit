@@ -8,7 +8,7 @@ import {
 } from '@hakit/contracts';
 import { planDocument } from '@hakit/contracts/fixtures';
 import type { LlmProvider } from '../ai/types';
-import { generatePlanPipeline, type PipelineInput } from './pipeline';
+import { generatePlanPipeline, injectDeliverables, type PipelineInput } from './pipeline';
 export function pipelineInput(): PipelineInput {
   const allowed = [...new Set(planDocument.tasks.flatMap((t) => t.requiredSkills.map((s) => s.slug)))];
   const context: PlanningContext = {
@@ -187,5 +187,24 @@ describe('plan pipeline', () => {
     input.validation.totalEffectiveHours = 0;
     const overloaded = await generatePlanPipeline(input, provider(outline(1), tasks), vi.fn());
     expect(overloaded.feasibility.ok).toBe(false);
+  });
+});
+
+describe('injectDeliverables', () => {
+  const skillsOf = (levels?: Map<string, number>) =>
+    injectDeliverables(outline(1), [], ['react', 'git', 'technical-writing'], levels).tasks.flatMap((t) =>
+      t.requiredSkills.map((s) => s.slug),
+    );
+
+  it('prefers technical writing when the team has it', () => {
+    expect(new Set(skillsOf(new Map([['technical-writing', 2]])))).toEqual(new Set(['technical-writing']));
+  });
+
+  it('falls back to a delivery skill the team has, so deliverables are not a skill gap', () => {
+    expect(new Set(skillsOf(new Map([['git', 3]])))).toEqual(new Set(['git']));
+  });
+
+  it('keeps technical writing when the team has neither', () => {
+    expect(new Set(skillsOf(new Map()))).toEqual(new Set(['technical-writing']));
   });
 });
