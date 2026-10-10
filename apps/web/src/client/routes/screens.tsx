@@ -46,17 +46,7 @@ export function Onboarding() {
   return <Placeholder screen="S1/S3" title="Onboarding & skill import" tasks="T-207, T-208" endpoint="me" />;
 }
 export { MissionControl } from './MissionControl';
-export function Plan() {
-  return (
-    <Placeholder
-      screen="S6–S9"
-      title="Plan: ideas → constraints → plan → assignment"
-      tasks="T-302, T-304, T-307, T-311"
-      endpoint="getPlan"
-      args={{ params: { pid: useProjectId(), planId: ids.plan } }}
-    />
-  );
-}
+export { Plan } from './Plan';
 export { Tasks } from './Tasks';
 export function Team() {
   return (
