@@ -61,17 +61,7 @@ export function MemberProfile() {
     />
   );
 }
-export function Code() {
-  return (
-    <Placeholder
-      screen="S12"
-      title="Code activity"
-      tasks="T-407"
-      endpoint="listActivity"
-      args={{ params: { pid: useProjectId() } }}
-    />
-  );
-}
+export { Code } from './Code';
 export function Agents() {
   return (
     <Placeholder

@@ -3,6 +3,8 @@
  * a page header, and the loading / error / empty states every view needs (DESIGN §9).
  */
 import type { ReactNode } from 'react';
+import { Link, useParams } from 'react-router';
+import type { LinkKind, Task } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 
 /** Page title + optional subtitle, with room for chips or buttons on the right. */
@@ -63,6 +65,39 @@ export function EmptyBox(props: { message: string; action?: ReactNode }) {
       <p className="text-body text-muted">{props.message}</p>
       {props.action}
     </div>
+  );
+}
+
+/**
+ * Which task a commit / PR / agent session belongs to. Confirmed links (e.g. from an `hk-12-…` branch name)
+ * get a solid border; inferred ones (a guess) get a dashed border and the word "inferred" (DESIGN §2.5).
+ */
+export function TaskLinkChip(props: {
+  task: Pick<Task, 'key' | 'title'> | undefined;
+  linkKind: LinkKind;
+  confidence?: number | null;
+}) {
+  const { wid = '' } = useParams();
+  if (!props.task || props.linkKind === 'none') {
+    return <Pill className="border-dashed text-subtle">Unlinked</Pill>;
+  }
+  const inferred = props.linkKind === 'inferred';
+  return (
+    <Link
+      to={`/w/${wid}/tasks?task=${props.task.key}`}
+      title={props.task.title}
+      className={cn(
+        'inline-flex h-control-sm shrink-0 items-center gap-1 rounded-full border px-2 text-label hover:bg-hover',
+        inferred ? 'border-dashed border-border-strong text-muted' : 'border-border text-default',
+      )}
+    >
+      <span className="font-mono">{props.task.key}</span>
+      {inferred && (
+        <span className="text-subtle">
+          inferred{props.confidence != null && ` ${Math.round(props.confidence * 100)}%`}
+        </span>
+      )}
+    </Link>
   );
 }
 
