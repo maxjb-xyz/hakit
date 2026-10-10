@@ -193,3 +193,90 @@ it('registers the queue handler and acknowledges mock jobs without I/O', async (
   expect(message.ack).toHaveBeenCalledOnce();
   expect(message.retry).not.toHaveBeenCalled();
 });
+
+it('replaces pipeline-owned fork contributions while preserving unrelated contribution evidence', async () => {
+  await testDb.db.insert(schema.skillEvidence).values({
+    userId,
+    skillId,
+    kind: 'contribution',
+    sourceRef: 'other/real-work',
+    weight: 1,
+    summary: 'Independent contribution',
+    observedAt: now,
+  });
+  const fork = { ...repo, isFork: true };
+  await importSkillFacts(testDb.db, userId, [fork], provider, now, async () => {});
+  await importSkillFacts(testDb.db, userId, [fork], provider, now, async () => {});
+  const rows = await testDb.db.select().from(schema.skillEvidence);
+  expect(rows.filter((row) => row.kind === 'contribution')).toHaveLength(2);
+  expect(rows.some((row) => row.summary === 'Independent contribution')).toBe(true);
+});
+it('rejects missing taxonomy instead of reporting a misleading successful empty import', async () => {
+  await testDb.db.delete(schema.skills);
+  await expect(importSkillFacts(testDb.db, userId, [repo], provider, now, async () => {})).rejects.toThrow(
+    'taxonomy is not seeded',
+  );
+  expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(0);
+});
+it('rejects semantic providers with the wrong model or dimension', async () => {
+  await expect(
+    importSkillFacts(testDb.db, userId, [repo], { ...provider, model: 'different' }, now, async () => {}),
+  ).rejects.toThrow('Qwen3');
+});
+it('rechecks membership before saving after a member leaves during processing', async () => {
+  const [workspace] = await testDb.db
+    .insert(schema.workspaces)
+    .values({ name: 'Team', slug: 'left-team', createdBy: userId, deadlineAt: new Date('2099-01-01') })
+    .returning();
+  await testDb.db
+    .insert(schema.memberships)
+    .values({ workspaceId: workspace!.id, userId, role: 'owner', colorIndex: 0 });
+  await expect(
+    importSkillFacts(
+      testDb.db,
+      userId,
+      [repo],
+      provider,
+      now,
+      async (p) => {
+        if (p.stage === 'aggregating')
+          await testDb.db.delete(schema.memberships).where(eq(schema.memberships.workspaceId, workspace!.id));
+      },
+      workspace!.id,
+    ),
+  ).rejects.toThrow('membership changed');
+  expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(0);
+});
+it('saves suggestions even when realtime broadcasts fail', async () => {
+  const [workspace] = await testDb.db
+    .insert(schema.workspaces)
+    .values({ name: 'Team', slug: 'realtime-down', createdBy: userId, deadlineAt: new Date('2099-01-01') })
+    .returning();
+  await testDb.db
+    .insert(schema.memberships)
+    .values({ workspaceId: workspace!.id, userId, role: 'owner', colorIndex: 0 });
+  await testDb.db.insert(schema.projects).values({ workspaceId: workspace!.id, name: 'Demo' });
+  const send = vi.fn(async () => {});
+  const env = {
+    HAKIT_MOCKS: '0',
+    EMBED_MODEL: provider.model,
+    EMBED_DIM: '1024',
+    JOBS: { send },
+    PROJECT_ROOM: {
+      idFromName: (id: string) => id,
+      get: () => ({
+        broadcast: async () => {
+          throw new Error('realtime down');
+        },
+      }),
+    },
+  } as unknown as Env;
+  await processSkillsImport(
+    { type: 'skills.import', userId, workspaceId: workspace!.id, repoCursor: null },
+    testDb.db,
+    { env, services: getServices(env) },
+    async () => [repo],
+  );
+  expect(await testDb.db.select().from(schema.memberSkills)).toHaveLength(1);
+  expect(send).toHaveBeenCalledOnce();
+});

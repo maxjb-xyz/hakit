@@ -8,6 +8,10 @@ export interface RepoFacts {
   sizeKb: number;
   isFork: boolean;
   languages: Record<string, number>;
+  /** Total includes languages beyond the fetched first 20. */
+  languageBytesTotal?: number;
+  /** Primary language is metadata, not a measured byte distribution. */
+  primaryLanguage?: string | null;
   topics: string[];
   files: Record<string, string | null>;
   readmeExcerpt: string | null;
@@ -44,7 +48,7 @@ const languages: Record<string, string> = {
   'C#': 'csharp',
   HTML: 'html-css',
   CSS: 'html-css',
-  Shell: 'bash',
+  Shell: 'bash-scripting',
   SQL: 'sql',
 };
 const normalize = (s: string) => s.toLowerCase().replace(/[-_.\s]/g, '');
@@ -145,7 +149,7 @@ export function evidenceFromRepo(
       observedAt: repo.pushedAt,
     });
   };
-  const total = Object.values(repo.languages).reduce((a, b) => a + b, 0);
+  const total = repo.languageBytesTotal ?? Object.values(repo.languages).reduce((a, b) => a + b, 0);
   for (const [language, bytes] of Object.entries(repo.languages))
     if (total > 0 && bytes / total >= 0.1 && languages[language])
       add(
@@ -154,6 +158,13 @@ export function evidenceFromRepo(
         (0.8 * bytes) / total,
         `${language}: ${Math.round((100 * bytes) / total)}% of language bytes`,
       );
+  if (total === 0 && repo.primaryLanguage && languages[repo.primaryLanguage])
+    add(
+      languages[repo.primaryLanguage]!,
+      'repo_language',
+      0.4,
+      `${repo.primaryLanguage}: GitHub primary language (byte breakdown unavailable)`,
+    );
   for (const [path, content] of Object.entries(repo.files)) {
     const names = new Set(content === null ? [] : dependencies(path, content));
     for (const signal of DEP_MAP) {

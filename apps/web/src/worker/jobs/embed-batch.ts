@@ -1,5 +1,5 @@
 /** T-205: idempotent embedding writes; no network call occurs inside a DB transaction. */
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { createDb, schema, type Db } from '@hakit/db';
 import { Id, JobMessage, TaskRequiredSkill } from '@hakit/contracts';
@@ -135,6 +135,42 @@ export async function processEmbeddingBatch(
   }
   if (!original.length) return;
   await db.transaction(async (tx) => {
+    // Lock source rows before re-reading so an edit cannot slip between validation and vector writes.
+    // The user lock also serializes member vectors with skill imports. Sort locks consistently.
+    if (job.target === 'member') {
+      await tx
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(inArray(schema.users.id, ids))
+        .orderBy(asc(schema.users.id))
+        .for('update');
+      await tx
+        .select()
+        .from(schema.memberships)
+        .where(inArray(schema.memberships.userId, ids))
+        .orderBy(asc(schema.memberships.userId), asc(schema.memberships.workspaceId))
+        .for('share');
+      await tx
+        .select()
+        .from(schema.memberProfiles)
+        .where(inArray(schema.memberProfiles.userId, ids))
+        .orderBy(asc(schema.memberProfiles.userId), asc(schema.memberProfiles.workspaceId))
+        .for('share');
+      await tx
+        .select({ id: schema.memberSkills.id })
+        .from(schema.memberSkills)
+        .innerJoin(schema.skills, eq(schema.memberSkills.skillId, schema.skills.id))
+        .where(inArray(schema.memberSkills.userId, ids))
+        .orderBy(asc(schema.memberSkills.userId), asc(schema.memberSkills.skillId))
+        .for('share');
+    } else if (job.target === 'skill') {
+      await tx
+        .select({ id: schema.skills.id })
+        .from(schema.skills)
+        .where(inArray(schema.skills.id, ids))
+        .orderBy(asc(schema.skills.id))
+        .for('update');
+    }
     const current = new Map((await records(tx, job.target, ids)).map((record) => [record.key, record]));
     for (const record of original) {
       const latest = current.get(record.key);

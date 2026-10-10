@@ -29,8 +29,12 @@ export async function importSkillFacts(
   provider: EmbeddingProvider,
   now: Date,
   progress: (p: Progress) => Promise<void>,
+  workspaceId?: string,
 ) {
   const taxonomy = await db.select().from(schema.skills);
+  if (!taxonomy.length) throw new Error('Skill taxonomy is not seeded; seed it before importing skills');
+  if (provider.model !== 'Qwen/Qwen3-Embedding-0.6B' || provider.dim !== 1024)
+    throw new Error('Skill import requires Qwen3 1024-dimensional embeddings');
   await progress({
     stage: 'mapping',
     message: 'Mapping languages, dependencies and topics',
@@ -87,6 +91,14 @@ export async function importSkillFacts(
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .for('update');
+    if (workspaceId) {
+      const [active] = await tx
+        .select()
+        .from(schema.memberships)
+        .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, userId)))
+        .for('share');
+      if (!active) throw new Error('Workspace membership changed during skill import');
+    }
     for (const skill of inferred) {
       const skillId = taxonomy.find((t) => t.slug === skill.slug)!.id;
       const rows = await tx
@@ -107,15 +119,14 @@ export async function importSkillFacts(
         .returning();
       if (!rows.length) continue;
       // Replace only pipeline-owned evidence; preserve self reports and task history.
-      await tx
-        .delete(schema.skillEvidence)
-        .where(
-          and(
-            eq(schema.skillEvidence.userId, userId),
-            eq(schema.skillEvidence.skillId, skillId),
-            sql`${schema.skillEvidence.kind} IN ('repo_language','manifest_dependency','repo_topic','readme_semantic')`,
-          ),
-        );
+      await tx.delete(schema.skillEvidence).where(
+        and(
+          eq(schema.skillEvidence.userId, userId),
+          eq(schema.skillEvidence.skillId, skillId),
+          sql`(${schema.skillEvidence.kind} IN ('repo_language','manifest_dependency','repo_topic','readme_semantic')
+              OR (${schema.skillEvidence.kind} = 'contribution' AND ${schema.skillEvidence.detail}->>'pipeline' = 'skills.import'))`,
+        ),
+      );
       if (skill.evidence.length)
         await tx.insert(schema.skillEvidence).values(
           skill.evidence.map((e) => ({
@@ -127,6 +138,7 @@ export async function importSkillFacts(
             weight: e.weight,
             summary: e.summary,
             observedAt: e.observedAt,
+            detail: { pipeline: 'skills.import' },
           })),
         );
     }
@@ -153,7 +165,7 @@ export async function processSkillsImport(
     .where(eq(schema.projects.workspaceId, job.workspaceId));
   const progress = async (p: Progress) => {
     const validated = SkillImportProgress.parse(p);
-    await Promise.all(
+    await Promise.allSettled(
       projects.map((project) =>
         broadcast(env, project.id, {
           type: 'skills.import_progress',
@@ -191,6 +203,7 @@ export async function processSkillsImport(
       embeddingService(env, databaseEmbeddingCache(db)),
       new Date(),
       progress,
+      job.workspaceId,
     );
     await env.JOBS.send({ type: 'embed.batch', target: 'member', ids: [job.userId] });
     await progress({

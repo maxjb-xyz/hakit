@@ -113,7 +113,8 @@ it('uses public metadata without a token', async () => {
   expect((await fetchPublicRepos('member', null))[0]).toMatchObject({
     files: {},
     readmeExcerpt: null,
-    languages: { Python: 1 },
+    languages: {},
+    primaryLanguage: 'Python',
   });
   expect(fetch.mock.calls).toHaveLength(1);
 });

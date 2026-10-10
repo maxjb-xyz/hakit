@@ -11,6 +11,7 @@ const repoSchema = z.object({
   pushedAt: z.iso.datetime().nullable(),
   diskUsage: z.number().nonnegative(),
   languages: z.object({
+    totalSize: z.number().nonnegative().optional(),
     edges: z.array(z.object({ size: z.number().nonnegative(), node: z.object({ name: z.string() }) })),
   }),
   repositoryTopics: z.object({ nodes: z.array(z.object({ topic: z.object({ name: z.string() }) })) }),
@@ -53,7 +54,7 @@ export async function fetchPublicRepos(login: string, token: string | null): Pro
     .parse(login);
   if (!token) return publicFallback(login);
   const metadata =
-    'nameWithOwner url isPrivate isArchived isFork pushedAt diskUsage languages(first:20){edges{size node{name}}} repositoryTopics(first:20){nodes{topic{name}}}';
+    'nameWithOwner url isPrivate isArchived isFork pushedAt diskUsage languages(first:20){totalSize edges{size node{name}}} repositoryTopics(first:20){nodes{topic{name}}}';
   const response = z
     .object({
       data: z.object({
@@ -193,6 +194,7 @@ export async function fetchPublicRepos(login: string, token: string | null): Pro
               sizeKb: r.diskUsage,
               isFork: r.isFork,
               languages: Object.fromEntries(r.languages.edges.map((e) => [e.node.name, e.size])),
+              languageBytesTotal: r.languages.totalSize,
               topics: r.repositoryTopics.nodes.map((t) => t.topic.name),
               files,
               readmeExcerpt,
@@ -233,7 +235,8 @@ async function publicFallback(login: string): Promise<RepoFacts[]> {
       pushedAt: new Date(r.pushed_at!),
       sizeKb: r.size,
       isFork: false,
-      languages: r.language ? { [r.language]: 1 } : {},
+      languages: {},
+      primaryLanguage: r.language,
       topics: r.topics,
       files: {},
       readmeExcerpt: null,

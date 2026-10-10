@@ -133,3 +133,25 @@ it('recognizes workflow markers and records verified fork contributions', () => 
   expect(rows.some((e) => e.skillSlug === 'github-actions')).toBe(true);
   expect(rows.some((e) => e.kind === 'contribution')).toBe(true);
 });
+
+it('maps Shell to the seeded taxonomy and labels fallback language estimates honestly', () => {
+  const shell = evidenceFromRepo({ ...repo, languages: { Shell: 100 }, files: {}, topics: [] }, now);
+  expect(shell[0]!.skillSlug).toBe('bash-scripting');
+  const fallback = evidenceFromRepo(
+    { ...repo, languages: {}, primaryLanguage: 'Python', files: {}, topics: [] },
+    now,
+  );
+  expect(fallback[0]).toMatchObject({
+    skillSlug: 'python',
+    summary: 'Python: GitHub primary language (byte breakdown unavailable)',
+  });
+  expect(fallback[0]!.weight).toBeLessThan(0.8);
+});
+
+it('uses the complete language byte total even when the fetched language list is truncated', () => {
+  const rows = evidenceFromRepo(
+    { ...repo, languages: { TypeScript: 10 }, languageBytesTotal: 200, files: {}, topics: [] },
+    now,
+  );
+  expect(rows).toEqual([]);
+});

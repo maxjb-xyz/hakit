@@ -34,15 +34,22 @@ export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingPro
           const providers: EmbeddingProvider[] = [];
           if (env.HF_TOKEN)
             providers.push(hfEmbeddings({ token: env.HF_TOKEN, model: env.EMBED_MODEL, dim }));
-          if (env.AMD_EMBED_BASE_URL && env.AMD_LLM_KEY)
-            providers.push(
-              amdEmbeddings({
-                baseUrl: env.AMD_EMBED_BASE_URL,
-                token: env.AMD_LLM_KEY,
-                model: env.EMBED_MODEL,
-                dim,
-              }),
-            );
+          if (env.AMD_EMBED_BASE_URL && env.AMD_LLM_KEY) {
+            const baseUrl = env.AMD_EMBED_BASE_URL;
+            const token = env.AMD_LLM_KEY;
+            providers.push({
+              name: 'amd',
+              model: env.EMBED_MODEL,
+              dim,
+              embed: (texts, kind) =>
+                amdEmbeddings({
+                  baseUrl,
+                  token,
+                  model: env.EMBED_MODEL,
+                  dim,
+                }).embed(texts, kind),
+            });
+          }
           providers.push(workersAiEmbeddings(env.AI, env.WORKERS_AI_EMBED_MODEL, dim, env.EMBED_MODEL));
           router = embeddingRouter(providers);
           routers.set(env, router);

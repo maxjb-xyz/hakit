@@ -49,3 +49,23 @@ describe('embedding service integration', () => {
     });
   });
 });
+
+it('does not let an invalid optional AMD endpoint block healthy HF or Workers AI', async () => {
+  const e = env();
+  e.AMD_EMBED_BASE_URL = 'http://invalid.test/v1';
+  e.AMD_LLM_KEY = 'private';
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(Response.json({ model: QWEN_MODEL, data: [{ index: 0, embedding: vector() }] })),
+  );
+  expect((await embeddingService(e, cache()).embed(['a'], 'document'))[0]).toHaveLength(1024);
+  expect(e.AI.run).not.toHaveBeenCalled();
+  const failed = env();
+  failed.AMD_EMBED_BASE_URL = 'not-a-url';
+  failed.AMD_LLM_KEY = 'private';
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('down', { status: 503 })));
+  expect((await embeddingService(failed, cache()).embed(['a'], 'document'))[0]).toHaveLength(1024);
+  expect(failed.AI.run).toHaveBeenCalledOnce();
+});
