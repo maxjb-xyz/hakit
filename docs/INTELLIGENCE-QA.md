@@ -11,6 +11,7 @@ pnpm typecheck && pnpm lint && pnpm test
 pnpm --filter @hakit/engine exec vitest run src/capability/infer.test.ts
 pnpm --filter @hakit/web test:skills
 pnpm --filter @hakit/web test:embeddings
+pnpm --filter @hakit/web test:capability
 ```
 
 A passing run exits successfully without failed tests. These tests use fixtures and isolated in-memory Postgres, never the shared Tiger database or paid Hugging Face requests. Typecheck catches incompatible data; lint checks code rules; tests check behavior. Existing skipped/todo tests do **not** establish that those features work.
@@ -30,7 +31,7 @@ Use `HAKIT_MOCKS=1` in your existing local configuration, then run `pnpm dev` an
 | Refresh during a workflow | Saved work is retained; errors offer a retry |
 | Try the demo as a first-time teammate | You can explain the next action without a developer beside you |
 
-The current onboarding/skill-import screen is a placeholder (T-207/T-208), so there is no working import button to exercise yet. Use the automated skill tests now; use the live checklist after Frontend connects that screen. Some screens/APIs remain scaffold placeholders. In particular, T-206 owns listing/editing skills and team capability; its real paths are still 501. Don't count fixture-backed screens as a completed real workflow.
+The current onboarding/skill-import screen is a placeholder (T-207/T-208), so there is no working import button to exercise yet. Use the automated skill tests now; use the live checklist after Frontend connects that screen. Some screens/APIs remain scaffold placeholders. T-206 now implements real skill reads/edits, taxonomy search and team capability; these can be exercised with the API even though the review screen is still pending. Don't count fixture-backed screens as a completed real workflow.
 
 ## Real integration QA with the team
 
@@ -38,9 +39,9 @@ Run this on a configured dev deployment once auth, taxonomy seed, queue, databas
 
 1. Sign in with a test GitHub account and join a workspace. Import a public React/TypeScript repository with those dependencies in `package.json`. Expect React/TypeScript suggestions with repo/file evidence.
 2. Import a Python repository and confirm its suggestions make sense. Check that minor language shares below 10% don't become language evidence in authenticated mode.
-3. Import twice. Expect one member-skill row per skill and no duplicated pipeline evidence. Re-import retains old inferred suggestions not observed this time; members can remove unwanted suggestions once T-206 is implemented.
-4. Confirm a skill, add one manually, and remove one using the completed T-206 UI/API. Re-import. Expect all three decisions to remain intact, including the removal. Automated tests already exercise this at the database layer.
-5. Try a new account with no public repos. Expect zero new suggestions and a usable manual-entry path once T-206/UI land.
+3. Import twice. Expect one member-skill row per skill and no duplicated pipeline evidence. Re-import retains old inferred suggestions not observed this time; members can remove unwanted suggestions using the T-206 API.
+4. Confirm a skill, add one manually, and remove one using the T-206 API or the review UI once Frontend connects it. Re-import. Expect all three decisions to remain intact, including the removal. Automated tests already exercise this at the database layer.
+5. Try a new account with no public repos. Expect zero new suggestions and a usable manual-entry path through T-206, with the review UI still pending.
 6. Verify private and archived repos are excluded. Forks are accepted only when the member has commits on the fork's default branch; inherited languages/dependencies still do not prove authorship of every component.
 7. Test an unavailable embedding provider. Deterministic suggestions should still save. If taxonomy vectors haven't been seeded, semantic matching is skipped. The later member-embedding job retries independently.
 8. Attempt import while signed out, as a workspace outsider, and without the CSRF header. Expect rejection and no job created.
@@ -75,3 +76,5 @@ Practice a short story: public repo → understandable skill evidence → member
 T-204 and T-205 share the feature branch `t-204-205-skill-import-and-embeddings`. Use that branch as the PR head and `main` as its base, with review and green CI before merge. Push to the feature branch, never directly to `main`.
 
 The follow-up compatibility review and remaining integration risks are recorded in [INTELLIGENCE-REVIEW.md](./INTELLIGENCE-REVIEW.md).
+
+The T-206 endpoints and manual checks are explained in [CAPABILITY-VERIFICATION.md](./CAPABILITY-VERIFICATION.md).
