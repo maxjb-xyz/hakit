@@ -10,9 +10,7 @@
     "deploy": "vite build && wrangler deploy",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "cf-typegen": "wrangler types --include-runtime false",
-    "deploy:preview": "CLOUDFLARE_ENV=preview vite build && wrangler deploy",
-    "upload:preview": "CLOUDFLARE_ENV=preview vite build && wrangler versions upload"
+    "cf-typegen": "wrangler types --include-runtime false"
   },
   "dependencies": {
     "@hakit/contracts": "workspace:*",

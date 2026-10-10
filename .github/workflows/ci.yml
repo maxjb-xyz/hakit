@@ -42,26 +42,6 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-  preview:
-    # Uploads a preview version of `hakit-preview` (not a deploy). Skipped for forks, which don't get secrets.
-    if: >-
-      github.event_name == 'pull_request' && vars.DEPLOY_ENABLED == 'true' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @hakit/web run upload:preview
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
   migrate:
     # The `migrations` environment must have required reviewers (repo Settings → Environments): that is the
     # manual approval gate. DATABASE_URL is the Tiger direct service URL, stored as an environment secret.
