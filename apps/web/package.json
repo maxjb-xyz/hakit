@@ -15,7 +15,9 @@
     "test:embeddings": "vitest run embeddings embed-batch health-embeddings --reporter=verbose",
     "check:embeddings": "node --experimental-strip-types scripts/check-embeddings.mjs",
     "test:skills": "vitest run src/worker/services/skills/github.test.ts src/worker/jobs/skills-import.test.ts src/worker/routes/capability-import.test.ts --reporter=verbose",
-    "test:capability": "vitest run src/worker/routes/capability.test.ts --reporter=verbose"
+    "test:capability": "vitest run src/worker/routes/capability.test.ts --reporter=verbose",
+    "test:ai": "vitest run src/worker/services/ai --reporter=verbose",
+    "check:gemini": "vitest run --config scripts/gemini.live.config.ts"
   },
   "dependencies": {
     "@hakit/contracts": "workspace:*",

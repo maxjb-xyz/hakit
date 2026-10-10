@@ -181,6 +181,7 @@ Also in the scaffold:
 ## Phase 3 — Planning & Assignment
 
 **T-301 · LLM provider layer** · P0 · IN · 2h · T-004
+- Status: Gemini REST generation/streaming, Zod revalidation with one repair retry, optional AMD JSON-schema provider, cached provider router with circuit breakers/backoff and safe metadata logging implemented. 37 fake-provider tests; opt-in live Gemini generation/streaming check passed with the locally configured model/key. Live AMD and full planning-schema verification remain pending. See `docs/LLM-VERIFICATION.md`.
 - AC: `GeminiProvider.generateStructured` with `responseJsonSchema`, `thinkingLevel` and streaming.
 - AC: Zod re-validation with one repair retry.
 - AC: OpenAI-compatible provider; router with circuit breakers; call logging.
@@ -205,6 +206,7 @@ Also in the scaffold:
 - AC: template-plan fallback when the provider is unavailable.
 
 **T-306 · Plan validators** · P0 · IN · 3h · T-004
+- Status: earlier validator implementation restored on `t-301-306-ai-providers-and-plan-validation`; duplicate epic/milestone references and invalid team effective levels additionally guarded. 40 tests and 100% validator branch coverage. Pipeline integration remains T-305. See `docs/PLAN-VALIDATION.md`.
 - AC: AI.md §B.3 checks 1–8 as pure functions returning `Feasibility` (issues with codes and the numbers involved) and automatic cut-line adjustment.
 - AC: 100% branch coverage on the cycle, capacity and coverage checks.
 

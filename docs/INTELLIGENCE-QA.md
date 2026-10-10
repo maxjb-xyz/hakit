@@ -67,7 +67,7 @@ For model quality, maintain a small list of known public repos: React, Python ML
 - Matches map only to the existing taxonomy. Unknown-skill `pending_review` storage is not in the current schema; category prototypes and optional NLI are not implemented. The curated dependency map and taxonomy were already supplied by the project.
 - Imports protect member decisions with conditional upserts and replace pipeline evidence only for updated inferred rows. Repeated queue delivery is safe for those writes; a transient failure after commit can cause another import and another harmless embedding job.
 - Progress uses existing project broadcasts, which are shared with project subscribers. Onboarding transport before a project exists and T-404 authorization hardening still need the owning streams.
-- This checkout's T-306 validator is a `NotImplementedError` stub. Integrate the earlier validator branch before testing full plan feasibility. Assignment, capability and adaptive tasks also remain pending; passing the current suite doesn't mean the entire product is finished.
+- T-301 providers and T-306 validators are implemented on the subsequent `t-301-306-ai-providers-and-plan-validation` branch; see `LLM-VERIFICATION.md`. Idea/plan pipeline integration, assignment and adaptive tasks remain pending; passing the current suite doesn't mean the entire product is finished.
 
 ## Hackathon demo readiness
 

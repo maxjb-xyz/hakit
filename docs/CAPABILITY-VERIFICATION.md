@@ -87,4 +87,4 @@ After Frontend connects the review screen, repeat these steps by clicking: inspe
 - Shared contracts, DB schema, migrations, Wrangler configuration and secrets are unchanged.
 - Live deployment and multi-connection concurrency verification remain pending. Profile mutations still need to enqueue their own embedding refresh (Platform ownership); T-206 queues skill changes only.
 - Search works without embeddings through names and aliases. Semantic search requires taxonomy vectors, and provider outages degrade to an empty unmatched search result. Frontend should debounce search input to control request volume.
-- Pre-project import progress and T-404 hardening remain separate integration work. T-306 remains a stub here, and Gemini planning, assignment and adaptive logic are subsequent tasks.
+- Pre-project import progress and T-404 hardening remain separate integration work. T-301 providers and T-306 validators are implemented on a subsequent branch (see `LLM-VERIFICATION.md`); the idea/plan pipeline, assignment and adaptive logic remain subsequent tasks.

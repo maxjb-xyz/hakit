@@ -31,6 +31,8 @@ export interface Env {
   GEMINI_API_KEY?: string;
   HF_TOKEN?: string;
   AMD_LLM_BASE_URL?: string;
+  /** Exact model served by the optional AMD/vLLM endpoint. */
+  AMD_LLM_MODEL?: string;
   AMD_EMBED_BASE_URL?: string;
   AMD_LLM_KEY?: string;
 }
