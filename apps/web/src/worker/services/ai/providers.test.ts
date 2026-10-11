@@ -60,7 +60,7 @@ it.each(['gemini'] as const)(
     expect(url).toBe(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
     );
-    expect(options!.redirect).toBe('error');
+    expect(options!.redirect).toBe('manual');
     expect(JSON.stringify(body)).toContain('do-not-log');
     expect(_kind).toBe('gemini');
     expect(body.generationConfig).toMatchObject({

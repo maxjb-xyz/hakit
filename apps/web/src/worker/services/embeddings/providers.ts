@@ -111,7 +111,7 @@ function httpProvider(opts: {
         return await withTimeout(async (signal) => {
           const response = await (opts.fetch ?? fetch)(opts.url, {
             method: 'POST',
-            redirect: 'error',
+            redirect: 'manual',
             signal,
             headers: { authorization: `Bearer ${opts.token}`, 'content-type': 'application/json' },
             body: JSON.stringify({ model: opts.model, input, encoding_format: 'float' }),

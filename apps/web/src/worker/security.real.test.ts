@@ -258,6 +258,21 @@ describe('agent token revocation (S-6)', () => {
   });
 });
 
+describe('outbound fetches', () => {
+  const ROOT = fileURLToPath(new URL('.', import.meta.url));
+  const files = (dir: string): string[] =>
+    readdirSync(dir).flatMap((f) => {
+      const p = join(dir, f);
+      return statSync(p).isDirectory() ? files(p) : p.endsWith('.ts') && !p.includes('.test.') ? [p] : [];
+    });
+
+  // workerd rejects redirect: 'error' at call time; use 'manual' and treat any non-2xx as a failure.
+  it("never use redirect: 'error', which Cloudflare Workers rejects", () => {
+    const offenders = files(ROOT).filter((f) => /redirect:\s*['"]error['"]/.test(readFileSync(f, 'utf8')));
+    expect(offenders.map((f) => f.slice(ROOT.length))).toEqual([]);
+  });
+});
+
 describe('no secrets in logs (S-1)', () => {
   const ROOT = fileURLToPath(new URL('.', import.meta.url));
   const files = (dir: string): string[] =>

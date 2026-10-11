@@ -157,7 +157,7 @@ export function structuredProvider(wire: Wire, opts: TransportOptions = {}): Llm
         headers: config.headers,
         body: JSON.stringify(config.body),
         signal: controller.signal,
-        redirect: 'error',
+        redirect: 'manual',
       });
       if (!response.ok) {
         await response.body?.cancel();

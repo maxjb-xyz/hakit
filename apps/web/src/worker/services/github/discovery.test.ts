@@ -30,7 +30,7 @@ describe('GitHub repository discovery', () => {
     ]);
     expect(fetcher.mock.calls[1]?.[0]).toContain('/user/installations/55501/repositories');
     expect(fetcher.mock.calls[0]?.[1]).toMatchObject({
-      redirect: 'error',
+      redirect: 'manual',
       headers: { Authorization: 'Bearer test-token' },
     });
   });

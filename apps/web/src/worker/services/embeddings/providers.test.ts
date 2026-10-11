@@ -33,7 +33,7 @@ describe('embedding providers', () => {
       'https://router.huggingface.co/deepinfra/v1/openai/embeddings',
       expect.objectContaining({
         method: 'POST',
-        redirect: 'error',
+        redirect: 'manual',
         headers: expect.objectContaining({ authorization: 'Bearer private-test-token' }),
       }),
     );

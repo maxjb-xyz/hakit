@@ -226,7 +226,7 @@ describe('githubBackfillClient', () => {
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://api.github.com/app/installations/7/access_tokens');
     expect(init.method).toBe('POST');
-    expect(init.redirect).toBe('error');
+    expect(init.redirect).toBe('manual');
   });
   it('reads branches, per-branch commits since the window, and recently updated PRs', async () => {
     const urls: string[] = [];
