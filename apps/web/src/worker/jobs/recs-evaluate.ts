@@ -4,7 +4,13 @@
  * Idempotent: re-running on unchanged state writes and broadcasts nothing.
  */
 import { and, eq, gt, inArray, isNotNull, max, sql } from 'drizzle-orm';
-import { RecommendationDraft, type JobMessage, type WsPayload } from '@hakit/contracts';
+import {
+  AgentSessionStatus,
+  RecommendationDraft,
+  Timestamp,
+  type JobMessage,
+  type WsPayload,
+} from '@hakit/contracts';
 import { createDb, schema, type Db } from '@hakit/db';
 import { computeSchedule, DEFAULT_CONFIG, evaluateRules, type ProjectState } from '@hakit/engine';
 import type { Env } from '../env';
@@ -79,6 +85,9 @@ async function loadActivity(db: Pick<Db, 'select'>, projectId: string) {
         taskId: schema.agentSessions.taskId,
         userId: schema.agentSessions.userId,
         at: schema.agentSessions.lastEventAt,
+        id: schema.agentSessions.id,
+        status: schema.agentSessions.status,
+        summary: schema.agentSessions.summary,
       })
       .from(schema.agentSessions)
       .where(eq(schema.agentSessions.projectId, projectId)),
@@ -94,7 +103,24 @@ async function loadActivity(db: Pick<Db, 'select'>, projectId: string) {
     latest(lastActivityByTask, s.taskId, s.at);
     latest(lastActivityByMember, s.userId, s.at);
   }
-  return { lastActivityByTask, lastActivityByMember };
+  const agentSessions: NonNullable<ProjectState['agentSessions']> = sessions.flatMap((s) => {
+    const status = AgentSessionStatus.safeParse(s.status);
+    const raw =
+      s.summary && typeof s.summary === 'object' && 'awaitingSince' in s.summary
+        ? s.summary.awaitingSince
+        : null;
+    const since = Timestamp.safeParse(raw);
+    if (!status.success) return [];
+    return [
+      {
+        id: s.id,
+        userId: s.userId,
+        status: status.data,
+        awaitingSince: since.success ? new Date(since.data) : null,
+      },
+    ];
+  });
+  return { lastActivityByTask, lastActivityByMember, agentSessions };
 }
 
 /** Runs the rules and writes the result; returns the payloads to broadcast once committed. */

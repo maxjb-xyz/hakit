@@ -142,6 +142,67 @@ describe('recommendation accept/dismiss (T-505)', () => {
   const accept = (rid: string, json: unknown = {}) =>
     h.call(`/recommendations/${rid}/accept`, { method: 'POST', token: owner.token, json });
 
+  it('rejects a stale handoff of completed work without resolving the card', async () => {
+    const tid = task('HK-2').id;
+    const rid = await recommend([{ op: 'reassign', taskId: tid, toUserId: mate.id }]);
+    await h.db
+      .update(schema.tasks)
+      .set({ status: 'done', completedAt: new Date() })
+      .where(eq(schema.tasks.id, tid));
+    expect((await accept(rid)).status).toBe(409);
+    const [r] = await h.db.select().from(schema.recommendations).where(eq(schema.recommendations.id, rid));
+    expect(r?.status).toBe('open');
+    expect(await h.db.select().from(schema.assignments).where(eq(schema.assignments.taskId, tid))).toEqual(
+      [],
+    );
+  });
+
+  it('rejects a stale scope cut after work becomes must-have', async () => {
+    const tid = task('HK-2').id;
+    const rid = await recommend([{ op: 'set_priority', taskId: tid, priority: 'cut' }]);
+    await h.db.update(schema.tasks).set({ priority: 'must' }).where(eq(schema.tasks.id, tid));
+    expect((await accept(rid)).status).toBe(409);
+    const [t] = await h.db.select().from(schema.tasks).where(eq(schema.tasks.id, tid));
+    expect(t?.status).toBe('todo');
+  });
+
+  it('rejects invalid split estimates before creating any replacement tasks', async () => {
+    const rid = await recommend([
+      {
+        op: 'split',
+        taskId: task('HK-2').id,
+        parts: [
+          { title: 'Bad part', estimateHours: -1, assigneeId: null },
+          { title: 'Good part', estimateHours: 1, assigneeId: null },
+        ],
+      },
+    ]);
+    expect((await accept(rid)).status).toBe(400);
+    const tasks = await h.db.select().from(schema.tasks).where(eq(schema.tasks.projectId, pid));
+    expect(tasks).toHaveLength(3);
+    const [r] = await h.db.select().from(schema.recommendations).where(eq(schema.recommendations.id, rid));
+    expect(r?.status).toBe('open');
+  });
+
+  it('queues reevaluation even when realtime broadcasts fail', async () => {
+    const rid = await recommend([{ op: 'reassign', taskId: task('HK-2').id, toUserId: mate.id }]);
+    h.env.PROJECT_ROOM = {
+      idFromName: () => ({}),
+      get: () => ({
+        broadcast: async () => {
+          throw new Error('DO offline');
+        },
+      }),
+    } as unknown as typeof h.env.PROJECT_ROOM;
+    h.jobs.send.mockClear();
+    expect((await accept(rid)).status).toBe(200);
+    expect(h.jobs.send).toHaveBeenCalledWith({
+      type: 'recs.evaluate',
+      projectId: pid,
+      reason: 'board_change',
+    });
+  });
+
   it('applies reassign (with a modified target) transactionally and resolves once', async () => {
     const rid = await recommend([{ op: 'reassign', taskId: task('HK-2').id, toUserId: owner.id }]);
     const res = await accept(rid, {

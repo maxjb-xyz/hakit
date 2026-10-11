@@ -31,7 +31,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-007 CI/CD | 🟡 check, approval-gated migrate, deploy (no preview env, so no PR previews) | Add required reviewers + `DATABASE_URL` secret to the `migrations` environment |
 | T-008 Deep health | 🟡 DO, DB, queue, GitHub App JWT, Gemini, HF embed checks | Run against prod; record ARCHITECTURE §13 results in RISKS §4 |
 | T-101 Tokens | ✅ done | Sync Figma variables |
-| T-104 App shell | ✅ routes, nav, ⌘K palette (screens, `HK-n` tasks, people, actions), shell inspector with assignment explanation, `?` shortcut sheet | Screens still address the fixture workspace/project ids (`@hakit/contracts/fixtures` `ids`); add project selection |
+| T-104 App shell | ✅ routes, nav, ⌘K palette (screens, `HK-n` tasks, people, actions), shell inspector with assignment explanation, `?` shortcut sheet; real workspace project selection through `useProject` | Verify navigation with real workspaces on deployment |
 | T-201 Sign-in & sessions | ✅ OAuth + state cookie, AES-GCM tokens, lazy locked refresh, hashed sessions | Live test against the GitHub App |
 | T-202 Workspaces & invites | ✅ templates, invites (expiry, max uses), `requireMember`/`assertOwner` | – |
 | T-203 Profile & availability | ✅ GET/PATCH, window validation, `available_hours` | – |
@@ -48,7 +48,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-206 Capability API | ✅ `teamCapability`, `memberSkills`, `upsertSkill`/`removeSkill`, `searchSkills` | – |
 | T-301 LLM providers | ✅ Gemini structured + streaming, router with retries and circuit breaker, mock provider, `aiStatus` | Live check (`check:gemini`) with a real key |
 | T-303 Ideas | ✅ `generateIdeas`/`refineIdea` (SSE), `submitIdea`, `listIdeas`; grounded schema (allowed slugs, challenges, required/excluded tech), engine team fit | – |
-| T-305 Plan pipeline | ✅ outline → per-epic tasks (≤ 3 in flight) → validate → one repair round; deliverable injection; template fallback | Prompt-hash cache (AI.md §B.4) not implemented |
+| T-305 Plan pipeline | ✅ outline → per-epic tasks (≤ 3 in flight) → validate → one repair round; deliverable injection; template fallback; project/model-scoped prompt-hash cache in existing plans rows | Live-model quality verification still subject to Gemini quota; see `docs/INTELLIGENCE-QA.md` |
 | T-306 Plan validators | ✅ `validatePlan`: DAG, skills, sizes, capacity cut line, schedule, challenges, deliverables | – |
 | T-307 Plan review | ✅ `patchPlan` (re-validated draft versions) + S8 review UI | – |
 | T-309 Solver | ✅ `solveAssignments` stores `proposed` rows; locks respected | – |
@@ -60,16 +60,17 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-501 Schedule & health | ✅ `computeSchedule` (CPM, velocity, health) feeds the MC snapshot | – |
 | T-503 MC UI (S11) | ✅ live lanes, status band, up next, activity feed, agents, recommendations; `?demo=1` fixture fallback | – |
 | T-504 Adaptive rules | ✅ rules v1, `recs.evaluate` job (cron every 2 min + board changes), dedupe | – |
+| T-507 Adaptive rules v2 | ✅ blocked chains, unavailable owners, agent-awaiting-input; wired to milestones/session summaries, with lock/manual/availability/capacity guards | Live cron/Queue and real agent verification on deployment |
 | T-505 Recommendations | ✅ API + UI accept/dismiss | – |
 | T-602 Agent ingestion | ✅ `/agent/events` (token auth, rate limit, minimization), `agent.event` session state machine, task linking, timeouts | – |
 | Screens S1–S4, S12–S14 | ✅ Login, Join (invite landing), S2 create-workspace (`/new`, Knight Hacks template or custom deadline) and invite panel (Team, Settings), Onboarding with skill import, member profile, Code, Agents, Settings (repos, AI status, agent tokens) on real data | Invite QR code (needs a dependency) and live join presence; no list-invites endpoint, so a link shows only in the session that made it |
 | T-704 Responsive & a11y | ✅ `e2e/a11y.spec.ts`: axe (WCAG 2.1 A/AA) clean, no horizontal scroll, one main + one h1 on every route at 375/768/1440, visible focus; reduced motion stops looping animations. `SCREENSHOTS=1` writes docs/screenshots | Screen-reader pass by hand (VoiceOver/NVDA) |
-| T-703 Planning evals | ✅ golden team × idea harness (`services/ai/evals`): schema, stream, DAG, grounding, capacity, schedule, deliverables, challenges, coverage, privacy; offline in `pnpm test`, live `eval:planning` (needs `GEMINI_API_KEY`) | Run live and record pass rates per prompt version; ideas are golden inputs (the live run doesn't score `ideas.generate` yet) |
+| T-703 Planning evals | ✅ golden team × idea harness (`services/ai/evals`), independent DAG/task-size checks, safe reports and same-idea contrast; 11-case scripted/fallback matrices pass; guide: `docs/PLANNING-EVALS.md` | Live default two-case run returned Gemini HTTP 429 and correctly failed the model gate; retry when quota permits. Ideas are golden inputs (the live run doesn't score `ideas.generate` yet) |
 | T-705 Demo kit | 🟡 docs/DEMO.md; `demo seed/swap/stall/reset` for a Tiger fork; `scripts/demo-push.sh` | Create the fork; record the backup video; dry-run timings |
 | T-706 Submission | 🟡 docs/SUBMISSION.md (Devpost text, built-with, sponsor paragraphs, capture checklist) | Screenshots, video, architecture PNG, Figma link |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 
-**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. On the product side: project selection in place of the fixture ids, and the plan prompt-hash cache.
+**What still needs doing:** verify the external setup tasks T-002 (Hyperdrive id, queues), T-003 (migrations on Tiger and `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. Real project selection is implemented; validate it on deployment. Intelligence code and local QA are covered in `docs/INTELLIGENCE-QA.md`; live deployment checks remain separate.
 
 Also in the scaffold:
 - **Mock mode** (`HAKIT_MOCKS=1`): every endpoint serves fixtures.

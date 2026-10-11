@@ -3,10 +3,34 @@ import { describe, expect, it } from 'vitest';
 import { IdeaCandidates } from '@hakit/contracts';
 import { mockLlm } from '../mock';
 import { ALLOWED_SKILL_SLUGS, CASES, IDEAS, TEAMS } from './cases';
-import { CHECKS, findPrivateData, formatReport, passRates, runCase, runEvals } from './harness';
+import {
+  CHECKS,
+  findPrivateData,
+  formatReport,
+  passRates,
+  reportArtifact,
+  runCase,
+  runEvals,
+  sameIdeaDifferentTeam,
+} from './harness';
+import { selectCases } from './selection';
 import { faultyPlanner, scriptedPlanner, unavailable } from './providers';
+import { diagnosticProvider } from './diagnostics';
+import { LlmError } from '../structured';
 
 describe('planning evals (offline)', () => {
+  it('records typed provider failures without retaining secret-shaped error messages', async () => {
+    const wrapped = diagnosticProvider({
+      name: 'gemini',
+      async generateStructured() {
+        throw new LlmError('http', true, 503, 'SECRET-ERROR-BODY');
+      },
+    });
+    await runCase(CASES[0]!, wrapped.provider);
+    expect(wrapped.failures.length).toBeGreaterThan(0);
+    expect(wrapped.failures[0]).toEqual({ task: 'plan.outline', code: 'http', status: 503 });
+    expect(JSON.stringify(wrapped.failures)).not.toContain('SECRET');
+  });
   it('covers every golden team fixture with two ideas', () => {
     expect(Object.keys(TEAMS)).toHaveLength(5);
     for (const team of Object.values(TEAMS))
@@ -53,6 +77,8 @@ describe('planning evals (offline)', () => {
     const web = CASES.find((c) => c.id === 'balanced-web×web')!;
     const ml = CASES.find((c) => c.id === 'ml-heavy×web')!;
     const [a, b] = [await runCase(web, scriptedPlanner), await runCase(ml, scriptedPlanner)];
+    expect(sameIdeaDifferentTeam(a, b, web, ml).pass).toBe(true);
+    expect(sameIdeaDifferentTeam(a, a, web, web).pass).toBe(false);
     // The plan for the ML-heavy team carries skill-gap warnings the web team's plan does not,
     // and team fit drops; every new gap is a skill the ML team has below the required level.
     expect(a.skillGaps).toEqual([]);
@@ -79,5 +105,51 @@ describe('planning evals (offline)', () => {
     expect(findPrivateData('Assigned to Avery Quill', team)).toBe('Avery Quill');
     expect(findPrivateData('key AIzaSyA1234567890abcdefghijklmnop', team)).toBeDefined();
     expect(findPrivateData(JSON.stringify(IDEAS), team)).toBeUndefined();
+  });
+});
+
+describe('evaluation report and selection regressions', () => {
+  it('rejects empty/unknown selections before running providers', async () => {
+    for (const selected of ['', ' , ', 'typo', 'balanced-web×web,typo'])
+      expect(() => selectCases(CASES, selected)).toThrow();
+    expect(() => selectCases([], undefined)).toThrow();
+    expect(() => selectCases([CASES[0]!, CASES[0]!], undefined)).toThrow();
+    await expect(runEvals([], scriptedPlanner)).rejects.toThrow();
+  });
+  it('trims selections, deduplicates them, and supports an explicit full matrix', () => {
+    expect(selectCases(CASES, ' balanced-web×web, balanced-web×web ')).toEqual([CASES[0]]);
+    expect(selectCases(CASES, 'all')).toHaveLength(11);
+    expect(selectCases(CASES)).toHaveLength(11);
+  });
+  it('records real prompt hashes/call counts without storing prompts or identities', async () => {
+    const result = await runCase(CASES[0]!, scriptedPlanner);
+    expect(result.requestCount).toBeGreaterThan(1);
+    expect(result.promptHashes.every((h) => /^[a-f0-9]{64}$/.test(h))).toBe(true);
+    const report = reportArtifact([result], 'scripted', 'scripted-fixture');
+    expect(report.caseCount).toBe(1);
+    expect(report.mode).toBe('scripted');
+    expect(findPrivateData(JSON.stringify(report), CASES[0]!.team)).toBeUndefined();
+    expect(JSON.stringify(report)).not.toContain('You plan achievable');
+    expect(JSON.stringify(report)).not.toContain(CASES[0]!.idea.pitch);
+  });
+  it('does not echo secret-shaped model text from failed verdicts into reports', async () => {
+    const result = await runCase(CASES[0]!, scriptedPlanner);
+    result.checks.dag = { pass: false, detail: 'Model emitted gho_123456789012345678901234567890123456' };
+    result.feasibility.issues.push({
+      code: 'UNKNOWN_DEPENDENCY',
+      severity: 'error',
+      refs: [],
+      message: 'private user@example.test',
+    });
+    expect(formatReport([result])).not.toContain('gho_');
+    expect(JSON.stringify(reportArtifact([result], 'live', 'gemini'))).not.toContain('user@example.test');
+    expect(passRates([result]).dag).toBe(0);
+  });
+  it('reports independent checks failing for negative controls', async () => {
+    const good = await runCase(CASES[0]!, scriptedPlanner),
+      bad = await runCase(CASES[0]!, faultyPlanner);
+    expect(passRates([good, bad]).dag).toBe(0.5);
+    expect(formatReport([good, bad])).toContain('50%');
+    expect(formatReport([good, bad])).toContain('FAIL');
   });
 });
