@@ -8,7 +8,6 @@ import type { RepoSummary } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
-import { Panel } from '../mission-control/shared';
 import { EmptyBox, ErrorBox, LoadingBlocks } from '../page-states';
 
 const slug = (s: string) =>
@@ -56,11 +55,17 @@ export function RepoConnection(props: {
 
   const repos = props.repos.data ?? [];
   return (
-    <Panel
-      title={props.currentRepoId === null ? 'Connect a repository' : 'Change repository'}
-      meta="Hakit reads commits, branches and PRs. It never reads code."
-    >
-      <div className="grid gap-6 p-4 lg:grid-cols-2">
+    <section aria-labelledby={`${groupId}-title`} className="rounded-md border border-border bg-surface">
+      <header className="space-y-1 border-b border-border px-5 py-4">
+        <h2 id={`${groupId}-title`} className="text-body-lg font-medium text-strong">
+          {props.currentRepoId === null ? 'Connect a repository' : 'Change repository'}
+        </h2>
+        <p className="text-body text-subtle">
+          Hakit follows commits, branches and pull requests to keep tasks and the team view up to date. It
+          never reads code.
+        </p>
+      </header>
+      <div className="grid gap-7 p-5 lg:grid-cols-2">
         <section aria-labelledby={`${groupId}-pick`} className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-baseline gap-2">
             <h3 id={`${groupId}-pick`} className="text-body font-medium text-strong">
@@ -151,7 +156,7 @@ export function RepoConnection(props: {
 
         <CreateRepo projectName={props.projectName} pitch={props.pitch} />
       </div>
-    </Panel>
+    </section>
   );
 }
 
@@ -172,7 +177,7 @@ function CreateRepo(props: { projectName: string; pitch: string | null }) {
   });
   const result = create.data;
   return (
-    <section aria-labelledby={`${id}-h`} className="min-w-0 space-y-3 lg:border-l lg:border-border lg:pl-6">
+    <section aria-labelledby={`${id}-h`} className="min-w-0 space-y-3 lg:border-l lg:border-border lg:pl-7">
       <h3 id={`${id}-h`} className="text-body font-medium text-strong">
         Or start a new repository
       </h3>

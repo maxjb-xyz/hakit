@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityEvent } from '@hakit/contracts';
 import * as fx from '@hakit/contracts/fixtures';
-import { NO_FILTERS, branches, filterFeed, pullRequests, unknownAuthors, unlinkedQueue } from './derive';
+import {
+  NO_FILTERS,
+  branches,
+  filterFeed,
+  groupByDay,
+  pullRequests,
+  unknownAuthors,
+  unlinkedQueue,
+} from './derive';
+
+describe('groupByDay', () => {
+  it('buckets a newest-first feed by local day with relative labels', () => {
+    const at = (d: number, h: number) => ({ ts: new Date(2026, 9, d, h).toISOString() });
+    const now = new Date(2026, 9, 11, 12).getTime();
+    const groups = groupByDay([at(11, 9), at(11, 1), at(10, 20), at(8, 3)], now);
+    expect(groups.map((g) => g.items.length)).toEqual([2, 1, 1]);
+    expect(groups[0]!.label).toBe('Today');
+    expect(groups[1]!.label).toBe('Yesterday');
+    expect(groups[2]!.key).toBe('2026-10-08');
+  });
+});
 
 let n = 0;
 const ev = (over: Partial<ActivityEvent>): ActivityEvent => ({
