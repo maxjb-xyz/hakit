@@ -13,6 +13,7 @@ import { schema, type Db } from '@hakit/db';
 import { and, desc, asc, eq } from 'drizzle-orm';
 import { ideaTeamFit } from '@hakit/engine';
 import type { LlmProvider } from '../ai/types';
+import { LlmError } from '../ai/structured';
 import { HttpError, notFound } from '../../lib/errors';
 import { ideaContext } from './context';
 
@@ -247,6 +248,16 @@ export async function refineIdea(
   await send({ type: 'done' });
 }
 export async function ideaError(send: Send, error: unknown) {
+  // The client only sees a friendly message; keep the cause in the logs (never prompts or output).
+  if (!(error instanceof HttpError) || error.status >= 500)
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        msg: 'ideas_failed',
+        error: error instanceof Error ? error.name : 'unknown',
+        ...(error instanceof LlmError ? { code: error.code, status: error.status } : {}),
+      }),
+    );
   await send({
     type: 'error',
     code: error instanceof HttpError ? error.code : 'ideas_unavailable',

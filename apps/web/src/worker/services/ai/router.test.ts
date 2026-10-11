@@ -194,3 +194,41 @@ it('does not let schema-invalid answers switch the provider off', async () => {
   generate.mockResolvedValueOnce({ ok: true } as never);
   await expect(router.generateStructured(req)).resolves.toEqual({ ok: true });
 });
+it('logs why each provider failed without the prompt or input', async () => {
+  const logs: string[] = [];
+  const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => void logs.push(String(line)));
+  const secretReq = { ...req, system: 'SECRET-PROMPT', input: { team: 'SECRET-INPUT' } };
+  const http = fake(
+    'gemini',
+    vi.fn(async () => {
+      throw new LlmError('http', false, 400);
+    }) as never,
+  );
+  const invalid = fake('template', vi.fn(async () => ({ bad: true })) as never);
+  await expect(llmRouter([http, invalid]).generateStructured(secretReq)).rejects.toMatchObject({
+    code: 'unavailable',
+  });
+  expect(logs.map((l) => JSON.parse(l))).toEqual([
+    expect.objectContaining({
+      msg: 'llm_provider_failed',
+      task: 'ideas.generate',
+      provider: 'gemini',
+      code: 'http',
+      status: 400,
+    }),
+    expect.objectContaining({
+      provider: 'template',
+      code: 'schema',
+      issues: expect.stringContaining('"ok"'),
+    }),
+  ]);
+  expect(logs.join('\n')).not.toMatch(/SECRET/);
+  spy.mockRestore();
+});
+it('logs a missing provider configuration', async () => {
+  const logs: string[] = [];
+  const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => void logs.push(String(line)));
+  await expect(llmRouter([]).generateStructured(req)).rejects.toMatchObject({ code: 'unavailable' });
+  expect(JSON.parse(logs[0]!)).toMatchObject({ provider: 'none', code: 'configuration' });
+  spy.mockRestore();
+});
