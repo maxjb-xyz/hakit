@@ -145,50 +145,19 @@ function PlanFlow({ wid, project }: { wid: string; project: Project }) {
         </Pill>
       }
     >
-      <nav aria-label="Planning steps">
-        <ol className="flex flex-wrap gap-1 border-b border-border" role="tablist">
-          {STEPS.map((s, i) => (
-            <li key={s.key} role="presentation">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={step === s.key}
-                aria-controls="plan-step-panel"
-                onClick={() => go({ step: s.key })}
-                className={cn(
-                  '-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-body transition-colors duration-(--duration-instant)',
-                  step === s.key
-                    ? 'border-accent-500 text-strong'
-                    : 'border-transparent text-subtle hover:text-strong',
-                )}
-              >
-                <span
-                  aria-hidden
-                  className={cn(
-                    'grid size-5 place-items-center rounded-full border text-caption',
-                    done[s.key] ? 'border-success text-success' : 'border-border-strong',
-                  )}
-                >
-                  {done[s.key] ? '✓' : i + 1}
-                </span>
-                {s.label}
-                {done[s.key] && (
-                  <span className="max-w-40 truncate text-label text-subtle max-sm:hidden">
-                    <span className="sr-only">done: </span>
-                    {done[s.key]}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ol>
-      </nav>
+      <Stepper step={step} done={done} onGo={(k) => go({ step: k })} />
 
       {members.isError && (
         <ErrorBox what="team members" error={members.error} onRetry={() => void members.refetch()} />
       )}
 
-      <div id="plan-step-panel" role="tabpanel" aria-label={STEPS.find((s) => s.key === step)!.label}>
+      <div
+        key={step}
+        id="plan-step-panel"
+        role="tabpanel"
+        aria-label={STEPS.find((s) => s.key === step)!.label}
+        className="animate-fade-in"
+      >
         {step === 'idea' && <IdeaStep pid={pid} selectedId={ideaId} onPick={(id) => go({ idea: id })} />}
         {step === 'constraints' && (
           <ConstraintsStep
@@ -217,5 +186,80 @@ function PlanFlow({ wid, project }: { wid: string; project: Project }) {
         {step === 'assign' && <AssignStep pid={pid} members={ms} onGoToPlan={() => go({ step: 'plan' })} />}
       </div>
     </Frame>
+  );
+}
+
+/**
+ * Idea → Constraints → Plan → Assign. Arrow keys move between steps (roving tabindex); the accent track under the
+ * steps fills up to the current one and slides when the step changes.
+ */
+function Stepper(props: { step: Step; done: Record<Step, string | null>; onGo: (k: Step) => void }) {
+  const current = STEPS.findIndex((s) => s.key === props.step);
+  const onKey = (e: React.KeyboardEvent, i: number) => {
+    const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const next = STEPS[(i + d + STEPS.length) % STEPS.length]!;
+    props.onGo(next.key);
+    requestAnimationFrame(() => document.getElementById(`plan-step-${next.key}`)?.focus());
+  };
+  return (
+    <nav aria-label="Planning steps" className="space-y-2">
+      <ol className="grid grid-cols-4 gap-1" role="tablist">
+        {STEPS.map((s, i) => {
+          const active = props.step === s.key;
+          const done = props.done[s.key];
+          return (
+            <li key={s.key} role="presentation" className="min-w-0">
+              <button
+                id={`plan-step-${s.key}`}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls="plan-step-panel"
+                tabIndex={active ? 0 : -1}
+                onClick={() => props.onGo(s.key)}
+                onKeyDown={(e) => onKey(e, i)}
+                className={cn(
+                  'press flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-body hover:bg-hover active:bg-pressed max-sm:justify-center max-sm:px-1',
+                  active ? 'text-strong' : 'text-subtle hover:text-strong',
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    'grid size-6 shrink-0 place-items-center rounded-full border text-caption tabular-nums transition-colors duration-(--duration-base) ease-standard',
+                    active
+                      ? 'border-accent-400 bg-strong text-on-light'
+                      : done
+                        ? 'border-success text-success'
+                        : i < current
+                          ? 'border-accent-400 text-accent-400'
+                          : 'border-border-strong',
+                  )}
+                >
+                  {done && !active ? '✓' : i + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate max-sm:text-label">{s.label}</span>
+                  {done && (
+                    <span className="block truncate text-caption text-subtle max-sm:hidden">
+                      <span className="sr-only">done: </span>
+                      {done}
+                    </span>
+                  )}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <div aria-hidden className="relative h-0.5 overflow-hidden rounded-full bg-border">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-accent-500 transition-[width] duration-(--duration-slow) ease-emphasized"
+          style={{ width: `${((current + 1) / STEPS.length) * 100}%` }}
+        />
+      </div>
+    </nav>
   );
 }

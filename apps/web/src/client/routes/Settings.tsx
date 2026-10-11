@@ -4,7 +4,7 @@
  * personal agent tokens (T-601: create shown once, list, revoke) and AI provider status (`aiStatus`).
  * Members, privacy and danger-zone sections need endpoints that don't exist yet.
  */
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTokenCreated, AgentTokenSummary, AiProviderStatus } from '@hakit/contracts';
@@ -22,21 +22,99 @@ export function Settings() {
   return (
     <div className="space-y-6 p-6 max-sm:p-4">
       <PageHeader title="Settings" subtitle="Event, team and integrations for this workspace" />
-      <EventSection wid={wid} />
-      <InvitePanel wid={wid} className="max-w-3xl" />
-      <GithubSection wid={wid} />
-      <AgentTokensSection wid={wid} />
-      <AiSection />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+        <SectionNav />
+        <div className="min-w-0 max-w-3xl space-y-10">
+          <EventSection wid={wid} />
+          <Section
+            id="invites"
+            title="Invites"
+            description="Share a link so teammates can join this workspace."
+          >
+            <InvitePanel wid={wid} />
+          </Section>
+          <GithubSection wid={wid} />
+          <AgentTokensSection wid={wid} />
+          <AiSection />
+        </div>
+      </div>
     </div>
   );
 }
 
-function Section(props: { title: string; description: ReactNode; children: ReactNode }) {
-  const id = useId();
+const SECTIONS = [
+  { id: 'event', label: 'Event & projects' },
+  { id: 'invites', label: 'Invites' },
+  { id: 'github', label: 'GitHub' },
+  { id: 'agent-tokens', label: 'Agent tokens' },
+  { id: 'ai', label: 'AI status' },
+] as const;
+
+/** In-page section nav: anchors to each section; the one in view is marked current. */
+function SectionNav() {
+  const [current, setCurrent] = useState<string>(SECTIONS[0].id);
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const hit = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (hit) setCurrent(hit.target.id);
+      },
+      { rootMargin: '0px 0px -60% 0px' },
+    );
+    for (const s of SECTIONS) {
+      const el = document.getElementById(s.id);
+      if (el) io.observe(el);
+    }
+    return () => io.disconnect();
+  }, []);
   return (
-    <section aria-labelledby={id} className="space-y-3">
-      <div className="space-y-1">
-        <h2 id={id} className="text-body-lg font-medium text-strong">
+    <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+      <ul className="flex gap-1 overflow-x-auto max-lg:-mx-1 max-lg:pb-1 lg:flex-col">
+        {SECTIONS.map((s) => {
+          const active = current === s.id;
+          return (
+            <li key={s.id} className="shrink-0">
+              <a
+                href={`#${s.id}`}
+                aria-current={active ? 'location' : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCurrent(s.id);
+                  const el = document.getElementById(s.id);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  el?.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true });
+                }}
+                className={cn(
+                  'interactive press relative flex h-control-md items-center rounded-sm px-3 text-body whitespace-nowrap',
+                  active ? 'bg-raised text-strong' : 'text-muted',
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    'absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-strong transition-opacity duration-(--duration-fast) max-lg:hidden',
+                    active ? 'opacity-100' : 'opacity-0',
+                  )}
+                />
+                {s.label}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+function Section(props: { id: string; title: string; description: ReactNode; children: ReactNode }) {
+  const id = `${props.id}-h`;
+  return (
+    <section id={props.id} aria-labelledby={id} className="animate-fade-in scroll-mt-4 space-y-3">
+      <div className="space-y-1 border-b border-border pb-3">
+        <h2 id={id} tabIndex={-1} className="text-body-lg font-medium text-strong outline-none">
           {props.title}
         </h2>
         <p className="max-w-xl text-body text-muted">{props.description}</p>
@@ -51,10 +129,11 @@ function Section(props: { title: string; description: ReactNode; children: React
 function EventSection({ wid }: { wid: string }) {
   return (
     <Section
+      id="event"
       title="Event"
       description="The hackathon you're in and its window. The deadline drives the countdown, plan hours and the critical path."
     >
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <EventPanel wid={wid} />
         <ProjectsPanel wid={wid} />
       </div>
@@ -77,6 +156,7 @@ function GithubSection({ wid }: { wid: string }) {
 
   return (
     <Section
+      id="github"
       title="GitHub"
       description="The Hakit GitHub App sends commits, branches and PRs to the Code screen and Mission Control. It reads metadata, never code."
     >
@@ -131,7 +211,7 @@ function GithubSection({ wid }: { wid: string }) {
             </Button>
             <Link
               to={`/w/${wid}/code`}
-              className="inline-flex h-control-md items-center rounded-sm px-3 text-body text-muted hover:bg-hover hover:text-default"
+              className="interactive press inline-flex h-control-md items-center rounded-sm px-3 text-body text-muted"
             >
               {repoId === null ? 'Connect a repository' : 'Open Code'}
             </Link>
@@ -160,6 +240,7 @@ function AgentTokensSection({ wid }: { wid: string }) {
 
   return (
     <Section
+      id="agent-tokens"
       title="Agent tokens"
       description="Personal tokens let the Hakit Claude Code plugin report session status (active, waiting, idle). Prompts are never shared unless you turn that on for a token."
     >
@@ -236,7 +317,7 @@ function CreateTokenForm(props: {
             maxLength={60}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Laptop · Claude Code"
-            className="h-control-md w-full max-w-md rounded-sm border border-border bg-raised px-3 text-body text-default placeholder:text-disabled"
+            className="field h-control-md w-full max-w-md rounded-sm px-3 text-body placeholder:text-disabled"
           />
         </div>
         <fieldset className="space-y-1.5">
@@ -276,7 +357,7 @@ function CreateTokenForm(props: {
 
 function ShownOnce(props: { token: AgentTokenCreated & { name: string }; onDismiss: () => void }) {
   return (
-    <div role="status" className="space-y-3 rounded-md border border-warning bg-surface p-4">
+    <div role="status" className="animate-slide-up space-y-3 rounded-md border border-warning bg-surface p-4">
       <p className="text-body text-default">
         <span className="font-medium text-warning">Copy this token now.</span> “{props.token.name}” won't be
         shown again. Hakit stores only a hash of it.
@@ -300,7 +381,7 @@ function TokenRow(props: { token: AgentTokenSummary; wid: string; now: number })
   });
   const revoked = t.revokedAt !== null;
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-3">
+    <li className="flex animate-fade-in flex-wrap items-center gap-x-4 gap-y-2 rounded-sm px-2 py-3 transition-colors duration-(--duration-instant) hover:bg-hover">
       <div className="min-w-0 flex-1">
         {/* Revoked rows are struck through and dimmed by token, not opacity (keeps meta text at AA contrast). */}
         <p className={cn('truncate text-body', revoked ? 'text-subtle line-through' : 'text-default')}>
@@ -318,7 +399,7 @@ function TokenRow(props: { token: AgentTokenSummary; wid: string; now: number })
       {revoked ? (
         <Pill>Revoked {ago(t.revokedAt, props.now)}</Pill>
       ) : confirming ? (
-        <span className="flex items-center gap-2">
+        <span className="flex animate-pop-in items-center gap-2">
           <span className="text-label text-muted">Agents using it stop reporting.</span>
           <Button size="sm" variant="danger" loading={revoke.isPending} onClick={() => revoke.mutate()}>
             Revoke
@@ -369,6 +450,7 @@ function AiSection() {
   });
   return (
     <Section
+      id="ai"
       title="AI providers"
       description="AI drafts ideas, plans and explanations. Scores, hours and assignments are always computed by Hakit's engine. When a provider is down, Hakit falls back to templates."
     >
@@ -412,7 +494,10 @@ function AiSection() {
                       <td className="px-2 py-2.5 font-mono text-label text-muted">{p.model}</td>
                       <td className="px-2 py-2.5">
                         {p.healthy ? (
-                          <Pill tone="success">Healthy</Pill>
+                          <Pill tone="success">
+                            <span aria-hidden className="size-1.5 rounded-full bg-success" />
+                            Healthy
+                          </Pill>
                         ) : (
                           <Pill tone="warning" title={p.lastErrorAt ?? undefined}>
                             Unavailable{p.lastErrorAt && ` · last error ${ago(p.lastErrorAt, now)}`}

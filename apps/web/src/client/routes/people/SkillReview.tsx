@@ -72,10 +72,15 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
               <a
                 href={e.url}
                 target="_blank"
-                rel="noreferrer"
-                className="rounded-xs font-mono underline decoration-border-strong underline-offset-2 hover:text-strong"
+                rel="noopener noreferrer"
+                title="Open on GitHub"
+                className="rounded-xs font-mono underline decoration-border-strong underline-offset-2 transition-colors duration-(--duration-instant) hover:text-strong hover:decoration-current"
               >
                 {e.sourceRef}
+                <span aria-hidden className="ml-0.5 no-underline">
+                  ↗
+                </span>
+                <span className="sr-only"> (opens in a new tab)</span>
               </a>
             ) : (
               <span className="font-mono">{e.sourceRef}</span>
@@ -109,8 +114,8 @@ function SkillRow(props: { wid: string; uid: string; skill: MemberSkill; editabl
   return (
     <li
       className={cn(
-        'rounded-sm border px-3 py-2.5',
-        inferred ? 'border-dashed border-border-strong' : 'border-border',
+        'animate-fade-in rounded-sm border px-3 py-2.5 transition-colors duration-(--duration-fast) ease-standard',
+        inferred ? 'border-dashed border-border-strong' : 'border-border bg-surface',
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -122,7 +127,16 @@ function SkillRow(props: { wid: string; uid: string; skill: MemberSkill; editabl
             {s.level} · {LEVEL_WORD[s.level]}
           </span>
         </div>
-        <span className={cn('text-label', inferred ? 'text-muted' : 'text-subtle')}>{sourceLabel(s)}</span>
+        <span
+          key={String(inferred)}
+          className={cn(
+            'inline-flex animate-pop-in items-center gap-1 rounded-full border px-2 text-label',
+            inferred ? 'border-dashed border-border-strong text-muted' : 'border-success text-success',
+          )}
+        >
+          <span aria-hidden>{inferred ? '?' : '✓'}</span>
+          {sourceLabel(s)}
+        </span>
         <Button
           size="sm"
           variant="ghost"
@@ -135,7 +149,7 @@ function SkillRow(props: { wid: string; uid: string; skill: MemberSkill; editabl
       </div>
 
       {open && (
-        <div id={panelId} className="mt-2 border-t border-border pt-2">
+        <div id={panelId} className="mt-2 animate-fade-in border-t border-border pt-2">
           <EvidenceList evidence={s.evidence} />
         </div>
       )}
@@ -160,10 +174,8 @@ function SkillRow(props: { wid: string; uid: string; skill: MemberSkill; editabl
                 disabled={busy}
                 onClick={() => save.mutate(l)}
                 className={cn(
-                  'grid size-6 place-items-center rounded-xs border text-label disabled:opacity-50',
-                  l === s.level
-                    ? 'border-default text-strong'
-                    : 'border-border-strong text-subtle hover:text-strong',
+                  'interactive press grid size-6 place-items-center rounded-xs border text-label tabular-nums disabled:opacity-50',
+                  l === s.level ? 'border-default bg-raised text-strong' : 'border-border-strong text-subtle',
                 )}
               >
                 {l}
@@ -299,14 +311,14 @@ export function SkillPicker(props: {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKey}
-        className="mt-1 h-control-md w-full rounded-sm border border-border-strong bg-sunken px-3 text-body text-strong placeholder:text-subtle"
+        className="field mt-1 h-control-md w-full rounded-sm px-3 text-body text-strong placeholder:text-subtle"
       />
       {showList && (
         <ul
           id={listId}
           role="listbox"
           aria-label="Matching skills"
-          className="absolute inset-x-0 top-full z-10 mt-1 max-h-64 overflow-auto rounded-sm border border-border-strong bg-raised py-1 shadow-e2"
+          className="absolute inset-x-0 top-full z-10 mt-1 max-h-64 origin-top animate-pop-in overflow-auto rounded-sm border border-border-strong bg-raised py-1 shadow-e2"
         >
           {search.isPending ? (
             <li className="px-3 py-2 text-label text-subtle">Searching…</li>

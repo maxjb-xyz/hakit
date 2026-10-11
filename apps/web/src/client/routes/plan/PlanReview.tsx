@@ -12,7 +12,7 @@ import { Picker } from '../tasks/meta';
 import { Pill } from '../page-states';
 import type { PlanEdits, ScopeKey } from './draft';
 import { nextTaskKey } from './draft';
-import { EstimatedBar, Field, SectionHead, StatusMark, WhoKnows, fieldClass } from './ui';
+import { EstimatedBar, Field, SectionHead, StatusMark, WhoKnows, fieldClass, stagger } from './ui';
 
 const TIER_LABEL: Record<ScopeTier, string> = { must: 'Must', should: 'Should', could: 'Could' };
 
@@ -30,12 +30,23 @@ export function FeasibilityBanner(props: { f: Feasibility; stale?: boolean }) {
     <section
       aria-label="Feasibility"
       className={cn(
-        'space-y-3 rounded-md border bg-surface px-4 py-3',
-        mark === 'bad' ? 'border-danger' : mark === 'warn' ? 'border-warning' : 'border-border',
+        'animate-fade-in space-y-3 rounded-md border border-l-2 bg-surface px-4 py-3',
+        mark === 'bad'
+          ? 'border-danger'
+          : mark === 'warn'
+            ? 'border-border border-l-warning'
+            : 'border-border border-l-success',
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <StatusMark mark={mark} word={word} />
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5',
+            mark === 'bad' ? 'border-danger' : mark === 'warn' ? 'border-warning' : 'border-success',
+          )}
+        >
+          <StatusMark mark={mark} word={word} />
+        </span>
         <p className="text-body text-default">
           Plan needs <strong className="text-strong">≈ {fmtHours(f.requiredHours)}</strong>; team has{' '}
           <strong className="text-strong">≈ {fmtHours(f.availableEffectiveHours)}</strong> available
@@ -93,6 +104,7 @@ export function FeasibilityBanner(props: { f: Feasibility; stale?: boolean }) {
 /* --------------------------------- sections --------------------------------- */
 
 function Block(props: {
+  index?: number;
   id: string;
   title: string;
   meta?: ReactNode;
@@ -100,7 +112,11 @@ function Block(props: {
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={props.id} className="space-y-3 rounded-md border border-border bg-surface p-4">
+    <section
+      aria-labelledby={props.id}
+      style={stagger(props.index ?? 0)}
+      className="animate-list-in space-y-3 rounded-md border border-border bg-surface p-4"
+    >
       <SectionHead id={props.id} title={props.title} meta={props.meta}>
         {props.actions}
       </SectionHead>
@@ -112,9 +128,12 @@ function Block(props: {
 function Waiting({ what }: { what: string }) {
   return (
     <div aria-busy="true" className="space-y-2">
-      <p className="text-label text-subtle">Waiting for {what}…</p>
-      <div className="h-4 animate-pulse rounded-xs bg-raised" />
-      <div className="h-4 w-2/3 animate-pulse rounded-xs bg-raised" />
+      <p className="flex items-center gap-2 text-label text-subtle">
+        <AiGlyph /> Waiting for {what}…
+      </p>
+      <div className="skeleton h-4 rounded-xs" />
+      <div className="skeleton h-4 w-5/6 rounded-xs" />
+      <div className="skeleton h-4 w-2/3 rounded-xs" />
     </div>
   );
 }
@@ -137,7 +156,7 @@ export function PlanSections(p: ReviewProps) {
         <FeasibilityBanner f={p.feasibility} stale={!!p.edit && hasEdits(p.edit.edits)} />
       ) : (
         p.streaming && (
-          <div className="rounded-md border border-dashed border-border-strong px-4 py-3 text-label text-subtle">
+          <div className="skeleton rounded-md border border-dashed border-border-strong px-4 py-3 text-label text-subtle">
             Feasibility appears once the validator has checked every task.
           </div>
         )
@@ -161,6 +180,9 @@ const hasEdits = (e: PlanEdits) =>
 function EditToggle(props: { editing: boolean; onClick: () => void; what: string }) {
   return (
     <Button size="sm" variant="ghost" aria-expanded={props.editing} onClick={props.onClick}>
+      <span aria-hidden className="mr-1">
+        {props.editing ? '✓' : '✎'}
+      </span>
       {props.editing ? 'Done' : 'Edit'}
       <span className="sr-only"> {props.what}</span>
     </Button>
@@ -171,6 +193,7 @@ function Summary({ outline, edit, streaming }: ReviewProps) {
   const [editing, setEditing] = useState(false);
   return (
     <Block
+      index={0}
       id="plan-summary"
       title="Summary"
       actions={
@@ -184,6 +207,7 @@ function Summary({ outline, edit, streaming }: ReviewProps) {
         ) : null
       ) : editing && edit ? (
         <Field
+          className="animate-fade-in"
           label="Summary"
           multiline
           rows={3}
@@ -219,6 +243,7 @@ function Scope({ outline, edit, feasibility, streaming }: ReviewProps) {
   const cut = feasibility?.cutTaskKeys ?? [];
   return (
     <Block
+      index={1}
       id="plan-scope"
       title="MVP scope"
       meta="must / should / could, with the cut line"
@@ -313,6 +338,7 @@ function ScopeTierView(props: {
 function Architecture({ outline, members, streaming }: ReviewProps) {
   return (
     <Block
+      index={2}
       id="plan-arch"
       title="Architecture"
       meta={outline ? `${outline.architecture.components.length} components` : undefined}
@@ -388,20 +414,26 @@ function Milestones({ outline, startsAt, feasibility, streaming }: ReviewProps) 
   const at = (h: number) =>
     startsAt ? clock(new Date(Date.parse(startsAt) + h * 3_600_000).toISOString()) : null;
   return (
-    <Block id="plan-ms" title="Milestones" meta="hours after hacking starts">
+    <Block index={3} id="plan-ms" title="Milestones" meta="hours after hacking starts">
       <div className="relative mx-2 h-6" aria-hidden>
         <div className="absolute inset-x-0 top-1/2 border-t border-border-strong" />
         {ms.map((m) => (
           <span
             key={m.key}
-            className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-accent-400 bg-surface"
+            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${(m.targetHour / span) * 100}%` }}
-          />
+          >
+            <span className="block size-2.5 animate-pop-in rotate-45 border border-accent-400 bg-surface" />
+          </span>
         ))}
       </div>
       <ol className="grid gap-2 sm:grid-cols-3">
-        {ms.map((m) => (
-          <li key={m.key} className="rounded-sm border border-border px-3 py-2">
+        {ms.map((m, i) => (
+          <li
+            key={m.key}
+            style={stagger(i)}
+            className="animate-list-in rounded-sm border border-border px-3 py-2"
+          >
             <p className="text-label text-subtle">
               <span className="font-mono">{m.key}</span> · H+{m.targetHour}
               {at(m.targetHour) && ` · ${at(m.targetHour)}`}
@@ -414,7 +446,8 @@ function Milestones({ outline, startsAt, feasibility, streaming }: ReviewProps) 
   );
 }
 
-function Tasks({ outline, tasks, members, edit, streaming }: ReviewProps) {
+function Tasks({ outline, tasks, members, edit, streaming, feasibility }: ReviewProps) {
+  const cut = new Set(feasibility?.cutTaskKeys ?? []);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   if (!outline && tasks.length === 0)
     return streaming ? (
@@ -455,7 +488,12 @@ function Tasks({ outline, tasks, members, edit, streaming }: ReviewProps) {
   };
 
   return (
-    <Block id="plan-tasks" title="Tasks" meta={`${tasks.length} · ≈${fmtHours(total)} estimated`}>
+    <Block
+      index={4}
+      id="plan-tasks"
+      title="Tasks"
+      meta={`${tasks.length} · ≈${fmtHours(total)} estimated${cut.size ? ` · ${cut.size} cut` : ''}`}
+    >
       {streaming && <p className="text-label text-subtle">More tasks arrive as each epic finishes…</p>}
       <div className="space-y-4">
         {groups.map((g) => {
@@ -497,6 +535,7 @@ function Tasks({ outline, tasks, members, edit, streaming }: ReviewProps) {
                     <TaskLine
                       key={t.key}
                       task={t}
+                      cut={cut.has(t.key)}
                       members={members}
                       edited={!!edit?.edits.tasks[t.key]}
                       onEdit={edit ? () => setEditingKey(t.key) : undefined}
@@ -524,6 +563,7 @@ function Tasks({ outline, tasks, members, edit, streaming }: ReviewProps) {
 
 function TaskLine(props: {
   task: TaskDraft;
+  cut?: boolean;
   members: Member[];
   edited: boolean;
   onEdit?: () => void;
@@ -532,11 +572,28 @@ function TaskLine(props: {
 }) {
   const t = props.task;
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2 last:border-b-0">
+    <li
+      className={cn(
+        'group -mx-2 flex animate-fade-in flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border-b border-border px-2 py-2 transition-colors duration-(--duration-instant) last:border-b-0 hover:bg-hover',
+        props.cut && 'opacity-80',
+        props.edited && 'shadow-[inset_2px_0_0_var(--color-accent-400)]',
+      )}
+    >
       <span className="w-10 shrink-0 font-mono text-label text-subtle">{t.key}</span>
-      <span className="min-w-0 flex-1 text-body text-default">
+      <span
+        className={cn('min-w-0 flex-1 text-body', props.cut ? 'text-muted line-through' : 'text-default')}
+      >
         {t.title}
-        {props.edited && <span className="ml-2 text-caption text-accent-400">edited</span>}
+        {props.cut && (
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-warning px-1.5 text-caption text-warning no-underline">
+            <span aria-hidden>✂</span> Cut to fit capacity
+          </span>
+        )}
+        {props.edited && (
+          <span className="ml-2 animate-pop-in rounded-full bg-accent-a12 px-1.5 text-caption text-accent-400">
+            edited
+          </span>
+        )}
         {t.dependsOn.length > 0 && (
           <span className="ml-2 text-caption text-subtle">after {t.dependsOn.join(', ')}</span>
         )}
@@ -592,7 +649,7 @@ function TaskEditor(props: {
   const epicId = useId();
   const valid = t.title.trim().length > 0 && t.estimateHours >= 0.5 && t.estimateHours <= 8;
   return (
-    <li className="space-y-3 border-b border-border bg-raised px-3 py-3">
+    <li className="-mx-2 animate-fade-in space-y-3 rounded-sm border border-accent-400 bg-raised px-3 py-3">
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -670,7 +727,7 @@ function Risks({ outline, feasibility, streaming }: ReviewProps) {
   const issues = feasibility?.issues ?? [];
   const risks = outline?.risks ?? [];
   return (
-    <Block id="plan-risks" title="Risks" meta={issues.length + risks.length}>
+    <Block index={5} id="plan-risks" title="Risks" meta={issues.length + risks.length}>
       {issues.length + risks.length === 0 ? (
         <p className="text-body text-subtle">No risks flagged.</p>
       ) : (

@@ -14,9 +14,17 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useProject } from '../lib/project';
 import { useProjectSocket } from '../lib/ws';
-import { AGENT_NAME, SESSION_ORDER, SessionStatusPill, toolSummary } from './agents/meta';
-import { Panel, ago, duration, memberName, minutesSince, useNow } from './mission-control/shared';
-import { MemberAvatar } from './tasks/meta';
+import { AGENT_NAME, SESSION_ORDER, SessionStateIcon, SessionStatusPill, toolSummary } from './agents/meta';
+import {
+  Panel,
+  PersonAvatar,
+  ago,
+  duration,
+  memberName,
+  minutesSince,
+  personHref,
+  useNow,
+} from './mission-control/shared';
 import {
   EmptyBox,
   ErrorBox,
@@ -90,13 +98,13 @@ function AgentsScreen({ wid, pid }: { wid: string; pid: string }) {
       >
         {sessions.data && (
           <>
-            <Pill tone="success">
-              <span aria-hidden className="size-1.5 rounded-full bg-success" />
+            <Pill tone="success" className="gap-1.5">
+              <SessionStateIcon status="active" className="size-3" />
               {runningCount} running
             </Pill>
             {needsInputCount > 0 && (
-              <Pill tone="warning">
-                <span aria-hidden className="size-1.5 rounded-full bg-warning" />
+              <Pill tone="warning" className="gap-1.5">
+                <SessionStateIcon status="awaiting_input" className="size-3" />
                 {needsInputCount} need input
               </Pill>
             )}
@@ -118,27 +126,19 @@ function AgentsScreen({ wid, pid }: { wid: string; pid: string }) {
         <ErrorBox what="agent sessions" error={sessions.error} onRetry={() => void sessions.refetch()} />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid items-start gap-4 lg:grid-cols-5">
         <div className="min-w-0 lg:col-span-3">
           {sessions.isPending ? (
             <LoadingBlocks label="Loading agent sessions" />
           ) : sessions.isError ? null : list.length === 0 ? (
-            <EmptyBox
-              message="No agent sessions yet. Agent telemetry is opt-in: create a token in Settings and install the Hakit plugin for Claude Code."
-              action={
-                <Link
-                  to={`/w/${wid}/settings`}
-                  className="inline-flex h-control-md items-center rounded-sm border border-border bg-raised px-3 text-body text-default hover:bg-hover"
-                >
-                  Open Settings
-                </Link>
-              }
-            />
+            <SetupGuide wid={wid} />
           ) : (
             <ul className="grid gap-3 md:grid-cols-2">
-              {list.map((x) => (
+              {list.map((x, i) => (
                 <SessionCard
                   key={x.id}
+                  index={i}
+                  wid={wid}
                   session={x}
                   member={memberOf(x.userId)}
                   task={taskOf(x.taskId)}
@@ -153,7 +153,7 @@ function AgentsScreen({ wid, pid }: { wid: string; pid: string }) {
           )}
         </div>
 
-        <div className="min-w-0 lg:col-span-2">
+        <div className="min-w-0 lg:sticky lg:top-4 lg:col-span-2">
           <Panel
             title="Activity log"
             meta={
@@ -163,8 +163,10 @@ function AgentsScreen({ wid, pid }: { wid: string; pid: string }) {
             }
           >
             {selected && (
-              <div className="border-b border-border px-4 py-2">
-                <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)}>
+              <div className="flex animate-fade-in items-center gap-2 border-b border-border px-4 py-2 text-label text-subtle">
+                <SessionStateIcon status={selected.status} />
+                Filtered to one session
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedId(null)}>
                   Show all sessions
                 </Button>
               </div>
@@ -183,10 +185,14 @@ function AgentsScreen({ wid, pid }: { wid: string; pid: string }) {
                   message={selected ? 'Nothing logged for this session yet.' : 'No agent activity yet.'}
                 />
               ) : (
-                <ol className="divide-y divide-border" aria-live="polite">
-                  {log.map((e) => (
+                <ol className="relative" aria-live="polite" aria-relevant="additions">
+                  {log.map((e, i) => (
                     <LogRow
                       key={e.id}
+                      index={i}
+                      last={i === log.length - 1}
+                      wid={wid}
+                      task={taskOf(e.taskId)}
                       event={e}
                       member={e.actorUserId ? memberOf(e.actorUserId) : undefined}
                       now={now}
@@ -233,23 +239,33 @@ function RelinkForm(props: {
   const options = props.tasks
     .filter((t) => t.status !== 'cut' && t.status !== 'done')
     .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
+  const unchanged = taskId === (props.session.taskId ?? '') && props.session.linkKind === 'confirmed';
   return (
     <form
-      className="flex flex-wrap items-end gap-2 rounded-sm border border-border bg-sunken p-2"
+      className="relative z-1 flex animate-pop-in flex-wrap items-center gap-2 rounded-sm border border-border-strong bg-sunken p-3 shadow-[inset_0_1px_0_var(--color-sheen)]"
       onSubmit={(e) => {
         e.preventDefault();
         props.link.mutate(taskId || null, { onSuccess: props.onDone });
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          props.onDone();
+        }
+      }}
     >
-      <label htmlFor={id} className="w-full text-label text-subtle">
-        Link this session to
+      <label htmlFor={id} className="w-full text-label font-medium text-default">
+        Link this session to a task
+        <span className="block font-normal text-subtle">
+          Pins the link as confirmed, so Hakit stops guessing for this session.
+        </span>
       </label>
       <select
         id={id}
         autoFocus
         value={taskId}
         onChange={(e) => setTaskId(e.target.value)}
-        className="h-control-sm min-w-0 flex-1 rounded-xs border border-border-strong bg-surface px-2 text-label text-default"
+        className="field h-control-md min-w-0 flex-1 rounded-sm px-2 text-body"
       >
         <option value="">No task</option>
         {options.map((t) => (
@@ -258,7 +274,7 @@ function RelinkForm(props: {
           </option>
         ))}
       </select>
-      <Button size="sm" variant="primary" type="submit" loading={props.link.isPending}>
+      <Button size="sm" variant="primary" type="submit" loading={props.link.isPending} disabled={unchanged}>
         Save
       </Button>
       <Button size="sm" variant="ghost" type="button" onClick={props.onDone}>
@@ -268,9 +284,85 @@ function RelinkForm(props: {
   );
 }
 
+/* ----------------------------- empty state ----------------------------- */
+
+function SetupGuide({ wid }: { wid: string }) {
+  const steps: { title: string; body: React.ReactNode }[] = [
+    {
+      title: 'Create an agent token',
+      body: (
+        <>
+          In{' '}
+          <Link
+            to={`/w/${wid}/settings`}
+            className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+          >
+            Settings
+          </Link>
+          , create a personal token. Telemetry is opt-in and you can revoke it any time.
+        </>
+      ),
+    },
+    {
+      title: 'Install the Hakit plugin',
+      body: (
+        <>
+          Add the plugin to Claude Code and paste the token when asked. It sends session state, tool counts
+          and branch names, never prompts or code.
+        </>
+      ),
+    },
+    {
+      title: 'Work on a task branch',
+      body: (
+        <>
+          Run your agent on a branch like <code className="font-mono text-label text-default">hk-12-…</code>{' '}
+          and its session shows up here, linked to the task.
+        </>
+      ),
+    },
+  ];
+  return (
+    <div className="animate-fade-in rounded-md border border-dashed border-border-strong p-6 max-sm:p-4">
+      <p className="flex items-center gap-2 text-body-lg font-medium text-strong">
+        <SessionStateIcon status="idle" className="size-4" />
+        No agent sessions yet
+      </p>
+      <p className="mt-1 text-body text-subtle">
+        See what your team's coding agents are doing, and which ones are waiting on a human.
+      </p>
+      <ol className="mt-5 space-y-4">
+        {steps.map((st, i) => (
+          <li
+            key={st.title}
+            style={{ '--i': i } as React.CSSProperties}
+            className="flex animate-list-in gap-3"
+          >
+            <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border-strong font-mono text-label text-default">
+              {i + 1}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-body font-medium text-default">{st.title}</span>
+              <span className="block text-body text-subtle">{st.body}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <Link
+        to={`/w/${wid}/settings`}
+        className="press mt-6 inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600"
+      >
+        Create a token in Settings
+      </Link>
+    </div>
+  );
+}
+
 /* ----------------------------- one session ----------------------------- */
 
 function SessionCard(props: {
+  index: number;
+  wid: string;
   session: AgentSession;
   member: Member | undefined;
   task: Task | undefined;
@@ -291,24 +383,43 @@ function SessionCard(props: {
 
   return (
     <li
+      style={{ '--i': props.index } as React.CSSProperties}
       className={cn(
-        'flex flex-col gap-3 rounded-md border bg-surface p-4',
-        props.selected ? 'border-accent-500' : 'border-border',
+        'row-interactive flex animate-list-in flex-col gap-3 rounded-md border bg-surface p-4 transition-[border-color,background-color] duration-(--duration-base) ease-standard',
+        props.selected ? 'border-accent-400 bg-raised' : 'border-border',
         x.status === 'awaiting_input' && !props.selected && 'border-warning',
       )}
     >
       {/* Who + status */}
       <div className="flex items-start gap-3">
-        <MemberAvatar member={props.member} className="size-8 text-label" />
+        <PersonAvatar member={props.member} size="lg" decorative />
         <div className="min-w-0 flex-1">
           <p className="truncate text-body font-medium text-strong">{AGENT_NAME[x.agent]}</p>
-          <p className="truncate text-label text-subtle">{memberName(props.member)}</p>
+          {props.member ? (
+            <Link
+              to={personHref(props.wid, x.userId)}
+              className="relative z-1 block w-fit max-w-full truncate rounded-xs text-label text-subtle underline-offset-2 hover:text-strong hover:underline"
+            >
+              {memberName(props.member)}
+            </Link>
+          ) : (
+            <p className="truncate text-label text-subtle">{memberName(props.member)}</p>
+          )}
         </div>
         <SessionStatusPill status={x.status} />
       </div>
 
       {x.status === 'awaiting_input' && waitingFor !== null && (
-        <p className="text-label text-warning">Waiting for a human for {duration(waitingFor)}</p>
+        <p className="flex animate-fade-in items-center gap-1.5 rounded-sm border border-warning/40 px-2 py-1 text-label text-warning">
+          <SessionStateIcon status="awaiting_input" className="size-3" />
+          Waiting for a human for {duration(waitingFor)}
+        </p>
+      )}
+      {x.status === 'error' && (
+        <p className="flex animate-fade-in items-center gap-1.5 rounded-sm border border-danger/40 px-2 py-1 text-label text-danger">
+          <SessionStateIcon status="error" className="size-3" />
+          The agent hit an error. Check its log.
+        </p>
       )}
 
       {/* Where it's working */}
@@ -317,7 +428,7 @@ function SessionCard(props: {
           {x.repoFullName ?? 'Unknown repo'}
           {x.branch && <span className="text-subtle"> · {x.branch}</span>}
         </p>
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-label">
+        <div className="relative z-1 flex min-w-0 flex-wrap items-center gap-1.5 text-label">
           <TaskLinkChip task={task} linkKind={task ? x.linkKind : 'none'} />
           {task && x.linkKind !== 'none' && (
             <span className="min-w-0 flex-1 truncate text-default">{task.title}</span>
@@ -325,7 +436,7 @@ function SessionCard(props: {
           {task && x.linkKind === 'confirmed' && <span className="text-subtle">confirmed</span>}
         </div>
         {props.canRelink && !relinking && (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="relative z-1 flex w-fit flex-wrap items-center gap-1.5">
             {inferred && (
               <Button
                 size="sm"
@@ -359,13 +470,13 @@ function SessionCard(props: {
       </p>
 
       <div className="mt-auto flex items-center gap-2 text-label text-subtle">
-        <span>
+        <span className="tabular-nums">
           {x.endedAt ? 'Ran' : 'Running for'} {duration(runtime)} · last event {ago(x.lastEventAt, props.now)}
         </span>
         <Button
           size="sm"
           variant={props.selected ? 'secondary' : 'ghost'}
-          className="ml-auto shrink-0 whitespace-nowrap"
+          className="row-link ml-auto shrink-0 whitespace-nowrap"
           aria-pressed={props.selected}
           onClick={props.onSelect}
         >
@@ -378,19 +489,61 @@ function SessionCard(props: {
 
 /* ----------------------------- activity log ----------------------------- */
 
-function LogRow(props: { event: ActivityEvent; member: Member | undefined; now: number }) {
+const LOG_STATUS: Partial<Record<ActivityEvent['kind'], AgentSession['status']>> = {
+  agent_session_start: 'active',
+  agent_active: 'active',
+  agent_awaiting_input: 'awaiting_input',
+  agent_idle: 'idle',
+  agent_error: 'error',
+  agent_session_end: 'ended',
+};
+
+/** One timeline entry: state icon on a rail, what happened, who, when, and the linked task. */
+function LogRow(props: {
+  event: ActivityEvent;
+  member: Member | undefined;
+  task: Task | undefined;
+  wid: string;
+  now: number;
+  index: number;
+  last: boolean;
+}) {
   const e = props.event;
   const isError = e.kind === 'agent_error';
+  const status = LOG_STATUS[e.kind] ?? 'idle';
   return (
-    <li className="flex items-start gap-2 px-2 py-2.5">
-      <MemberAvatar member={props.member} className="mt-0.5" />
+    <li
+      style={{ '--i': props.index } as React.CSSProperties}
+      className="relative flex animate-list-in items-start gap-3 px-2 py-2.5"
+    >
+      {!props.last && <span aria-hidden className="absolute top-8 -bottom-1 left-4 w-px bg-border" />}
+      <span className="relative mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-surface">
+        <SessionStateIcon status={status} />
+      </span>
       <div className="min-w-0 flex-1">
         <p className={cn('text-body', isError ? 'text-danger' : 'text-default')}>
           {isError && <span className="font-medium">Error: </span>}
           {e.title}
         </p>
-        <p className="text-label text-subtle">
-          {memberName(props.member)} · {ago(e.ts, props.now)}
+        <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-label text-subtle">
+          <PersonAvatar member={props.member} size="xs" decorative />
+          {props.member && e.actorUserId ? (
+            <Link
+              to={personHref(props.wid, e.actorUserId)}
+              className="rounded-xs underline-offset-2 hover:text-strong hover:underline"
+            >
+              {memberName(props.member)}
+            </Link>
+          ) : (
+            <span>{memberName(props.member)}</span>
+          )}
+          <span aria-hidden>·</span>
+          <time dateTime={e.ts} title={new Date(e.ts).toLocaleString()}>
+            {ago(e.ts, props.now)}
+          </time>
+          {props.task && e.linkKind !== 'none' && (
+            <TaskLinkChip task={props.task} linkKind={e.linkKind} confidence={e.linkConfidence} />
+          )}
         </p>
       </div>
     </li>

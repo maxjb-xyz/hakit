@@ -197,6 +197,39 @@ export function unknownAuthors(events: ActivityEvent[]): UnknownAuthor[] {
   return [...map.values()].sort((a, b) => b.commits + b.other - (a.commits + a.other));
 }
 
+/* ----------------------------- GitHub links ----------------------------- */
+
+/** `https://github.com/<owner>/<repo>` from the connected repo, without a trailing slash. */
+export function repoBase(repo: { htmlUrl?: string | null; fullName?: string | null } | undefined) {
+  if (repo?.htmlUrl) return repo.htmlUrl.replace(/\/+$/, '');
+  return repo?.fullName ? `https://github.com/${repo.fullName}` : null;
+}
+
+const pathSeg = (s: string) => s.split('/').map(encodeURIComponent).join('/');
+
+export const commitUrl = (base: string | null, sha: string | null) =>
+  base && sha ? `${base}/commit/${encodeURIComponent(sha)}` : null;
+export const pullUrl = (base: string | null, n: number | null) =>
+  base && n !== null ? `${base}/pull/${n}` : null;
+export const treeUrl = (base: string | null, branch: string | null) =>
+  base && branch ? `${base}/tree/${pathSeg(branch)}` : null;
+
+/** Where an activity row goes on GitHub: its own url, else the commit / PR / branch derived from the repo. */
+export function eventUrl(
+  e: Pick<ActivityEvent, 'url' | 'kind' | 'sha' | 'prNumber' | 'ref'>,
+  base: string | null,
+): string | null {
+  if (e.url) return e.url;
+  if (e.kind === 'commit') return commitUrl(base, e.sha);
+  if (isPr(e.kind)) return pullUrl(base, e.prNumber);
+  if (e.kind === 'branch_created') return treeUrl(base, e.ref);
+  return null;
+}
+
+/** A raw author that looks like a GitHub login (not an email or "Name <mail>"), so it can link to a profile. */
+export const looksLikeLogin = (raw: string | null): raw is string =>
+  !!raw && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(raw);
+
 /* ----------------------------- day groups ----------------------------- */
 
 export interface DayGroup<T> {

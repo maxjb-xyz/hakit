@@ -24,14 +24,21 @@ const STEPS = ['profile', 'skills', 'availability'] as const;
 type Step = (typeof STEPS)[number];
 const STEP_LABEL = ['Profile', 'Skills', 'Availability'];
 
-const input =
-  'mt-1 h-control-md w-full rounded-sm border border-border-strong bg-sunken px-3 text-body text-strong placeholder:text-subtle';
+const input = 'field mt-1 h-control-md w-full rounded-sm px-3 text-body text-strong placeholder:text-subtle';
 
 function Frame({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <main className="min-h-dvh bg-canvas px-6 py-10 max-sm:px-4 max-sm:py-6">
       <div className={cn('mx-auto w-full space-y-6', wide ? 'max-w-3xl' : 'max-w-xl')}>
-        <p className="font-display text-title text-strong">hakit</p>
+        <p className="flex items-center gap-2 font-display text-title text-strong">
+          <span
+            aria-hidden
+            className="grid size-6 place-items-center rounded-xs bg-strong font-mono text-caption text-on-light"
+          >
+            hk
+          </span>
+          hakit
+        </p>
         {children}
       </div>
     </main>
@@ -175,7 +182,7 @@ function SkillsStep(props: { wid: string; uid: string; back: () => void; next: (
         {skills.isPending ? (
           <div className="space-y-2" aria-busy="true" aria-label="Loading skills">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-sm bg-raised" />
+              <div key={i} className="skeleton h-12 rounded-sm" />
             ))}
           </div>
         ) : skills.isError ? (
@@ -222,13 +229,13 @@ function SlugTags(props: {
       {props.slugs.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label={props.label}>
           {props.slugs.map((slug) => (
-            <li key={slug}>
+            <li key={slug} className="animate-pop-in">
               <button
                 type="button"
                 disabled={props.busy}
                 aria-label={`Remove ${slug} from ${props.label.toLowerCase()}`}
                 onClick={() => props.onChange(props.slugs.filter((x) => x !== slug))}
-                className="inline-flex h-control-sm items-center gap-1.5 rounded-full border border-border px-2.5 text-label text-default hover:bg-hover"
+                className="interactive press inline-flex h-control-sm items-center gap-1.5 rounded-full border border-border bg-raised px-2.5 text-label text-default disabled:opacity-50"
               >
                 <span className="font-mono">{slug}</span>
                 <span aria-hidden className="text-subtle">
@@ -265,11 +272,7 @@ function AvailabilityStep(props: {
           Mark when you'll sleep or be away. Hakit only plans work into your available hours.
         </p>
         {workspace.isPending ? (
-          <div
-            className="h-40 animate-pulse rounded-sm bg-raised"
-            aria-busy="true"
-            aria-label="Loading event window"
-          />
+          <div className="skeleton h-40 rounded-sm" aria-busy="true" aria-label="Loading event window" />
         ) : workspace.isError ? (
           <ErrorBox
             what="the event window"
@@ -316,8 +319,8 @@ function AvailabilityStep(props: {
           </p>
         )}
         {prefs.isSuccess && (
-          <p role="status" className="text-label text-subtle">
-            Preferences saved
+          <p role="status" className="flex animate-pop-in items-center gap-1.5 text-label text-success">
+            <span aria-hidden>✓</span> Preferences saved
           </p>
         )}
       </Card>
@@ -372,7 +375,7 @@ export function Onboarding() {
           <h1 className="text-title font-medium text-strong">Sign in to set up your profile</h1>
           <a
             href={`${API_PREFIX}/auth/github/login?next=${encodeURIComponent(`/onboarding?${search}`)}`}
-            className="mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600"
+            className="press mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600 active:bg-accent-600"
           >
             Continue with GitHub
           </a>
@@ -404,7 +407,7 @@ export function Onboarding() {
           </p>
           <Link
             to="/new"
-            className="mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600"
+            className="press mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600 active:bg-accent-600"
           >
             Create a workspace
           </Link>
@@ -415,8 +418,9 @@ export function Onboarding() {
     return (
       <Frame>
         <div className="space-y-4" aria-busy="true" aria-label="Loading onboarding">
-          <div className="h-6 w-64 animate-pulse rounded-sm bg-raised" />
-          <div className="h-72 animate-pulse rounded-md border border-border bg-surface" />
+          <div className="skeleton h-6 w-64 rounded-sm" />
+          <div className="skeleton h-1 rounded-full" />
+          <div className="skeleton h-72 rounded-md border border-border" />
         </div>
       </Frame>
     );
@@ -442,25 +446,38 @@ export function Onboarding() {
           )}
         </div>
         <StepDots steps={STEP_LABEL} current={index} />
+        <div aria-hidden className="h-0.5 overflow-hidden rounded-full bg-border">
+          <div
+            className="h-full rounded-full bg-strong transition-[width] duration-(--duration-slow) ease-emphasized"
+            style={{ width: `${((index + 1) / 3) * 100}%` }}
+          />
+        </div>
       </div>
-
-      {step === 'profile' && (
-        <ProfileStep
-          wid={wid}
-          uid={uid}
-          profile={profile.data}
-          name={user.name ?? user.githubLogin}
-          login={user.githubLogin}
-          avatarUrl={user.avatarUrl}
-          next={() => go('skills')}
-        />
-      )}
-      {step === 'skills' && (
-        <SkillsStep wid={wid} uid={uid} back={() => go('profile')} next={() => go('availability')} />
-      )}
-      {step === 'availability' && (
-        <AvailabilityStep wid={wid} uid={uid} profile={profile.data} back={() => go('skills')} done={done} />
-      )}
+      <div key={step} className="animate-slide-up space-y-6">
+        {step === 'profile' && (
+          <ProfileStep
+            wid={wid}
+            uid={uid}
+            profile={profile.data}
+            name={user.name ?? user.githubLogin}
+            login={user.githubLogin}
+            avatarUrl={user.avatarUrl}
+            next={() => go('skills')}
+          />
+        )}
+        {step === 'skills' && (
+          <SkillsStep wid={wid} uid={uid} back={() => go('profile')} next={() => go('availability')} />
+        )}
+        {step === 'availability' && (
+          <AvailabilityStep
+            wid={wid}
+            uid={uid}
+            profile={profile.data}
+            back={() => go('skills')}
+            done={done}
+          />
+        )}
+      </div>
       {finish.isError && (
         <p role="alert" className="text-label text-danger">
           Couldn't finish setup ({finish.error.message}).{' '}
