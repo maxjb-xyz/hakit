@@ -192,6 +192,7 @@ function PlanFlow({ wid, project }: { wid: string; project: Project }) {
         {step === 'idea' && <IdeaStep pid={pid} selectedId={ideaId} onPick={(id) => go({ idea: id })} />}
         {step === 'constraints' && (
           <ConstraintsStep
+            deadlineAt={workspace.data?.deadlineAt}
             pid={pid}
             wid={wid}
             hackathonSlug={workspace.data?.hackathonSlug}
