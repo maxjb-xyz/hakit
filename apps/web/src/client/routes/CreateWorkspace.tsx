@@ -7,12 +7,8 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  API_PREFIX,
-  type CreateWorkspace as CreateWorkspaceBody,
-  type HackathonTemplate,
-} from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { API_PREFIX, type CreateWorkspace as CreateWorkspaceBody } from '@hakit/contracts';
+import { Button } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useNow } from './mission-control/shared';
@@ -20,6 +16,13 @@ import { ErrorBox } from './page-states';
 import { InvitePanel } from './people/InvitePanel';
 import { Card, StepDots, isUnauthorized } from './people/shared';
 import { DEFAULT_HACKATHON_SLUG } from './plan/ConstraintsStep';
+import {
+  EventPicker,
+  fromLocal,
+  localTimeZoneLabel,
+  useHackathonTemplate,
+  type EventKind,
+} from './workspace/EventPicker';
 
 const input =
   'mt-1 h-control-md w-full rounded-sm border border-border-strong bg-sunken px-3 text-body text-strong placeholder:text-subtle';
@@ -35,88 +38,17 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-const fmtDay = (iso: string, timeZone?: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone,
-    timeZoneName: 'short',
-  });
-
-/** `<input type="datetime-local">` value (local time, minutes) → ISO with offset. */
-const fromLocal = (v: string) => (v ? new Date(v).toISOString() : undefined);
-
-function TemplateOption(props: {
-  name: string;
-  checked: boolean;
-  onChange: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label
-      className={cn(
-        'flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors duration-(--duration-instant)',
-        props.checked ? 'border-accent-500 bg-accent-a12' : 'border-border hover:bg-raised',
-      )}
-    >
-      <input
-        type="radio"
-        name={props.name}
-        checked={props.checked}
-        onChange={props.onChange}
-        className="mt-1 shrink-0 accent-accent-500"
-      />
-      <span className="min-w-0 space-y-1">
-        <span className="block text-body font-medium text-strong">{props.title}</span>
-        {props.children}
-      </span>
-    </label>
-  );
-}
-
-function TemplateSummary({
-  query,
-}: {
-  query: { data?: HackathonTemplate; isPending: boolean; isError: boolean };
-}) {
-  if (query.isPending) return <span className="block text-label text-subtle">Loading event details…</span>;
-  if (query.isError || !query.data)
-    return (
-      <span className="block text-label text-warning">
-        Couldn't load the template details. You can still pick it; the server fills them in.
-      </span>
-    );
-  const t = query.data;
-  return (
-    <span className="block space-y-0.5 text-label text-muted">
-      <span className="block">
-        {fmtDay(t.startsAt, t.timezone)} → {fmtDay(t.endsAt, t.timezone)}
-      </span>
-      <span className="block text-subtle">
-        {t.tracks.length} tracks · {t.challenges.length} sponsor challenges · judging criteria included
-      </span>
-    </span>
-  );
-}
-
 function CreateForm() {
   const id = useId();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [name, setName] = useState('');
-  const [template, setTemplate] = useState<'hackathon' | 'custom'>('hackathon');
+  const [template, setTemplate] = useState<EventKind>('hackathon');
   const [startsAt, setStartsAt] = useState('');
   const [deadlineAt, setDeadlineAt] = useState('');
   const [touched, setTouched] = useState(false);
   const now = useNow();
-  const hackathon = useQuery({
-    queryKey: qk('getHackathon', { slug: DEFAULT_HACKATHON_SLUG }),
-    queryFn: () => api('getHackathon', { params: { slug: DEFAULT_HACKATHON_SLUG } }),
-  });
+  const hackathon = useHackathonTemplate();
   const create = useMutation({
     mutationFn: (body: CreateWorkspaceBody) => api('createWorkspace', { body }),
     onSuccess: (w) => {
@@ -175,27 +107,7 @@ function CreateForm() {
           {errorText('name')}
         </div>
 
-        <fieldset className="space-y-2">
-          <legend className="mb-2 text-label text-subtle">Event</legend>
-          <TemplateOption
-            name={`${id}-template`}
-            checked={template === 'hackathon'}
-            onChange={() => setTemplate('hackathon')}
-            title={hackathon.data?.name ?? 'Knight Hacks IX'}
-          >
-            <TemplateSummary query={hackathon} />
-          </TemplateOption>
-          <TemplateOption
-            name={`${id}-template`}
-            checked={template === 'custom'}
-            onChange={() => setTemplate('custom')}
-            title="Custom event"
-          >
-            <span className="block text-label text-muted">
-              Another hackathon or a side project. You set the deadline; add challenges later.
-            </span>
-          </TemplateOption>
-        </fieldset>
+        <EventPicker name={`${id}-template`} value={template} onChange={setTemplate} template={hackathon} />
 
         {template === 'custom' && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -229,6 +141,7 @@ function CreateForm() {
               />
               {errorText('deadline')}
             </div>
+            <p className="text-label text-subtle sm:col-span-2">Times are in {localTimeZoneLabel()}.</p>
           </div>
         )}
 
