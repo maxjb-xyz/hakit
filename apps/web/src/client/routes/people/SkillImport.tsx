@@ -1,16 +1,15 @@
 /**
  * S3 skill import: starts `importSkills`, then shows a staged checklist from `skills.import_progress` WS
- * events (real stage names, not a spinner). The socket is per project, so it joins the workspace's first
- * project; without one (or without events) it polls `memberSkills` so results still appear.
+ * events (real stage names, not a spinner) on the workspace room, which exists before any project does.
+ * If the socket can't connect it polls `memberSkills` so results still appear.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SkillImportProgress, WsEnvelope } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
-import { useProject } from '../../lib/project';
-import { useProjectSocket } from '../../lib/ws';
+import { useWorkspaceSocket } from '../../lib/ws';
 import { IMPORT_STEPS, countsLine, stepState, type ImportStage, type StepState } from './import-progress';
 
 const ICON: Record<StepState, { glyph: string; cls: string; sr: string }> = {
@@ -20,8 +19,13 @@ const ICON: Record<StepState, { glyph: string; cls: string; sr: string }> = {
   failed: { glyph: '✕', cls: 'border-danger text-danger', sr: 'failed' },
 };
 
+/** No progress for this long and the run is treated as stalled, so the button comes back. */
+const STALL_MS = 90_000;
+
 interface Run {
   jobId: string;
+  /** Bumped on every event; restarts the stall timer. */
+  seen: number;
   latest: SkillImportProgress | null;
   furthest: ImportStage | null;
 }
@@ -29,35 +33,42 @@ interface Run {
 export function useImportSkills(wid: string, uid: string) {
   const qc = useQueryClient();
   const [run, setRun] = useState<Run | null>(null);
-  // Progress is broadcast to a project room; any project of the workspace will do, so use the one in view.
-  const { pid } = useProject(wid);
   const finished = run?.latest?.stage === 'done' || run?.latest?.stage === 'error';
+  // Stalled means the timer fired for the current run state; any new event changes the key and clears it.
+  const runKey = run && !finished ? `${run.jobId}:${run.seen}` : null;
+  const [stalledKey, setStalledKey] = useState<string | null>(null);
+  const stalled = runKey !== null && stalledKey === runKey;
+  useEffect(() => {
+    if (!runKey) return;
+    const t = setTimeout(() => setStalledKey(runKey), STALL_MS);
+    return () => clearTimeout(t);
+  }, [runKey]);
 
   const onEvent = (e: WsEnvelope) => {
     if (e.type !== 'skills.import_progress' || e.data.userId !== uid) return;
     const p = e.data.progress;
     setRun((r) => {
-      const base = r ?? { jobId: 'remote', latest: null, furthest: null };
+      const base = r ?? { jobId: 'remote', seen: 0, latest: null, furthest: null };
       const isStep = IMPORT_STEPS.some((s) => s.stage === p.stage);
-      return { ...base, latest: p, furthest: isStep ? p.stage : base.furthest };
+      return { ...base, seen: base.seen + 1, latest: p, furthest: isStep ? p.stage : base.furthest };
     });
     if (p.stage === 'done') void qc.invalidateQueries({ queryKey: qk('teamCapability', { wid }) });
   };
   // Connected for the whole step so no early stage is missed between the POST and the first event.
-  const socket = useProjectSocket(pid ?? undefined, onEvent);
+  const socket = useWorkspaceSocket(wid, onEvent);
 
   const start = useMutation({
     mutationFn: () => api('importSkills', { params: { wid }, body: {} }),
-    onSuccess: (r) => setRun({ jobId: r.jobId, latest: null, furthest: null }),
+    onSuccess: (r) => setRun({ jobId: r.jobId, seen: 0, latest: null, furthest: null }),
   });
-  return { run, start, importing: !!run && !finished, live: socket.state === 'open' };
+  return { run, start, importing: !!run && !finished && !stalled, stalled, live: socket.state === 'open' };
 }
 
 export function SkillImportPanel(props: {
   importer: ReturnType<typeof useImportSkills>;
   skillCount: number;
 }) {
-  const { run, start, importing, live } = props.importer;
+  const { run, start, importing, stalled, live } = props.importer;
   const latest = run?.latest ?? null;
   const thin = latest?.stage === 'done' && props.skillCount < 3;
 
@@ -121,6 +132,11 @@ export function SkillImportPanel(props: {
                   ? countsLine(latest.counts)
                   : `Queued${live ? '' : ' · live progress unavailable, checking for new skills every few seconds'}. Skills below update as they're found.`}
           </p>
+          {stalled && latest?.stage !== 'error' && (
+            <p role="alert" className="mt-2 text-label text-warning">
+              No progress for a while, so the import may have failed. Skills found so far are kept; try again.
+            </p>
+          )}
           {latest?.stage === 'error' && (
             <p role="alert" className="mt-2 text-label text-danger">
               Import stopped: {latest.message}. Skills found so far are kept; you can add the rest by hand.

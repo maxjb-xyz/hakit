@@ -20,7 +20,36 @@ export function invalidateProjectQueries(client: QueryClient, projectId: string,
 }
 
 export function useProjectSocket(projectId: string | undefined, onEvent?: (e: WsEnvelope) => void) {
-  const [connection, setConnection] = useState<ConnectionStatus & { projectId?: string }>({
+  return useRoomSocket(
+    projectId && {
+      key: projectId,
+      path: `/api/v1/projects/${encodeURIComponent(projectId)}/ws`,
+      projectId,
+    },
+    onEvent,
+  );
+}
+
+/** Workspace room: events that can happen before any project exists (skill import during onboarding). */
+export function useWorkspaceSocket(workspaceId: string | undefined, onEvent?: (e: WsEnvelope) => void) {
+  return useRoomSocket(
+    workspaceId && {
+      key: `workspace:${workspaceId}`,
+      path: `/api/v1/w/${encodeURIComponent(workspaceId)}/ws`,
+    },
+    onEvent,
+  );
+}
+
+interface Room {
+  key: string;
+  path: string;
+  /** Project rooms also refresh that project's queries; workspace rooms refresh only workspace-level ones. */
+  projectId?: string;
+}
+
+function useRoomSocket(room: Room | undefined | '', onEvent?: (e: WsEnvelope) => void) {
+  const [connection, setConnection] = useState<ConnectionStatus & { key?: string }>({
     state: 'connecting',
     polling: false,
     presence: [],
@@ -29,19 +58,20 @@ export function useProjectSocket(projectId: string | undefined, onEvent?: (e: Ws
   useEffect(() => {
     onEventRef.current = onEvent;
   }, [onEvent]);
+  const key = room ? room.key : undefined;
+  const path = room ? room.path : undefined;
+  const projectId = room ? (room.projectId ?? '') : '';
   useEffect(() => {
-    if (!projectId) return;
+    if (!key || !path) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     return connectProjectSocket({
-      createSocket: () =>
-        new WebSocket(`${proto}://${location.host}/api/v1/projects/${encodeURIComponent(projectId)}/ws`),
-      status: (status) => setConnection({ ...status, projectId }),
+      createSocket: () => new WebSocket(`${proto}://${location.host}${path}`),
+      status: (status) => setConnection({ ...status, key }),
       invalidate: (names) => invalidateProjectQueries(queryClient, projectId, names),
       onEvent: (event) => onEventRef.current?.(event),
     });
-  }, [projectId]);
-  if (!projectId) return { state: 'closed' as const, polling: false, presence: [] };
-  if (connection.projectId !== projectId)
-    return { state: 'connecting' as const, polling: false, presence: [] };
+  }, [key, path, projectId]);
+  if (!key) return { state: 'closed' as const, polling: false, presence: [] };
+  if (connection.key !== key) return { state: 'connecting' as const, polling: false, presence: [] };
   return connection;
 }

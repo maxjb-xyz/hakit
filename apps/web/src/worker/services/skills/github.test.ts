@@ -56,8 +56,31 @@ it('caps 40 repos and batches a complete fixture import under 30 seconds', async
   vi.stubGlobal('fetch', fetch);
   const start = performance.now();
   expect(await fetchPublicRepos('member', 'token')).toHaveLength(40);
-  expect(fetch).toHaveBeenCalledTimes(17);
+  // 1 metadata query + a tree and a blob query per batch of 3 repos.
+  expect(fetch).toHaveBeenCalledTimes(1 + 2 * Math.ceil(40 / 3));
   expect(performance.now() - start).toBeLessThan(30000);
+});
+it('keeps languages and topics when a manifest batch times out', async () => {
+  const github = fakeGithub(4);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init: RequestInit) => {
+      // The second batch (repos 3+) times out; the first still yields manifest evidence.
+      if ((init.body as string).includes('name:\\"app3\\"'))
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      return github(url, init);
+    }),
+  );
+  const facts = await fetchPublicRepos('member', 'token');
+  expect(facts).toHaveLength(4);
+  expect(facts[0]!.files['apps/package.json']).toContain('react');
+  expect(facts[3]).toMatchObject({
+    fullName: 'member/app3',
+    files: {},
+    readmeExcerpt: null,
+    topics: ['reactjs'],
+  });
+  expect(facts[3]!.languages).toEqual({ TypeScript: 100 });
 });
 it('rejects private, archived and fork repos before reading files', async () => {
   const fetch = vi.fn(async () =>
