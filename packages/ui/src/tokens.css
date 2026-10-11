@@ -33,10 +33,11 @@
   --color-level-5: #a8a8ae;
 
   /* Accent (D-9: Indigo) */
-  --color-accent-400: #8b89f0;
-  --color-accent-500: #5a58e0; /* ≥4.5:1 under text-strong (T-704) */
-  --color-accent-600: #4c4ad0; /* hover/pressed fill: darker than 500 so text contrast rises (5.6:1) */
-  --color-accent-a12: rgb(94 92 230 / 0.12);
+  /* Monochrome accent: no hue, so the product reads as a tool, not a theme. */
+  --color-accent-400: #d4d4d8; /* accent text, focus rings, selected borders */
+  --color-accent-500: #3f3f46; /* primary fills; text-strong on it is 8.9:1 */
+  --color-accent-600: #52525b; /* hover/pressed fill; text-strong on it is 6.6:1 */
+  --color-accent-a12: rgb(255 255 255 / 0.06);
 
   /* Semantic */
   --color-success: #6fae8c;
@@ -240,7 +241,7 @@
     font-variant-numeric: tabular-nums;
   }
   :focus-visible {
-    outline: 2px solid var(--color-accent-500);
+    outline: 2px solid var(--color-accent-400);
     outline-offset: 2px;
   }
   /*
@@ -370,7 +371,7 @@
     background-color: var(--color-pressed);
   }
   &:has(.row-link:focus-visible) {
-    outline: 2px solid var(--color-accent-500);
+    outline: 2px solid var(--color-accent-400);
     outline-offset: -2px;
   }
 }
@@ -394,7 +395,7 @@
   }
   &:focus-visible {
     outline: none;
-    border-color: var(--color-accent-500);
+    border-color: var(--color-accent-400);
     box-shadow: 0 0 0 3px var(--color-accent-a12);
   }
   &:disabled {

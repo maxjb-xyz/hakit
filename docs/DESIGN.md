@@ -41,16 +41,16 @@ Code (`packages/ui/src/tokens.css`) is the source of truth; values as of the pol
 | `default` | `#C4C4C9` | Body text |
 | `strong` | `#EDEDEF` | Headings, emphasis |
 
-### 2.2 Accent (single brand accent — "signal lime" vs. "electric indigo", decision D-9)
+### 2.2 Accent (monochrome, decision D-9 revised)
 
-Default proposal **Indigo** (reads well on charcoal, distinct from GitHub green which we reserve for VCS activity):
+No brand hue: a coloured accent reads as decoration. Emphasis comes from contrast, weight and the semantic colours below, never from a theme colour.
 
-| Token | Hex |
-|---|---|
-| `accent-400` | `#8B93FF` (text/links on dark) |
-| `accent-500` | `#6E78FF` (primary buttons, focus ring) |
-| `accent-600` | `#5560E8` (pressed) |
-| `accent-a12` | `rgba(110,120,255,0.12)` (selected row, subtle fill) |
+| Token | Hex | Use |
+|---|---|---|
+| `accent-400` | `#D4D4D8` | Accent text, focus rings, selected borders |
+| `accent-500` | `#3F3F46` | Primary button fill (`text-strong` on it: 8.9:1) |
+| `accent-600` | `#52525B` | Hover / pressed fill |
+| `accent-a12` | `rgba(255,255,255,0.06)` | Selected row, arrival tint |
 
 ### 2.3 Semantic
 
