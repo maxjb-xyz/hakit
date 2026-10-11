@@ -65,6 +65,8 @@ export function ConstraintsStep(props: {
   wid: string;
   /** From the workspace; null when it has no hackathon template, undefined while unknown. */
   hackathonSlug: string | null | undefined;
+  /** The workspace's own deadline; the template's end time is only its default and may have been changed. */
+  deadlineAt: string | undefined;
   idea: Idea | null;
   members: Member[];
   onContinue: () => void;
@@ -83,6 +85,7 @@ function ConstraintsEditor(props: {
   pid: string;
   wid: string;
   hackathonSlug: string | null | undefined;
+  deadlineAt: string | undefined;
   idea: Idea | null;
   members: Member[];
   onContinue: () => void;
@@ -236,7 +239,7 @@ function ConstraintsEditor(props: {
           <dl className="grid grid-cols-2 gap-2 text-label">
             <div>
               <dt className="text-subtle">Deadline</dt>
-              <dd className="text-default">{clock(h.endsAt)}</dd>
+              <dd className="text-default">{props.deadlineAt ? clock(props.deadlineAt) : '…'}</dd>
             </div>
             <div>
               <dt className="text-subtle">Team hours</dt>
