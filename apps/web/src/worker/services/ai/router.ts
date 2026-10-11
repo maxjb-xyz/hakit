@@ -2,6 +2,27 @@ import type { z } from 'zod';
 import type { LlmProvider, StructuredRequest } from './types';
 import { LlmError } from './structured';
 
+/**
+ * One safe log line per failed provider call: which task and provider, and why (code, HTTP status, failing
+ * schema paths). Never the prompt, input or model output.
+ */
+function logFailure(task: string, provider: string, error: unknown) {
+  const why =
+    error instanceof LlmError
+      ? { code: error.code, status: error.status, issues: error.issues }
+      : error instanceof Error && 'issues' in error && Array.isArray(error.issues)
+        ? {
+            code: 'schema',
+            issues: JSON.stringify(
+              (error.issues as { code?: string; path?: PropertyKey[] }[])
+                .slice(0, 20)
+                .map((i) => ({ code: i.code, path: (i.path ?? []).map(String) })),
+            ),
+          }
+        : { code: error instanceof Error ? error.name : 'unknown' };
+  console.error(JSON.stringify({ level: 'error', msg: 'llm_provider_failed', task, provider, ...why }));
+}
+
 /** Breakers survive calls in a warm isolate; real mode never returns fixture plans. */
 export function llmRouter(
   providers: LlmProvider[],
@@ -48,8 +69,12 @@ export function llmRouter(
       })),
     async generateStructured<T extends z.ZodType>(req: StructuredRequest<T>): Promise<z.output<T>> {
       let lastStatus: number | undefined;
+      if (!providers.length) logFailure(req.task, 'none', new LlmError('configuration'));
       for (const [i, provider] of providers.entries()) {
-        if (!eligible(i)) continue;
+        if (!eligible(i)) {
+          logFailure(req.task, provider.name, new LlmError('unavailable'));
+          continue;
+        }
         for (let retry = 0; retry < 4; retry++) {
           try {
             const result = req.schema.parse(await provider.generateStructured(req));
@@ -62,6 +87,7 @@ export function llmRouter(
               await sleep(1000 * 2 ** retry);
               continue;
             }
+            logFailure(req.task, provider.name, error);
             failure(i, error);
             break;
           }
@@ -71,8 +97,12 @@ export function llmRouter(
     },
     async *streamStructured(req) {
       let lastStatus: number | undefined;
+      if (!providers.length) logFailure(req.task, 'none', new LlmError('configuration'));
       for (const [i, provider] of providers.entries()) {
-        if (!eligible(i)) continue;
+        if (!eligible(i)) {
+          logFailure(req.task, provider.name, new LlmError('unavailable'));
+          continue;
+        }
         for (let retry = 0; retry < 4; retry++) {
           let emitted = false,
             text = '';
@@ -104,6 +134,7 @@ export function llmRouter(
               await sleep(1000 * 2 ** retry);
               continue;
             }
+            logFailure(req.task, provider.name, error);
             failure(i, error);
             // Never append a second provider's JSON to an already visible partial document.
             if (emitted) throw new LlmError('response');
