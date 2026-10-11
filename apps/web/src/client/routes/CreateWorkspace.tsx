@@ -8,7 +8,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_PREFIX, type CreateWorkspace as CreateWorkspaceBody } from '@hakit/contracts';
-import { Button } from '@hakit/ui';
+import { Button, Logo } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useNow } from './mission-control/shared';
@@ -31,13 +31,8 @@ function Frame({ children }: { children: React.ReactNode }) {
     <main className="min-h-dvh bg-canvas px-6 py-10 max-sm:px-4 max-sm:py-6">
       <div className="mx-auto w-full max-w-xl space-y-6">
         <p className="flex items-center gap-2 font-display text-title text-strong">
-          <span
-            aria-hidden
-            className="grid size-6 place-items-center rounded-xs bg-strong font-mono text-caption text-on-light"
-          >
-            hk
-          </span>
-          hakit
+          <Logo />
+          Hakit
         </p>
         {children}
       </div>

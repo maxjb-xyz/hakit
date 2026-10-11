@@ -6,7 +6,7 @@
 import { Link, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { API_PREFIX } from '@hakit/contracts';
-import { cn } from '@hakit/ui';
+import { cn, Logo } from '@hakit/ui';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { Card, PersonAvatar } from './people/shared';
@@ -76,13 +76,8 @@ export function Login() {
       <div className="relative grid w-full max-w-4xl items-center gap-12 md:grid-cols-2">
         <section>
           <p className="flex animate-fade-in items-center gap-2 font-display text-display-sm text-strong">
-            <span
-              aria-hidden
-              className="grid size-7 place-items-center rounded-sm bg-strong font-mono text-label text-on-light"
-            >
-              hk
-            </span>
-            hakit
+            <Logo className="size-7 text-body" />
+            Hakit
           </p>
           <h1 className="mt-6 animate-slide-up font-display text-display-lg text-strong">
             The hackathon OS that knows your team and what to build next.

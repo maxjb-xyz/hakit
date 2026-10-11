@@ -72,7 +72,7 @@ GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App*
 | Request user authorization during installation | ❌ | ❌ |
 | Setup URL (+ Redirect on update ✅) | `http://localhost:5173/api/v1/auth/github/setup` | `https://<prod-host>/api/v1/auth/github/setup` |
 | Webhook | Active ❌ | Active ✅, URL `https://<prod-host>/webhooks/github`, secret `openssl rand -hex 32` |
-| Where can it be installed | Any account | Any account |
+| Where can it be installed | Any account | **Any account** (public). "Only on this account" makes GitHub 404 the sign-in page for everyone except the owner, so invite links break. |
 
 **Permissions:** Repository: Contents, Metadata, Pull requests (all read). Account: Email addresses (read).
 **Events** (Hakit): Create, Delete, Pull request, Pull request review, Push, Repository.
