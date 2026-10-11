@@ -116,7 +116,7 @@ export function CommandPalette({
         if (returnTo.current instanceof HTMLElement) returnTo.current.focus();
       }}
       onClick={(e) => e.target === e.currentTarget && onOpenChange(false)}
-      className="mx-auto mt-(--spacing-palette-offset) w-full max-w-xl rounded-md border border-border-strong bg-raised p-0 text-default shadow-(--shadow-e3) backdrop:bg-sunken/70 max-sm:mt-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:rounded-none"
+      className="mx-auto mt-(--spacing-palette-offset) w-full max-w-xl animate-pop-in rounded-md border border-border-strong bg-raised p-0 text-default shadow-(--shadow-e3) backdrop:animate-fade-in backdrop:bg-sunken/70 max-sm:mt-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:rounded-none"
     >
       <div className="flex items-center gap-2 border-b border-hover px-4">
         <span aria-hidden className="text-subtle">
@@ -172,7 +172,7 @@ export function CommandPalette({
                     onMouseMove={() => i !== current && setActive(i)}
                     onClick={() => run(item)}
                     className={cn(
-                      'flex h-control-lg cursor-pointer items-center gap-2.5 rounded-sm px-2.5 text-body text-default',
+                      'flex h-control-lg cursor-pointer items-center gap-2.5 rounded-sm px-2.5 text-body text-default transition-colors duration-(--duration-instant)',
                       selected && 'bg-hover text-strong',
                     )}
                   >

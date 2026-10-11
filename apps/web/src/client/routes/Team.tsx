@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CoverageLabel, Member, MemberSkill, SkillCategory, TeamCapability } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Avatar, Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
@@ -40,28 +40,21 @@ const TABS = ['capability', 'availability', 'members'] as const;
 type Tab = (typeof TABS)[number];
 
 const nameOf = (m: Member) => m.user.name ?? m.user.githubLogin;
-const initials = (m: Member) =>
-  nameOf(m)
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 const prettySlug = (slug: string) =>
   slug
     .split('-')
     .map((w) => w[0]!.toUpperCase() + w.slice(1))
     .join(' ');
 
-function Avatar({ m }: { m: Member }) {
+function MemberPic({ m }: { m: Member }) {
   return (
-    <span
-      aria-hidden
-      className="grid size-6 shrink-0 place-items-center rounded-full text-caption font-semibold text-on-light"
-      style={{ background: `var(--color-member-${m.colorIndex})` }}
-    >
-      {initials(m)}
-    </span>
+    <Avatar
+      decorative
+      name={nameOf(m)}
+      avatarUrl={m.user.avatarUrl}
+      login={m.user.githubLogin}
+      colorIndex={m.colorIndex}
+    />
   );
 }
 
@@ -232,7 +225,7 @@ function CapabilityMatrix(props: {
             return (
               <div key={m.user.id} role="row" className="grid gap-1 py-0.5" style={cols}>
                 <span role="rowheader" className="flex min-w-0 items-center gap-2">
-                  <Avatar m={m} />
+                  <MemberPic m={m} />
                   <Link
                     to={m.user.id}
                     className="truncate rounded-xs text-body text-default hover:text-strong"
@@ -658,7 +651,7 @@ function SidePanel({ cap, members }: { cap: TeamCapability; members: Member[] })
               const top = byId.get(c.topMembers[0]?.userId ?? '');
               return (
                 <li key={c.category} className="flex items-center gap-2 text-body">
-                  {top && <Avatar m={top} />}
+                  {top && <MemberPic m={top} />}
                   <span className="text-default">{catLabel(c.category)}</span>
                   <span className="text-subtle">{top ? `only ${nameOf(top).split(' ')[0]}` : ''}</span>
                 </li>
@@ -682,7 +675,7 @@ function MembersList({ members }: { members: Member[] }) {
             to={m.user.id}
             className="hover-light grid grid-cols-(--grid-member-row) items-center gap-3 rounded-md px-4 py-3 sm:grid-cols-(--grid-member-row-sm)"
           >
-            <Avatar m={m} />
+            <MemberPic m={m} />
             <span className="min-w-0">
               <span className="block truncate text-body font-medium text-strong">{nameOf(m)}</span>
               <span className="block truncate text-label text-subtle">

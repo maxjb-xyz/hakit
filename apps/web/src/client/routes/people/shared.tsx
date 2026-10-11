@@ -2,7 +2,7 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SkillCategory } from '@hakit/contracts';
-import { cn } from '@hakit/ui';
+import { Avatar, cn } from '@hakit/ui';
 import { ApiRequestError } from '../../lib/api';
 import { qk } from '../../lib/query';
 
@@ -35,27 +35,12 @@ export const initialsOf = (name: string) =>
 export function PersonAvatar(props: {
   name: string;
   avatarUrl?: string | null;
+  login?: string | null;
   colorIndex?: number;
   className?: string;
   decorative?: boolean;
 }) {
-  const label = props.decorative ? undefined : props.name;
-  const base = cn('grid size-6 shrink-0 place-items-center overflow-hidden rounded-full', props.className);
-  if (props.avatarUrl)
-    return <img src={props.avatarUrl} alt={label ?? ''} className={cn(base, 'bg-raised object-cover')} />;
-  return (
-    <span
-      role={label ? 'img' : undefined}
-      aria-label={label}
-      aria-hidden={label ? undefined : true}
-      className={cn(base, 'font-semibold text-on-light', props.colorIndex === undefined && 'bg-level-5')}
-      style={
-        props.colorIndex === undefined ? undefined : { background: `var(--color-member-${props.colorIndex})` }
-      }
-    >
-      {initialsOf(props.name)}
-    </span>
-  );
+  return <Avatar {...props} />;
 }
 
 /** Tab strip with roving arrow-key focus (WAI-ARIA tabs). Panels use `tabPanelProps`. */
