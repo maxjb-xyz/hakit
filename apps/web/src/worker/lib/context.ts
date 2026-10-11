@@ -17,6 +17,8 @@ export interface AppEnv {
     services: Services;
     /** Lazily created per request; closed in waitUntil. Throws in mock mode. */
     db: () => Db;
+    /** Set by `sseRoute`: settles when the stream body finishes, so per-request resources outlive the Response. */
+    streamDone?: Promise<void>;
     user: SessionUser | null;
     /** Set by requireMember for /w/:wid/* routes. */
     role: Role | null;
