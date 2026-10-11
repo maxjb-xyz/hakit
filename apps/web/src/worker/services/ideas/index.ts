@@ -15,6 +15,7 @@ import { ideaTeamFit } from '@hakit/engine';
 import type { LlmProvider } from '../ai/types';
 import { LlmError } from '../ai/structured';
 import { HttpError, notFound } from '../../lib/errors';
+import { errorSummary } from '../../lib/error-summary';
 import { ideaContext } from './context';
 
 type Context = Awaited<ReturnType<typeof ideaContext>>;
@@ -254,8 +255,9 @@ export async function ideaError(send: Send, error: unknown) {
       JSON.stringify({
         level: 'error',
         msg: 'ideas_failed',
-        error: error instanceof Error ? error.name : 'unknown',
-        ...(error instanceof LlmError ? { code: error.code, status: error.status } : {}),
+        ...(error instanceof LlmError
+          ? { error: 'LlmError', code: error.code, status: error.status }
+          : errorSummary(error)),
       }),
     );
   await send({
