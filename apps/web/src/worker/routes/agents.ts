@@ -15,7 +15,7 @@ import { assertMember } from '../middleware/auth';
 export const agents = new Hono<AppEnv>();
 
 const SESSION_LIST_LIMIT = 200;
-const INSTALL = '/plugin marketplace add <org>/hakit-plugins && /plugin install hakit';
+const INSTALL = '/plugin marketplace add maxjb-xyz/hakit then /plugin install hakit@hakit';
 
 /** Tokens are personal: created for, listed for and revocable by their owner only. */
 route(agents, 'createAgentToken', async ({ c, params, body }) => {

@@ -129,7 +129,7 @@ AMD is an event sponsor, but Hakit does not run on AMD hardware: no AMD endpoint
 ## 6. Coding agents (P1)
 
 ### 6.1 Claude Code (primary)
-- **Distribution:** a Claude Code **plugin** `hakit` (in a marketplace repo `hakit/claude-plugins`). Install with `/plugin marketplace add <org>/hakit-plugins` then `/plugin install hakit`. `userConfig` asks for `hakit_token` (sensitive, stored in the keychain) and `endpoint`; hooks read them as `CLAUDE_PLUGIN_OPTION_*` env vars.
+- **Distribution:** a Claude Code **plugin** `hakit` (marketplace at `.claude-plugin/marketplace.json` in this repo). Install with `/plugin marketplace add maxjb-xyz/hakit` then `/plugin install hakit@hakit`. `userConfig` asks for `hakit_token` (sensitive, stored in the keychain) and `endpoint`; hooks read them as `CLAUDE_PLUGIN_OPTION_*` env vars.
 - **Fallback distribution:** a one-line installer that writes `hooks` into `.claude/settings.local.json` of the repo (per-repo opt-in) with the token in `~/.config/hakit/token` (chmod 600).
 - **Hook events subscribed** (all `async: true` command hooks, `curl -m 3 … || true`, so they never block the agent):
 
