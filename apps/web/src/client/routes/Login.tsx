@@ -42,7 +42,15 @@ const STEPS = [
 ];
 
 const linkButton =
-  'inline-flex h-control-xl w-full items-center justify-center rounded-md bg-accent-500 px-5 text-body-lg font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600 active:bg-accent-600';
+  'press inline-flex h-control-xl w-full items-center justify-center gap-2.5 rounded-md bg-strong px-5 text-body-lg font-medium text-on-light shadow-[inset_0_-1px_0_var(--color-level-4)] hover:bg-default active:bg-muted';
+
+function GitHubMark() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="size-4.5 fill-current">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  );
+}
 
 export function Login() {
   const [search] = useSearchParams();
@@ -55,21 +63,46 @@ export function Login() {
     next !== '/' ? next : firstWorkspace ? `/w/${firstWorkspace.workspaceId}/mc` : '/onboarding';
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-canvas p-6 max-sm:p-4">
-      <div className="grid w-full max-w-4xl items-center gap-10 md:grid-cols-2">
+    <main className="relative grid min-h-dvh place-items-center overflow-hidden bg-canvas p-6 max-sm:p-4">
+      {/* Decorative: a faint dot grid fading out from the top, and one soft light behind the content. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 [background-image:radial-gradient(var(--color-border-strong)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-1/2 h-96 w-full max-w-4xl -translate-x-1/2 [background:radial-gradient(ellipse_at_top,var(--color-sheen),transparent_70%)]"
+      />
+      <div className="relative grid w-full max-w-4xl items-center gap-12 md:grid-cols-2">
         <section>
-          <p className="font-display text-display-sm text-strong">hakit</p>
-          <h1 className="mt-4 font-display text-display-lg text-strong">
+          <p className="flex animate-fade-in items-center gap-2 font-display text-display-sm text-strong">
+            <span
+              aria-hidden
+              className="grid size-7 place-items-center rounded-sm bg-strong font-mono text-label text-on-light"
+            >
+              hk
+            </span>
+            hakit
+          </p>
+          <h1 className="mt-6 animate-slide-up font-display text-display-lg text-strong">
             The hackathon OS that knows your team and what to build next.
           </h1>
-          <ol className="mt-8 space-y-4">
+          <ol className="relative mt-10 space-y-5">
+            <span
+              aria-hidden
+              className="absolute top-4 bottom-4 left-3.5 border-l border-dashed border-border-strong"
+            />
             {STEPS.map((s, i) => (
-              <li key={s.n} className="flex gap-3">
+              <li
+                key={s.n}
+                style={{ '--i': i + 2 } as React.CSSProperties}
+                className="relative flex animate-list-in gap-3"
+              >
                 <span
                   aria-hidden
                   className={cn(
-                    'grid size-7 shrink-0 place-items-center rounded-full border font-mono text-label',
-                    i === 0 ? 'border-accent-500 text-strong' : 'border-border-strong text-muted',
+                    'grid size-7 shrink-0 place-items-center rounded-full border bg-canvas font-mono text-label',
+                    i === 0 ? 'border-accent-400 text-strong' : 'border-border-strong text-muted',
                   )}
                 >
                   {s.n}
@@ -83,7 +116,7 @@ export function Login() {
           </ol>
         </section>
 
-        <Card className="p-8">
+        <Card className="animate-pop-in p-8 shadow-e2 max-sm:p-5">
           {error && (
             <div role="alert" className="mb-5 rounded-sm border border-danger px-3 py-2.5">
               <p className="text-body font-medium text-strong">{errorCopy(error).title}</p>
@@ -94,7 +127,7 @@ export function Login() {
 
           {me.isPending ? (
             <div
-              className="h-control-xl animate-pulse rounded-md bg-raised"
+              className="skeleton h-control-xl rounded-md"
               aria-busy="true"
               aria-label="Checking sign-in"
             />
@@ -126,12 +159,16 @@ export function Login() {
                 One click. Your GitHub account is your Hakit account.
               </p>
               <a href={loginHref} className={cn(linkButton, 'mt-6')}>
+                <GitHubMark />
                 {error ? 'Try again with GitHub' : 'Continue with GitHub'}
               </a>
             </>
           )}
 
-          <p className="mt-5 text-label text-subtle">
+          <p className="mt-5 flex gap-2 border-t border-border pt-4 text-label text-subtle">
+            <span aria-hidden className="text-faint">
+              ●
+            </span>
             We read your public repos to suggest skills. We never read private code without asking.
           </p>
         </Card>

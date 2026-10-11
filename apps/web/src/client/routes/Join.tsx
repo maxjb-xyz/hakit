@@ -11,13 +11,21 @@ import { qk } from '../lib/query';
 import { Card, PersonAvatar, isNotFound } from './people/shared';
 
 const linkButton =
-  'inline-flex h-control-xl w-full items-center justify-center rounded-md bg-accent-500 px-5 text-body-lg font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600 active:bg-accent-600';
+  'press inline-flex h-control-xl w-full items-center justify-center rounded-md bg-accent-500 px-5 text-body-lg font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600 active:bg-accent-600';
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <main className="grid min-h-dvh place-items-center bg-canvas p-6 max-sm:p-4">
       <div className="w-full max-w-md">
-        <p className="mb-4 font-display text-title text-strong">hakit</p>
+        <p className="mb-4 flex items-center gap-2 font-display text-title text-strong">
+          <span
+            aria-hidden
+            className="grid size-6 place-items-center rounded-xs bg-strong font-mono text-caption text-on-light"
+          >
+            hk
+          </span>
+          hakit
+        </p>
         {children}
       </div>
     </main>
@@ -46,7 +54,7 @@ export function Join() {
     return (
       <Frame>
         <div
-          className="h-64 animate-pulse rounded-md border border-border bg-surface"
+          className="h-64 skeleton rounded-md border border-border"
           aria-busy="true"
           aria-label="Loading invite"
         />
@@ -86,15 +94,15 @@ export function Join() {
 
   return (
     <Frame>
-      <Card className="p-8">
+      <Card className="animate-pop-in p-8 shadow-e2 max-sm:p-5">
         <p className="text-label text-subtle">You're invited to join</p>
-        <h1 className="mt-1 font-display text-display-sm text-strong">{p.workspaceName}</h1>
+        <h1 className="mt-1 animate-slide-up font-display text-display-sm text-strong">{p.workspaceName}</h1>
 
         {p.memberAvatars.length > 0 ? (
           <div className="mt-5 flex items-center gap-3">
             <ul className="flex -space-x-1.5" aria-label="Current members">
               {p.memberAvatars.map((m, i) => (
-                <li key={m.login}>
+                <li key={m.login} style={{ '--i': i } as React.CSSProperties} className="animate-list-in">
                   <PersonAvatar
                     name={m.login}
                     avatarUrl={m.avatarUrl}
@@ -142,7 +150,7 @@ export function Join() {
           </div>
         ) : me.isPending ? (
           <div
-            className="mt-6 h-control-xl animate-pulse rounded-md bg-raised"
+            className="mt-6 h-control-xl skeleton rounded-md"
             aria-busy="true"
             aria-label="Checking sign-in"
           />
@@ -176,7 +184,7 @@ export function Join() {
           </a>
         )}
 
-        <p className="mt-5 text-label text-subtle">
+        <p className="mt-5 border-t border-border pt-4 text-label text-subtle">
           We read your public repos to suggest skills. We never read private code without asking.
         </p>
       </Card>

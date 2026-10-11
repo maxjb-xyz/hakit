@@ -24,14 +24,21 @@ import {
   type EventKind,
 } from './workspace/EventPicker';
 
-const input =
-  'mt-1 h-control-md w-full rounded-sm border border-border-strong bg-sunken px-3 text-body text-strong placeholder:text-subtle';
+const input = 'field mt-1 h-control-md w-full rounded-sm px-3 text-body text-strong placeholder:text-subtle';
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-dvh bg-canvas px-6 py-10 max-sm:px-4 max-sm:py-6">
       <div className="mx-auto w-full max-w-xl space-y-6">
-        <p className="font-display text-title text-strong">hakit</p>
+        <p className="flex items-center gap-2 font-display text-title text-strong">
+          <span
+            aria-hidden
+            className="grid size-6 place-items-center rounded-xs bg-strong font-mono text-caption text-on-light"
+          >
+            hk
+          </span>
+          hakit
+        </p>
         {children}
       </div>
     </main>
@@ -80,7 +87,7 @@ function CreateForm() {
 
   const errorText = (k: keyof typeof errors) =>
     show(k) && (
-      <p id={`${id}-${k}-err`} className="mt-1 text-label text-danger">
+      <p id={`${id}-${k}-err`} className="mt-1 animate-fade-in text-label text-danger">
         {show(k)}
       </p>
     );
@@ -110,7 +117,7 @@ function CreateForm() {
         <EventPicker name={`${id}-template`} value={template} onChange={setTemplate} template={hackathon} />
 
         {template === 'custom' && (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid animate-slide-up gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor={`${id}-start`} className="text-label text-subtle">
                 Starts (optional)
@@ -172,7 +179,7 @@ export function CreateWorkspace() {
           <h1 className="text-title font-medium text-strong">Sign in to create a workspace</h1>
           <a
             href={`${API_PREFIX}/auth/github/login?next=${encodeURIComponent('/new')}`}
-            className="mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600"
+            className="press mt-4 inline-flex h-control-lg items-center rounded-sm bg-accent-500 px-4 text-body font-medium text-strong hover:bg-accent-600"
           >
             Continue with GitHub
           </a>
@@ -189,7 +196,7 @@ export function CreateWorkspace() {
     return (
       <Frame>
         <div
-          className="h-96 animate-pulse rounded-md border border-border bg-surface"
+          className="h-96 skeleton rounded-md border border-border"
           aria-busy="true"
           aria-label="Loading"
         />
@@ -221,10 +228,16 @@ export function CreateWorkspace() {
           )}
         </div>
         <StepDots steps={['Workspace', 'Invite']} current={wid ? 1 : 0} />
+        <div aria-hidden className="h-0.5 overflow-hidden rounded-full bg-border">
+          <div
+            className="h-full rounded-full bg-strong transition-[width] duration-(--duration-slow) ease-emphasized"
+            style={{ width: wid ? '100%' : '50%' }}
+          />
+        </div>
       </div>
 
       {wid ? (
-        <>
+        <div key="invite" className="animate-slide-up space-y-6">
           <InvitePanel wid={wid} />
           <div className="flex flex-wrap items-center justify-end gap-3">
             <Link to={`/w/${wid}/mc`} className="rounded-xs text-body text-muted hover:text-strong">
@@ -232,14 +245,16 @@ export function CreateWorkspace() {
             </Link>
             <Link
               to={`/onboarding?wid=${encodeURIComponent(wid)}`}
-              className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-600"
+              className="press inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong hover:bg-accent-600 active:bg-accent-600"
             >
               Set up your profile
             </Link>
           </div>
-        </>
+        </div>
       ) : (
-        <CreateForm />
+        <div key="create" className="animate-slide-up">
+          <CreateForm />
+        </div>
       )}
     </Frame>
   );

@@ -13,8 +13,8 @@ import { useWorkspaceSocket } from '../../lib/ws';
 import { IMPORT_STEPS, countsLine, stepState, type ImportStage, type StepState } from './import-progress';
 
 const ICON: Record<StepState, { glyph: string; cls: string; sr: string }> = {
-  done: { glyph: '✓', cls: 'border-accent-500 bg-accent-500 text-strong', sr: 'done' },
-  current: { glyph: '…', cls: 'border-accent-500 text-strong', sr: 'in progress' },
+  done: { glyph: '✓', cls: 'animate-pop-in border-success text-success', sr: 'done' },
+  current: { glyph: '…', cls: 'skeleton border-accent-400 text-strong', sr: 'in progress' },
   pending: { glyph: '', cls: 'border-border-strong', sr: 'not started' },
   failed: { glyph: '✕', cls: 'border-danger text-danger', sr: 'failed' },
 };
@@ -104,7 +104,7 @@ export function SkillImportPanel(props: {
             {IMPORT_STEPS.map((s) => {
               const st = stepState(s.stage, latest?.stage ?? null, run.furthest);
               return (
-                <li key={s.stage} className="flex items-center gap-2.5 text-body">
+                <li key={s.stage} className="flex animate-fade-in items-center gap-2.5 text-body">
                   <span
                     aria-hidden
                     className={cn(

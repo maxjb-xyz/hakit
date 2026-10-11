@@ -24,8 +24,7 @@ import {
   type EventKind,
 } from './EventPicker';
 
-const input =
-  'mt-1 h-control-md w-full rounded-sm border border-border-strong bg-sunken px-3 text-body text-strong placeholder:text-subtle disabled:text-muted';
+const input = 'field mt-1 h-control-md w-full rounded-sm px-3 text-body text-strong placeholder:text-subtle';
 
 /* --------------------------------- Event --------------------------------- */
 
@@ -260,7 +259,17 @@ function EventForm(props: {
       )}
       <div className="flex flex-wrap items-center justify-end gap-3">
         <p role="status" className="mr-auto text-label text-success">
-          {props.saved && !dirty && !save.isPending && 'Saved. The countdown and plans use the new dates.'}
+          {props.saved && !dirty && !save.isPending && (
+            <span className="inline-flex animate-pop-in items-center gap-1.5">
+              <span
+                aria-hidden
+                className="grid size-4 place-items-center rounded-full bg-success text-caption text-on-light"
+              >
+                ✓
+              </span>
+              <span>Saved. The countdown and plans use the new dates.</span>
+            </span>
+          )}
         </p>
         <Button type="button" variant="ghost" disabled={!dirty || save.isPending} onClick={reset}>
           Discard changes
@@ -317,7 +326,10 @@ export function ProjectsPanel({ wid }: { wid: string }) {
                   const isSelected = p.id === selected?.id;
                   const status = PROJECT_STATUS[p.status];
                   return (
-                    <li key={p.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-3">
+                    <li
+                      key={p.id}
+                      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-sm px-2 py-3 transition-colors duration-(--duration-instant) hover:bg-hover"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-body text-default">{p.name}</p>
                         <p className="truncate text-label text-subtle">
@@ -327,7 +339,7 @@ export function ProjectsPanel({ wid }: { wid: string }) {
                       </div>
                       <Pill tone={status.tone}>{status.label}</Pill>
                       {isSelected ? (
-                        <Pill tone="accent" className="border-accent-500">
+                        <Pill tone="accent" className="border-accent-400">
                           <span aria-hidden>✓</span> Showing on every screen
                         </Pill>
                       ) : (

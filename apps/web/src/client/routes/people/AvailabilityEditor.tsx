@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type { MemberProfile } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Button, TickNumber, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import {
   availableHoursOf,
@@ -96,9 +96,9 @@ export function AvailabilityEditor(props: {
     >
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-body text-default">
-          <span className="font-medium text-strong">
+          <span className="text-title font-medium text-strong">
             {dirty ? '≈' : ''}
-            {hours}h
+            <TickNumber value={hours} label={`${hours} hours`} />h
           </span>{' '}
           available of {Math.round((props.event.end - props.event.start) / 3_600_000)}h
           <span className="text-subtle"> · self-reported · times in {tz}</span>
@@ -114,10 +114,8 @@ export function AvailabilityEditor(props: {
                 aria-checked={brush === b}
                 onClick={() => setBrush(b)}
                 className={cn(
-                  'flex h-control-sm items-center gap-1.5 rounded-sm border px-2 text-label',
-                  brush === b
-                    ? 'border-accent-500 text-strong'
-                    : 'border-border text-muted hover:text-strong',
+                  'interactive press flex h-control-sm items-center gap-1.5 rounded-sm border px-2 text-label',
+                  brush === b ? 'border-accent-400 bg-raised text-strong' : 'border-border text-muted',
                 )}
               >
                 <span
@@ -137,8 +135,12 @@ export function AvailabilityEditor(props: {
       </div>
 
       <div className="space-y-2" role="group" aria-label="Availability by hour">
-        {days.map((d) => (
-          <div key={d.label} className="space-y-1">
+        {days.map((d, di) => (
+          <div
+            key={d.label}
+            style={{ '--i': di } as React.CSSProperties}
+            className="animate-list-in space-y-1"
+          >
             <span className="block text-label text-subtle">{d.label}</span>
             <div className="flex flex-wrap gap-0.5">
               {d.idx.map((i) => {
@@ -146,7 +148,7 @@ export function AvailabilityEditor(props: {
                 const hour = fmtSlot(slots[i]!.start, tz, { hour: 'numeric' });
                 const label = `${d.label} ${hour}: ${KIND[k].label}`;
                 const cls = cn(
-                  'grid h-7 w-6 place-items-center rounded-xs border text-caption select-none',
+                  'grid h-7 w-6 place-items-center rounded-xs border text-caption select-none transition-[background-color,border-color,transform] duration-(--duration-fast) ease-standard',
                   KIND[k].cell,
                 );
                 return props.editable ? (
@@ -155,7 +157,10 @@ export function AvailabilityEditor(props: {
                     type="button"
                     aria-label={label}
                     title={label}
-                    className={cn(cls, 'hover:border-accent-400')}
+                    className={cn(
+                      cls,
+                      'cursor-crosshair hover:scale-110 hover:border-accent-400 active:scale-95',
+                    )}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       setPainting(true);
@@ -201,7 +206,11 @@ export function AvailabilityEditor(props: {
                 Couldn't save availability: {save.error.message}
               </span>
             )}
-            {save.isSuccess && !dirty && <span role="status">Saved</span>}
+            {save.isSuccess && !dirty && (
+              <span role="status" className="flex animate-pop-in items-center gap-1 text-success">
+                <span aria-hidden>✓</span> Saved
+              </span>
+            )}
             {draft && (
               <Button size="sm" variant="ghost" onClick={() => setDraft(null)} disabled={save.isPending}>
                 Undo changes
