@@ -25,7 +25,7 @@ import { assertProjectMember } from '../middleware/auth';
 import * as ideas from '../services/ideas';
 import { planningInput, planValidationInput } from '../services/planning/context';
 import { applyPlanPatch } from '../services/planning/patch';
-import { generatePlanPipeline } from '../services/planning/pipeline';
+import { generateCachedPlan } from '../services/planning/cache';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
@@ -334,7 +334,19 @@ sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
       await emit({ type: 'stage', stage: 'context', message: 'Reading team capability and selected idea' });
       const db = c.var.db();
       const input = await planningInput(db, params.pid, body.ideaId, new Date(), body.guidance);
-      const result = await generatePlanPipeline(input, c.var.services.llm, emit);
+      const result = await generateCachedPlan(input, c.var.services.llm, emit, {
+        projectId: params.pid,
+        model: c.env.GEMINI_MODEL_PLAN,
+        find: async (hash) => {
+          const [cached] = await db
+            .select()
+            .from(schema.plans)
+            .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.promptHash, hash)))
+            .orderBy(desc(schema.plans.version))
+            .limit(1);
+          return cached;
+        },
+      });
       await emit({ type: 'stage', stage: 'save', message: 'Saving a versioned draft plan' });
       const saved = await db.transaction(async (tx) => {
         await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');

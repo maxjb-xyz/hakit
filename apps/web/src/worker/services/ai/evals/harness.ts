@@ -12,15 +12,18 @@ import {
   type Feasibility,
   type FeasibilityIssueCode,
 } from '@hakit/contracts';
-import { DEFAULT_CONFIG, ideaTeamFit, validatePlan } from '@hakit/engine';
+import { DEFAULT_CONFIG, ideaTeamFit, topoSort, validatePlan } from '@hakit/engine';
+import { createHash } from 'node:crypto';
 import { generatePlanPipeline, type PipelineInput } from '../../planning/pipeline';
 import type { LlmProvider } from '../types';
 import { ALLOWED_SKILL_SLUGS, type EvalCase, type TeamFixture } from './cases';
+import { selectCases } from './selection';
 
 export const CHECKS = [
   'schema',
   'stream',
   'dag',
+  'taskSizes',
   'skillGrounding',
   'capacity',
   'schedule',
@@ -34,6 +37,8 @@ export type CheckName = (typeof CHECKS)[number];
 export interface CaseResult {
   id: string;
   model: string;
+  promptHashes: string[];
+  requestCount: number;
   checks: Record<CheckName, { pass: boolean; detail?: string }>;
   teamFit: number;
   /** Skill-gap warnings on the idea's stack skills (scored by `coverage`). */
@@ -125,10 +130,12 @@ const has = (f: Feasibility, ...codes: FeasibilityIssueCode[]) =>
 
 export async function runCase(c: EvalCase, llm: LlmProvider): Promise<CaseResult> {
   const requests: string[] = [];
+  const promptHashes = new Set<string>();
   const recording: LlmProvider = {
     name: llm.name,
     generateStructured: (req) => {
       requests.push(JSON.stringify({ system: req.system, input: req.input }));
+      promptHashes.add(createHash('sha256').update(req.system).digest('hex'));
       return llm.generateStructured(req);
     },
   };
@@ -168,6 +175,11 @@ export async function runCase(c: EvalCase, llm: LlmProvider): Promise<CaseResult
   const fail = (issues: Feasibility['issues']) =>
     issues.length ? { pass: false, detail: issues.map((i) => i.message).join('; ') } : { pass: true };
   const schema = PlanDocument.safeParse(result.payload);
+  const keys = result.payload.tasks.map((t) => t.key);
+  const known = new Set(keys);
+  const edges = result.payload.tasks.flatMap((t) => t.dependsOn.map((d) => [t.key, d] as [string, string]));
+  const dagValid =
+    known.size === keys.length && edges.every(([, d]) => known.has(d)) && topoSort(keys, edges).ok;
   const checks: CaseResult['checks'] = {
     schema: schema.success ? { pass: true } : { pass: false, detail: schema.error.message },
     stream: {
@@ -175,7 +187,10 @@ export async function runCase(c: EvalCase, llm: LlmProvider): Promise<CaseResult
         events.every((e) => PlanStreamEvent.safeParse(e).success) &&
         events.some((e) => e.type === 'validation'),
     },
-    dag: fail(has(f, 'UNKNOWN_DEPENDENCY', 'DEPENDENCY_CYCLE', 'TASK_TOO_LARGE')),
+    dag: dagValid
+      ? fail(has(f, 'UNKNOWN_DEPENDENCY', 'DEPENDENCY_CYCLE'))
+      : { pass: false, detail: 'Invalid task references or dependency cycle' },
+    taskSizes: fail(has(f, 'TASK_TOO_LARGE', 'TASK_TOO_SMALL')),
     skillGrounding: ungrounded.length
       ? { pass: false, detail: `unknown slugs: ${[...new Set(ungrounded)].join(', ')}` }
       : fail(has(f, 'UNKNOWN_SKILL')),
@@ -195,6 +210,8 @@ export async function runCase(c: EvalCase, llm: LlmProvider): Promise<CaseResult
   return {
     id: c.id,
     model: result.model,
+    promptHashes: [...promptHashes].sort(),
+    requestCount: requests.length,
     checks,
     teamFit: ideaTeamFit(result.payload.idea, input.validation.teamSkillLevels),
     skillGaps,
@@ -205,6 +222,7 @@ export async function runCase(c: EvalCase, llm: LlmProvider): Promise<CaseResult
 }
 
 export async function runEvals(cases: EvalCase[], llm: LlmProvider) {
+  selectCases(cases);
   const results: CaseResult[] = [];
   for (const c of cases) results.push(await runCase(c, llm));
   return results;
@@ -230,8 +248,45 @@ export function formatReport(results: CaseResult[]): string {
     const failed = CHECKS.filter((n) => !r.checks[n].pass);
     lines.push(
       `  ${r.id.padEnd(28)} model=${r.model.padEnd(8)} fit=${r.teamFit.toFixed(2)} ` +
-        (failed.length ? `FAIL ${failed.map((n) => `${n}(${r.checks[n].detail ?? ''})`).join(' ')}` : 'ok'),
+        (failed.length ? `FAIL ${failed.join(', ')}` : 'ok'),
     );
   }
   return lines.join('\n');
+}
+
+/** Checks an intentional coverage contrast, not that a model rewrites the architecture. */
+export function sameIdeaDifferentTeam(a: CaseResult, b: CaseResult, left: EvalCase, right: EvalCase) {
+  const sameIdea = JSON.stringify(left.idea) === JSON.stringify(right.idea);
+  const preserved =
+    JSON.stringify(a.plan.idea) === JSON.stringify(left.idea) &&
+    JSON.stringify(b.plan.idea) === JSON.stringify(right.idea);
+  const contrasted = a.teamFit > b.teamFit && a.skillGaps.length === 0 && b.skillGaps.length > 0;
+  const grounded = b.skillGaps.every((slug) => {
+    const required = Math.max(
+      0,
+      ...b.plan.tasks.flatMap((t) => t.requiredSkills.filter((s) => s.slug === slug).map((s) => s.level)),
+    );
+    return (teamLevels(right.team).get(slug) ?? 0) < required;
+  });
+  return { pass: sameIdea && preserved && left.team.id !== right.team.id && contrasted && grounded };
+}
+
+/** Safe artifact: excludes prompts, private fixture identities, plan text, and provider error bodies. */
+export function reportArtifact(results: CaseResult[], mode: 'scripted' | 'fallback' | 'live', model: string) {
+  return {
+    version: 1,
+    mode,
+    model,
+    caseCount: results.length,
+    passRates: passRates(results),
+    cases: results.map((r) => ({
+      id: r.id,
+      model: r.model,
+      promptHashes: r.promptHashes,
+      requestCount: r.requestCount,
+      checks: Object.fromEntries(CHECKS.map((n) => [n, r.checks[n].pass])),
+      teamFit: r.teamFit,
+      issueCodes: [...new Set(r.feasibility.issues.map((i) => i.code))].sort(),
+    })),
+  };
 }

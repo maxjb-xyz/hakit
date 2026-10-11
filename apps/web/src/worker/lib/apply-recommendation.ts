@@ -41,11 +41,19 @@ export async function applyActions(
       .insert(schema.taskEvents)
       .values({ taskId, actorUserId: ctx.actorId, kind: 'status', fromValue: from, toValue: to });
   };
+  const liveTask = (t: typeof schema.tasks.$inferSelect) => {
+    if (t.status === 'done' || t.status === 'cut')
+      throw new HttpError(
+        409,
+        'stale_recommendation',
+        'This task is already complete or cut; refresh recommendations',
+      );
+  };
 
   for (const a of actions) {
     switch (a.op) {
       case 'reassign': {
-        await task(a.taskId);
+        liveTask(await task(a.taskId));
         const login = await memberLogin(tx, ctx.workspaceId, a.toUserId);
         // An explicit human accept may move a locked task; the new assignment is unlocked.
         await assignTask(tx, {
@@ -60,8 +68,12 @@ export async function applyActions(
       }
       case 'set_priority': {
         const t = await task(a.taskId);
-        if (a.priority === 'cut') await setStatus(t.id, t.status, 'cut');
-        else
+        if (a.priority === 'cut') {
+          liveTask(t);
+          if (t.priority === 'must' || t.status !== 'todo')
+            throw new HttpError(409, 'stale_recommendation', 'Scope cuts require unstarted optional work');
+          await setStatus(t.id, t.status, 'cut');
+        } else
           await tx
             .update(schema.tasks)
             .set({ priority: a.priority, updatedAt: ctx.now })
@@ -70,11 +82,27 @@ export async function applyActions(
       }
       case 'set_status': {
         const t = await task(a.taskId);
+        if (t.status !== a.status) liveTask(t);
         if (t.status !== a.status) await setStatus(t.id, t.status, a.status);
         break;
       }
       case 'split': {
         const t = await task(a.taskId);
+        liveTask(t);
+        if (
+          a.parts.some(
+            (p) =>
+              !p.title.trim() ||
+              !Number.isFinite(p.estimateHours) ||
+              p.estimateHours <= 0 ||
+              p.estimateHours > 24,
+          )
+        )
+          throw new HttpError(
+            400,
+            'invalid_body',
+            'Split parts need a title and a positive estimate of at most 24 hours',
+          );
         const first = await allocateTaskNumbers(tx, ctx.projectId, a.parts.length);
         const parts = await tx
           .insert(schema.tasks)

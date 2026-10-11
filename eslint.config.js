@@ -6,6 +6,8 @@ import globals from 'globals';
 export default tseslint.config(
   {
     ignores: [
+      '.worktrees/**',
+      '**/coverage/**',
       '**/dist/**',
       '**/.wrangler/**',
       '**/node_modules/**',

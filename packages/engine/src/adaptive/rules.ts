@@ -3,6 +3,7 @@ import type { RecommendationAction, RecommendationDraft } from '@hakit/contracts
 import type { EngineConfig, EngineMember, EngineTask, ProjectState } from '../types';
 import { computeSchedule, type ScheduleResult } from '../schedule/cpm';
 import { availableAt, scorePair } from '../assign/solve';
+import { finishWork } from '../schedule/availability';
 
 export type Rule = (
   state: ProjectState,
@@ -25,6 +26,10 @@ const hours = (n: number) => `${round(n)}h`;
 const half = (n: number) => `${Math.round(n * 2) / 2}h`;
 const quarterHour = (ms: number) => new Date(Math.round(ms / (15 * MINUTE)) * 15 * MINUTE).toISOString();
 const owners = (state: ProjectState) => new Map(state.activeAssignments.map((a) => [a.taskId, a]));
+const protectedAssignment = (state: ProjectState, taskId: string) => {
+  const a = owners(state).get(taskId);
+  return a?.locked || a?.source === 'manual';
+};
 
 /** Relevance ∈ [0,1] of a member for a task, from the solver's own scorer (no second formula). */
 function relevance(state: ProjectState, taskId: string, userId: string, config: EngineConfig) {
@@ -35,9 +40,34 @@ function relevance(state: ProjectState, taskId: string, userId: string, config: 
 }
 
 /** Best available, qualified alternative owner (relevance ≥ criticalPathMinRelevance), deterministic. */
+function canTake(
+  state: ProjectState,
+  task: EngineTask,
+  member: EngineMember,
+  config: EngineConfig,
+  assigned: ReadonlyMap<string, string>,
+) {
+  if (
+    member.availableHours <= 0 ||
+    !availableAt(member, state.now.getTime()) ||
+    task.requiredSkills.some((s) => member.avoid.includes(s.skillSlug))
+  )
+    return false;
+  const load = state.tasks
+    .filter((t) => live(t) && t.id !== task.id && assigned.get(t.id) === member.userId)
+    .reduce((sum, t) => sum + t.estimateHours, 0);
+  if (load + task.estimateHours > member.availableHours * config.capacityHeadroom) return false;
+  const work = finishWork(member, state.now.getTime(), load + task.estimateHours);
+  return !!work && work.end <= state.deadlineAt.getTime() - state.submissionBufferHours * HOUR;
+}
+
 function bestAlternative(state: ProjectState, task: EngineTask, exclude: string, config: EngineConfig) {
+  if (protectedAssignment(state, task.id)) return undefined;
   return state.members
     .filter((m) => m.userId !== exclude && m.availableHours > 0 && availableAt(m, state.now.getTime()))
+    .filter((m) =>
+      canTake(state, task, m, config, new Map(state.activeAssignments.map((a) => [a.taskId, a.userId]))),
+    )
     .map((m) => ({
       userId: m.userId,
       relevance: relevance(state, task.id, m.userId, config),
@@ -76,7 +106,7 @@ export const stalledTask: Rule = (state, schedule, config) => {
         { label: 'Estimate', value: `${hours(t.estimateHours)} (estimated)` },
       ];
       const base = { dedupeKey: `stall:${t.id}`, impact: {} };
-      if (!critical.has(t.id))
+      if (!critical.has(t.id) || protectedAssignment(state, t.id) || t.estimateHours < 1)
         return [
           {
             ...base,
@@ -146,7 +176,7 @@ export const workloadImbalance: Rule = (state, schedule, config) => {
   const assigned = owners(state);
   const critical = new Set(schedule.criticalPathTaskIds);
   const members = state.members
-    .filter((m) => m.availableHours > 0)
+    .filter((m) => m.availableHours > 0 && availableAt(m, now))
     .sort((a, b) => a.userId.localeCompare(b.userId));
   const openHours = (userId: string, map: Map<string, string>) =>
     state.tasks.filter((t) => live(t) && map.get(t.id) === userId).reduce((s, t) => s + t.estimateHours, 0);
@@ -157,9 +187,10 @@ export const workloadImbalance: Rule = (state, schedule, config) => {
     return t.status === 'todo' && !a?.locked && a?.source !== 'manual';
   };
   const out: RecommendationDraft[] = [];
+  const reserved = new Set<string>();
+  const map = new Map([...assigned].map(([id, a]) => [id, a.userId]));
 
   if (members.length >= 2) {
-    const map = new Map([...assigned].map(([id, a]) => [id, a.userId]));
     const byLoad = () =>
       [...members].sort((a, b) => pct(b, map) - pct(a, map) || a.userId.localeCompare(b.userId));
     const [from, to] = [byLoad()[0]!, byLoad().at(-1)!];
@@ -169,10 +200,12 @@ export const workloadImbalance: Rule = (state, schedule, config) => {
       const actions: RecommendationAction[] = [];
       const candidates = state.tasks
         .filter((t) => map.get(t.id) === from.userId && movable(t))
+        .filter((t) => !t.requiredSkills.some((s) => to.avoid.includes(s.skillSlug)))
         .filter((t) => relevance(state, t.id, to.userId, config) >= config.criticalPathMinRelevance)
         .sort((a, b) => b.estimateHours - a.estimateHours || a.id.localeCompare(b.id));
       for (const t of candidates) {
         if (actions.length >= MAX_MOVES || gap() <= IMBALANCE_POINTS) break;
+        if (!canTake(state, t, to, config, map)) continue;
         const current = Math.abs(gap());
         map.set(t.id, to.userId);
         if (Math.abs(gap()) >= current) {
@@ -180,6 +213,7 @@ export const workloadImbalance: Rule = (state, schedule, config) => {
           continue;
         }
         actions.push({ op: 'reassign', taskId: t.id, toUserId: to.userId });
+        reserved.add(t.id);
       }
       if (actions.length) {
         const moved = actions.reduce(
@@ -219,8 +253,17 @@ export const workloadImbalance: Rule = (state, schedule, config) => {
         (t.status === 'in_progress' || t.status === 'in_review') && assigned.get(t.id)?.userId === m.userId,
     );
     const last = state.lastActivityByMember[m.userId]?.getTime();
-    if (busy || !availableAt(m, now) || (last !== undefined && now - last <= IDLE_MINUTES * MINUTE)) continue;
+    const observedSince = last ?? state.executionStartedAt?.getTime();
+    if (
+      busy ||
+      observedSince === undefined ||
+      !Number.isFinite(observedSince) ||
+      now - observedSince <= IDLE_MINUTES * MINUTE
+    )
+      continue;
     const pick = ready
+      .filter((t) => !reserved.has(t.id) && !t.requiredSkills.some((s) => m.avoid.includes(s.skillSlug)))
+      .filter((t) => canTake(state, t, m, config, map))
       .filter((t) => assigned.get(t.id)?.userId !== m.userId && (!assigned.has(t.id) || movable(t)))
       .map((t) => ({ t, relevance: relevance(state, t.id, m.userId, config) }))
       .filter((c) => c.relevance >= config.criticalPathMinRelevance)
@@ -232,6 +275,8 @@ export const workloadImbalance: Rule = (state, schedule, config) => {
           a.t.id.localeCompare(b.t.id),
       )[0];
     if (!pick) continue;
+    reserved.add(pick.t.id);
+    map.set(pick.t.id, m.userId);
     out.push({
       kind: 'rebalance',
       severity: 'info',
@@ -266,6 +311,7 @@ export const criticalPathSlip: Rule = (state, schedule) => {
       (t) =>
         t.status === 'todo' &&
         (t.priority === 'should' || t.priority === 'could') &&
+        !protectedAssignment(state, t.id) &&
         !state.dependencies.some(
           (d) =>
             d.dependsOnTaskId === t.id &&
@@ -316,12 +362,138 @@ export const criticalPathSlip: Rule = (state, schedule) => {
 
 export const RULES_V1: Rule[] = [stalledTask, workloadImbalance, criticalPathSlip];
 
+/** Distinct live descendants through blocking edges; cycles never recurse indefinitely. */
+function downstream(state: ProjectState, taskId: string) {
+  const seen = new Set([taskId]);
+  const pending = [taskId];
+  while (pending.length) {
+    const parent = pending.pop()!;
+    for (const edge of state.dependencies) {
+      if (edge.kind !== 'blocks' || edge.dependsOnTaskId !== parent || seen.has(edge.taskId)) continue;
+      if (!state.tasks.some((t) => t.id === edge.taskId && live(t))) continue;
+      seen.add(edge.taskId);
+      pending.push(edge.taskId);
+    }
+  }
+  seen.delete(taskId);
+  return seen.size;
+}
+
+/** A blocked/overdue predecessor holds up at least two live downstream tasks. */
+export const blockedChain: Rule = (state, _schedule, config) => {
+  const assigned = owners(state);
+  return [...state.tasks]
+    .filter(live)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .flatMap((t): RecommendationDraft[] => {
+      const late = t.plannedFinishAt && state.now.getTime() - Date.parse(t.plannedFinishAt) > 30 * MINUTE;
+      const children = downstream(state, t.id);
+      if ((t.status !== 'blocked' && !late) || children < 2) return [];
+      const owner = state.members.find((m) => m.userId === assigned.get(t.id)?.userId);
+      const alt = bestAlternative(state, t, owner?.userId ?? '', config);
+      if (!owner && !alt) return [];
+      const headline = `Unblock ${t.key} and its downstream work`;
+      return [
+        {
+          kind: 'unblock',
+          severity: 'warn',
+          dedupeKey: `blocked:${t.id}`,
+          headline,
+          rationale: alt
+            ? 'An available qualified teammate can help unblock this dependency chain.'
+            : 'Ask the owner to resolve the blocker or arrange pairing; the current assignment is preserved.',
+          impact: { tasksUnblocked: children },
+          actions: alt
+            ? [{ op: 'reassign', taskId: t.id, toUserId: alt.userId }]
+            : [{ op: 'notify', userId: owner!.userId, message: headline }],
+          signals: [
+            { label: 'Downstream tasks', value: String(children) },
+            {
+              label: 'Signal',
+              value:
+                t.status === 'blocked'
+                  ? 'Blocked status (measured)'
+                  : 'Pinned milestone overdue by more than 30 minutes',
+            },
+          ],
+        },
+      ];
+    });
+};
+
+/** Critical in-progress work whose owner is asleep/away needs a reviewed handoff. */
+export const unavailableOwner: Rule = (state, schedule, config) => {
+  const assigned = owners(state);
+  return [...state.tasks]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .flatMap((t): RecommendationDraft[] => {
+      const owner = state.members.find((m) => m.userId === assigned.get(t.id)?.userId);
+      if (
+        t.status !== 'in_progress' ||
+        !owner ||
+        availableAt(owner, state.now.getTime()) ||
+        !schedule.criticalPathTaskIds.includes(t.id)
+      )
+        return [];
+      const alt = bestAlternative(state, t, owner.userId, config);
+      const headline = `Review the unavailable owner of ${t.key}`;
+      return [
+        {
+          kind: alt ? 'reassign' : 'check_in',
+          severity: 'warn',
+          dedupeKey: `unavailable:${t.id}`,
+          headline,
+          rationale: alt
+            ? 'Critical work belongs to an unavailable member; an available qualified teammate has capacity for a handoff.'
+            : 'Critical work belongs to an unavailable member; coordinate help while preserving the current assignment.',
+          impact: {},
+          actions: alt
+            ? [{ op: 'reassign', taskId: t.id, toUserId: alt.userId }]
+            : [{ op: 'notify', userId: owner.userId, message: headline }],
+          signals: [{ label: 'Owner available now', value: 'false (reported availability)' }],
+        },
+      ];
+    });
+};
+
+/** Use the state-transition timestamp: informational heartbeats must not restart the wait. */
+export const agentAwaitingInput: Rule = (state) =>
+  [...(state.agentSessions ?? [])]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .flatMap((a): RecommendationDraft[] => {
+      const since = a.awaitingSince?.getTime();
+      if (
+        a.status !== 'awaiting_input' ||
+        since === undefined ||
+        !Number.isFinite(since) ||
+        state.now.getTime() - since <= 10 * MINUTE ||
+        !state.members.some((m) => m.userId === a.userId)
+      )
+        return [];
+      const headline = 'An agent needs your input to continue';
+      return [
+        {
+          kind: 'check_in',
+          severity: 'info',
+          dedupeKey: `agent-input:${a.id}:${since}`,
+          headline,
+          rationale:
+            'The agent has been awaiting input for over ten minutes. Check its permission request or question.',
+          impact: {},
+          actions: [{ op: 'notify', userId: a.userId, message: headline }],
+          signals: [{ label: 'Awaiting input since', value: `${a.awaitingSince!.toISOString()} (measured)` }],
+        },
+      ];
+    });
+
+export const RULES_V2: Rule[] = [...RULES_V1, blockedChain, unavailableOwner, agentAwaitingInput];
+
 /** Runs all rules; dedupes by dedupeKey (first wins). */
 export function evaluateRules(
   state: ProjectState,
   schedule: ScheduleResult,
   config: EngineConfig,
-  rules: Rule[] = RULES_V1,
+  rules: Rule[] = RULES_V2,
 ): RecommendationDraft[] {
   const seen = new Set<string>();
   const out: RecommendationDraft[] = [];

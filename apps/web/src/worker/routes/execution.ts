@@ -53,19 +53,21 @@ const resolvedBroadcasts = (
   boardChanged: boolean,
 ) =>
   c.executionCtx.waitUntil(
-    (async () => {
-      await broadcast(c.env, r.projectId, {
+    Promise.allSettled([
+      broadcast(c.env, r.projectId, {
         type: 'recommendation.resolved',
         data: { recommendation: toRecommendation(r) },
-      });
-      if (boardChanged) {
-        await broadcast(c.env, r.projectId, {
-          type: 'board.changed',
-          data: { reason: 'recommendation_accepted' },
-        });
-        await c.env.JOBS.send({ type: 'recs.evaluate', projectId: r.projectId, reason: 'board_change' });
-      }
-    })().catch(() => {}),
+      }),
+      ...(boardChanged
+        ? [
+            broadcast(c.env, r.projectId, {
+              type: 'board.changed',
+              data: { reason: 'recommendation_accepted' },
+            }),
+            c.env.JOBS.send({ type: 'recs.evaluate', projectId: r.projectId, reason: 'board_change' }),
+          ]
+        : []),
+    ]),
   );
 /** Open recommendations, newest first. Resolved ones reach clients via `recommendation.resolved`. */
 route(execution, 'listRecommendations', async ({ c, params }) => {

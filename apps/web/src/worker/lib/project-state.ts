@@ -85,6 +85,7 @@ export async function loadProjectState(db: Pick<Db, 'select'>, projectId: string
     members,
     tasks: board.tasks.map((t) => ({
       ...t,
+      plannedFinishAt: board.milestones.find((m) => m.id === t.milestoneId)?.targetAt ?? null,
       requiredSkills: TaskRequiredSkill.array().parse(t.requiredSkills),
       embedding: taskRows.find((r) => r.id === t.id)?.embedding ?? null,
     })),

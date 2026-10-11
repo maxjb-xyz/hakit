@@ -125,6 +125,7 @@ Splitting the plan into an outline plus per-epic task calls keeps each JSON resp
 ### B.4 Fallbacks
 - Gemini unavailable or rate-limited: exponential backoff (1s, 2s, 4s). Then **template plans**: three curated archetypes (web app + API, ML-powered app, hardware/embedded), parameterized by the selected stack, plus manual editing.
 - Cache: identical `prompt_hash` returns the stored result (useful for demo reliability).
+  Implemented in `services/planning/cache.ts` using the existing `plans.prompt_hash` column, scoped to the project. The key includes the selected idea, anonymized team, constraints, taxonomy/skill levels, guidance, model, system prompt and engine config. Clock and availability values used in model prompts round down to five-minute buckets; current exact validator facts are retained. A hit is revalidated and saved as a new draft version with normal stream events. Template, invalid and cut-line drafts are not cached, so fallback recovery and the cut history remain explicit. Changes to model, team, idea or timing bucket invalidate the hit. Changing pipeline behavior or AI schemas requires bumping the cache version in that file.
 
 ### B.5 Prompting conventions
 - The system prompt states the role, the hard rules ("use only skill slugs from `allowedSkillSlugs`"; "estimates in hours for a single focused developer"; "assume parallel work by the given team size") and the judging criteria.
