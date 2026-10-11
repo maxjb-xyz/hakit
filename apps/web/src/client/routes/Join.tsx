@@ -98,6 +98,7 @@ export function Join() {
                   <PersonAvatar
                     name={m.login}
                     avatarUrl={m.avatarUrl}
+                    login={m.login}
                     colorIndex={i % 8}
                     className="size-8 border-2 border-surface text-label"
                   />

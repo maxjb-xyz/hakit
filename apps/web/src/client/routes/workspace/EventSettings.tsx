@@ -4,6 +4,7 @@
  * status, which one every screen is showing (`useProject`), and a "New project" action (`createProject`).
  */
 import { useId, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Project, UpdateWorkspace, Workspace } from '@hakit/contracts';
 import { Button, cn } from '@hakit/ui';
@@ -287,7 +288,9 @@ const PROJECT_STATUS: Record<
 export function ProjectsPanel({ wid }: { wid: string }) {
   const now = useNow();
   const { project: selected, projects, query, select } = useProject(wid);
-  const [creating, setCreating] = useState(false);
+  // The rail's project menu links here with ?newProject=1 to open the form straight away.
+  const [search] = useSearchParams();
+  const [creating, setCreating] = useState(() => search.get('newProject') === '1');
   const sorted = [...projects].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
   return (

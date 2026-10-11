@@ -247,7 +247,7 @@ export function Inspector({ taskKey }: { taskKey: string }) {
   return (
     <aside
       aria-labelledby="inspector-h"
-      className="flex min-h-0 flex-col overflow-y-auto border-l border-hover bg-raised max-lg:fixed max-lg:inset-0 max-lg:z-10 max-lg:border-l-0 lg:w-(--spacing-inspector) lg:shrink-0"
+      className="flex min-h-0 animate-slide-in-right flex-col overflow-y-auto border-l border-hover bg-raised max-lg:fixed max-lg:inset-0 max-lg:z-10 max-lg:border-l-0 lg:w-(--spacing-inspector) lg:shrink-0"
     >
       <header className="sticky top-0 flex items-center gap-2 border-b border-hover bg-raised px-5 py-3">
         <span className="font-mono text-label text-subtle">{taskKey}</span>

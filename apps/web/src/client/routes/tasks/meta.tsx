@@ -1,7 +1,7 @@
 /** Display metadata for S10: status order/labels/icons, derived label pills, member avatars. */
 import type { ReactNode } from 'react';
 import type { Member, Task, TaskStatus } from '@hakit/contracts';
-import { cn } from '@hakit/ui';
+import { Avatar, cn } from '@hakit/ui';
 
 /** Group order on the list: active work first, finished/cut last. */
 export const STATUS_ORDER: TaskStatus[] = ['in_progress', 'in_review', 'blocked', 'todo', 'done', 'cut'];
@@ -113,17 +113,15 @@ export function MemberAvatar({ member, className }: { member: Member | undefined
   }
   const name = member.user.name ?? member.user.githubLogin;
   return (
-    <span
+    <Avatar
+      name={name}
       title={name}
-      aria-label={name}
-      className={cn(
-        'grid size-5 shrink-0 place-items-center rounded-full text-caption font-semibold text-on-light',
-        className,
-      )}
-      style={{ background: `var(--color-member-${member.colorIndex})` }}
-    >
-      {initials(name)}
-    </span>
+      avatarUrl={member.user.avatarUrl}
+      login={member.user.githubLogin}
+      colorIndex={member.colorIndex}
+      size="sm"
+      className={className}
+    />
   );
 }
 

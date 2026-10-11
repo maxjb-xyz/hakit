@@ -58,7 +58,7 @@ export function Shortcuts() {
       ref={ref}
       aria-labelledby="shortcuts-h"
       onClick={(e) => e.target === e.currentTarget && ref.current?.close()}
-      className="m-auto w-full max-w-md rounded-md border border-border-strong bg-surface p-0 text-default backdrop:bg-sunken/70"
+      className="m-auto w-full max-w-md animate-pop-in rounded-md border border-border-strong bg-surface p-0 text-default shadow-(--shadow-e3) backdrop:animate-fade-in backdrop:bg-sunken/70"
     >
       <div className="flex items-center border-b border-hover px-5 py-3">
         <h2 id="shortcuts-h" className="text-body-lg font-medium text-strong">
