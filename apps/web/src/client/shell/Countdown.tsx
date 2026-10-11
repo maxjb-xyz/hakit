@@ -100,10 +100,15 @@ export function Countdown({
   );
 }
 
-function Segment({ value, unit }: { value: number; unit: string }) {
+function Segment({ value, unit, dim }: { value: number; unit: string; dim?: boolean }) {
   return (
     <span className="flex flex-col items-center">
-      <span className="flex h-9 min-w-10 items-center justify-center overflow-hidden rounded-sm border border-border bg-surface px-1.5 font-mono text-display-sm text-strong shadow-[inset_0_1px_0_var(--color-sheen)]">
+      <span
+        className={cn(
+          'flex h-9 min-w-10 items-center justify-center overflow-hidden rounded-sm border border-border bg-surface px-1.5 font-mono text-display-sm text-strong shadow-[inset_0_1px_0_var(--color-sheen)]',
+          dim && 'opacity-60',
+        )}
+      >
         <TickNumber value={pad(value)} />
       </span>
       <span className="mt-1 text-caption text-subtle">{unit}</span>
@@ -134,12 +139,13 @@ export function RailCountdown({ deadlineAt, startsAt }: { deadlineAt: string; st
       </p>
       {/* Visual clock: hidden from screen readers, which get `spoken` once (no per-second chatter). */}
       <p className="sr-only">{spoken}</p>
-      <div aria-hidden className={cn('mt-2.5 flex items-start gap-1', phase === 'closed' && 'opacity-60')}>
-        <Segment value={h} unit="hrs" />
+      {/* Closed: dim the digits only; dimming the unit labels drops them below AA contrast. */}
+      <div aria-hidden className="mt-2.5 flex items-start gap-1">
+        <Segment value={h} unit="hrs" dim={phase === 'closed'} />
         <span className="pt-1.5 font-mono text-title text-faint">:</span>
-        <Segment value={m} unit="min" />
+        <Segment value={m} unit="min" dim={phase === 'closed'} />
         <span className="pt-1.5 font-mono text-title text-faint">:</span>
-        <Segment value={s} unit="sec" />
+        <Segment value={s} unit="sec" dim={phase === 'closed'} />
       </div>
       {progress != null && (
         <div className="mt-3">
