@@ -171,7 +171,7 @@ export function githubBackfillClient(fetcher: typeof fetch = fetch) {
           'X-GitHub-Api-Version': '2026-03-10',
           'User-Agent': 'Hakit',
         },
-        redirect: 'error',
+        redirect: 'manual',
         signal: AbortSignal.timeout(10_000),
       });
     } catch {

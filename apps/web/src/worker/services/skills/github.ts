@@ -43,7 +43,7 @@ async function request(path: string, token: string | null, init?: RequestInit): 
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     signal: AbortSignal.timeout(8000),
-    redirect: 'error',
+    redirect: 'manual',
   });
   if (!response.ok) throw new Error('GitHub skill import unavailable; retry or sign in again');
   return response.json();
