@@ -227,6 +227,76 @@ describe('T-202 workspaces, invites, membership', () => {
     expect((await call(`/w/${w.id}`, { ...patch, token: owner.token })).status).toBe(200);
   });
 
+  it('updateWorkspace: name, dates, template attach / detach, validation; getWorkspace agrees', async () => {
+    const { token } = await signIn(32);
+    await db.insert(schema.hackathonTemplates).values({
+      slug: 'knight-hacks-ix',
+      name: 'Knight Hacks IX',
+      startsAt: new Date('2099-10-10T10:00:00Z'),
+      endsAt: new Date('2099-10-12T10:00:00Z'),
+      timezone: 'America/New_York',
+    });
+    const w = await newWorkspace(token);
+    const patch = async (json: Record<string, unknown>) => {
+      const res = await call(`/w/${w.id}`, { method: 'PATCH', token, json });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+
+    // Name only: dates untouched.
+    let r = await patch({ name: 'Renamed Crew' });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({
+      name: 'Renamed Crew',
+      startsAt: '2099-10-10T12:00:00.000Z',
+      deadlineAt: '2099-10-12T12:00:00.000Z',
+      hackathonTemplateId: null,
+      hackathonSlug: null,
+    });
+    expect(endpoints.updateWorkspace.response.safeParse(r.body).success).toBe(true);
+
+    // Attaching a template brings its window.
+    r = await patch({ hackathonSlug: 'knight-hacks-ix' });
+    expect(r.body).toMatchObject({
+      hackathonSlug: 'knight-hacks-ix',
+      startsAt: '2099-10-10T10:00:00.000Z',
+      deadlineAt: '2099-10-12T10:00:00.000Z',
+    });
+    const templateId = r.body.hackathonTemplateId;
+    expect(templateId).toEqual(expect.any(String));
+
+    // Explicit dates win over the template; re-sending the same template keeps the edited window.
+    r = await patch({ hackathonSlug: 'knight-hacks-ix', deadlineAt: '2099-10-12T14:00:00Z' });
+    expect(r.body).toMatchObject({ hackathonTemplateId: templateId, deadlineAt: '2099-10-12T14:00:00.000Z' });
+    r = await patch({ hackathonSlug: 'knight-hacks-ix' });
+    expect(r.body).toMatchObject({ deadlineAt: '2099-10-12T14:00:00.000Z' });
+
+    // Detach (custom event) keeps the dates; clearing the start is allowed.
+    r = await patch({ hackathonSlug: null, startsAt: null });
+    expect(r.body).toMatchObject({
+      hackathonTemplateId: null,
+      hackathonSlug: null,
+      startsAt: null,
+      deadlineAt: '2099-10-12T14:00:00.000Z',
+    });
+
+    // Validation: start must precede the deadline (also against the stored deadline); unknown template.
+    expect((await patch({ startsAt: '2099-10-13T00:00:00Z' })).status).toBe(400);
+    expect(
+      (await patch({ startsAt: '2099-10-11T00:00:00Z', deadlineAt: '2099-10-10T00:00:00Z' })).status,
+    ).toBe(400);
+    expect((await patch({ hackathonSlug: 'nope' })).status).toBe(400);
+    expect((await patch({ deadlineAt: 'tomorrow' })).status).toBe(400);
+    expect((await patch({ name: '' })).status).toBe(400);
+
+    const got = (await (await call(`/w/${w.id}`, { token })).json()) as Record<string, unknown>;
+    expect(got).toMatchObject({
+      name: 'Renamed Crew',
+      startsAt: null,
+      deadlineAt: '2099-10-12T14:00:00.000Z',
+      hackathonSlug: null,
+    });
+  });
+
   it('a non-member gets 404 on every /w/:wid route', async () => {
     const owner = await signIn(40);
     const w = await newWorkspace(owner.token);

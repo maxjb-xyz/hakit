@@ -58,29 +58,51 @@ async function loadWorkspace(db: Db, wid: string) {
   return w;
 }
 
-/** Template (when given) supplies the event window; explicit dates win. */
+/**
+ * Template (when given) supplies the event window; explicit dates win. On update, `hackathonSlug: null` detaches
+ * the template (dates stay), `startsAt: null` clears the start, and omitted fields keep their current value.
+ */
 async function resolveDates(
   db: Db,
-  body: { hackathonSlug?: string; startsAt?: string; deadlineAt?: string },
+  body: { hackathonSlug?: string | null; startsAt?: string | null; deadlineAt?: string },
   current?: WorkspaceRow,
 ) {
   let templateId = current?.hackathonTemplateId ?? null;
-  let startsAt = body.startsAt ? new Date(body.startsAt) : (current?.startsAt ?? null);
+  let startsAt =
+    body.startsAt === null
+      ? null
+      : body.startsAt !== undefined
+        ? new Date(body.startsAt)
+        : (current?.startsAt ?? null);
   let deadlineAt = body.deadlineAt ? new Date(body.deadlineAt) : (current?.deadlineAt ?? null);
-  if (body.hackathonSlug !== undefined) {
+  if (body.hackathonSlug === null) {
+    templateId = null;
+  } else if (body.hackathonSlug !== undefined) {
     const [t] = await db
       .select()
       .from(hackathonTemplates)
       .where(eq(hackathonTemplates.slug, body.hackathonSlug))
       .limit(1);
     if (!t) throw badRequest(`Unknown hackathon "${body.hackathonSlug}"`);
+    // Re-sending the current template with no dates keeps the (possibly edited) window; a new one brings its own.
+    const changed = t.id !== current?.hackathonTemplateId;
     templateId = t.id;
-    if (!body.startsAt) startsAt = t.startsAt;
-    if (!body.deadlineAt) deadlineAt = t.endsAt;
+    if (body.startsAt === undefined && changed) startsAt = t.startsAt;
+    if (!body.deadlineAt && changed) deadlineAt = t.endsAt;
   }
   if (!deadlineAt) throw badRequest('deadlineAt is required when no hackathon template is chosen');
   if (startsAt && startsAt >= deadlineAt) throw badRequest('startsAt must be before deadlineAt');
   return { hackathonTemplateId: templateId, startsAt, deadlineAt };
+}
+
+async function templateSlug(db: Db, templateId: string | null) {
+  if (!templateId) return null;
+  const [t] = await db
+    .select({ slug: hackathonTemplates.slug })
+    .from(hackathonTemplates)
+    .where(eq(hackathonTemplates.id, templateId))
+    .limit(1);
+  return t?.slug ?? null;
 }
 
 const slugify = (name: string) =>
@@ -175,27 +197,28 @@ route(identity, 'createWorkspace', async ({ c, body }) => {
     await tx.insert(memberProfiles).values({ workspaceId: w!.id, userId });
     return w!;
   });
-  return toWorkspace(w);
+  return { ...toWorkspace(w), hackathonSlug: await templateSlug(db, w.hackathonTemplateId) };
 });
 
 route(identity, 'getWorkspace', async ({ c, params }) => {
   if (c.var.mocks) return fx.workspace;
   const db = c.var.db();
   const w = await loadWorkspace(db, params.wid);
-  let hackathonSlug: string | null = null;
-  if (w.hackathonTemplateId) {
-    const [t] = await db
-      .select({ slug: hackathonTemplates.slug })
-      .from(hackathonTemplates)
-      .where(eq(hackathonTemplates.id, w.hackathonTemplateId))
-      .limit(1);
-    hackathonSlug = t?.slug ?? null;
-  }
-  return { ...toWorkspace(w), hackathonSlug };
+  return { ...toWorkspace(w), hackathonSlug: await templateSlug(db, w.hackathonTemplateId) };
 });
 
 route(identity, 'updateWorkspace', async ({ c, params, body }) => {
-  if (c.var.mocks) return { ...fx.workspace, ...(body.name ? { name: body.name } : {}) };
+  if (c.var.mocks) {
+    // Stateless echo so the Settings form shows what was saved.
+    const custom = body.hackathonSlug === null;
+    return {
+      ...fx.workspace,
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.startsAt !== undefined && { startsAt: body.startsAt }),
+      ...(body.deadlineAt !== undefined && { deadlineAt: body.deadlineAt }),
+      ...(custom && { hackathonTemplateId: null, hackathonSlug: null }),
+    };
+  }
   assertOwner(c);
   const db = c.var.db();
   const current = await loadWorkspace(db, params.wid);
@@ -205,7 +228,7 @@ route(identity, 'updateWorkspace', async ({ c, params, body }) => {
     .set({ ...(body.name ? { name: body.name } : {}), ...dates })
     .where(eq(workspaces.id, params.wid))
     .returning();
-  return toWorkspace(w!);
+  return { ...toWorkspace(w!), hackathonSlug: await templateSlug(db, w!.hackathonTemplateId) };
 });
 
 /* --------------------------------- invites -------------------------------- */
