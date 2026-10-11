@@ -38,8 +38,14 @@ export const base =
 
     await next();
 
-    if (handle) {
-      const h = handle as ReturnType<typeof createDb>;
-      c.executionCtx.waitUntil(h.ready.then(() => h.close()).catch(() => {}));
-    }
+    // Streamed responses keep querying after `next()` returns: close only once the stream has finished.
+    const done = c.var.streamDone ?? Promise.resolve();
+    c.executionCtx.waitUntil(
+      done
+        .then(() => {
+          const h = handle as ReturnType<typeof createDb> | null;
+          return h?.ready.then(() => h.close());
+        })
+        .catch(() => {}),
+    );
   };

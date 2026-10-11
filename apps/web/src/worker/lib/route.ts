@@ -84,10 +84,17 @@ export function sseRoute<N extends EndpointName>(
   app.on(def.method, def.path, async (c) => {
     await authorizePath(c, def.path, c.req.param());
     const input = await parseInput(c, def);
+    // The Response returns before the stream body runs; tell the request middleware when it actually ends.
+    let finished!: () => void;
+    c.set('streamDone', new Promise<void>((resolve) => (finished = resolve)));
     return streamSSE(c, async (stream) => {
       const send = (event: { type: string } & Record<string, unknown>) =>
         stream.writeSSE({ event: event.type, data: JSON.stringify(event) });
-      await handler({ c, ...input, send } as unknown as HandlerArgs<N> & { send: typeof send });
+      try {
+        await handler({ c, ...input, send } as unknown as HandlerArgs<N> & { send: typeof send });
+      } finally {
+        finished();
+      }
     });
   });
 }

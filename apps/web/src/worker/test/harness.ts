@@ -68,6 +68,12 @@ export async function createHarness(services: Partial<Services> = {}) {
     if (init.method && init.method !== 'GET' && init.csrf !== false) headers.set('x-requested-with', 'hakit');
     const body = init.json !== undefined ? JSON.stringify(init.json) : init.body;
     const res = await app.request(`${API_PREFIX}${path}`, { ...init, headers, body }, env, ctx);
+    // Like Workers, background work may wait on a streamed body: drain it before settling waitUntil promises.
+    if (res.headers.get('content-type')?.includes('text/event-stream')) {
+      const text = await res.text();
+      await Promise.all(pending.splice(0));
+      return new Response(text, res);
+    }
     await Promise.all(pending.splice(0));
     return res;
   }
