@@ -54,18 +54,37 @@ export function backfillKey(a: NormalizedActivity['activity']): string {
   return `${a.kind}:${a.prNumber}`;
 }
 
+/** A backfill that gives up is acked, so log why: otherwise a connected repo just shows no activity. */
+function skipped(reason: string, job: BackfillJob) {
+  console.warn(
+    JSON.stringify({
+      level: 'warn',
+      msg: 'github backfill skipped',
+      reason,
+      projectId: job.projectId,
+      repoId: job.repoId,
+    }),
+  );
+}
+
 /** Fetch outside the transaction, store transactionally, then notify and queue inferred linking. */
 export async function processGithubBackfill(input: BackfillJob, deps: BackfillDependencies): Promise<number> {
   const job = JobMessage.parse(input) as BackfillJob;
   const repo = await deps.connectedRepo(job.projectId, job.repoId);
-  if (!repo) return 0;
+  if (!repo) {
+    skipped('repo_not_connected', job);
+    return 0;
+  }
   const since = new Date(deps.now() - job.sinceHours * 3_600_000).toISOString();
   let snapshot: BackfillSnapshot;
   try {
     snapshot = await deps.snapshot(repo, since);
   } catch (err) {
     // A deleted repo or removed installation will never succeed; ack instead of filling the DLQ.
-    if (err instanceof GithubBackfillError && !err.retryable) return 0;
+    if (err instanceof GithubBackfillError && !err.retryable) {
+      skipped(err.message, job);
+      return 0;
+    }
     throw err;
   }
   const normalized = normalizeBackfill(snapshot, since);

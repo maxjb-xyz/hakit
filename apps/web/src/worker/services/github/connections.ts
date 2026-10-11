@@ -5,6 +5,9 @@ import { notFound } from '../../lib/errors';
 import type { Env } from '../../env';
 import type { Installation } from './discovery';
 
+/** How far back a newly connected repo's history is imported. */
+export const BACKFILL_HOURS = 30 * 24;
+
 export async function requireWorkspaceMember(db: Pick<Db, 'select'>, userId: string, workspaceId: string) {
   if (!Id.safeParse(workspaceId).success) throw notFound('Workspace');
   const [row] = await db
@@ -78,7 +81,8 @@ export async function connectRepository(
     await tx.update(schema.projects).set({ repoId: repo.id }).where(eq(schema.projects.id, projectId));
   });
   // A failed send returns an error; repeating the connection is safe and retries the backfill.
+  // 30 days so a repo started before the event still shows its recent work; the client caps pages read.
   await env.JOBS.send(
-    JobMessage.parse({ type: 'github.backfill', projectId, repoId: repo.id, sinceHours: 48 }),
+    JobMessage.parse({ type: 'github.backfill', projectId, repoId: repo.id, sinceHours: BACKFILL_HOURS }),
   );
 }

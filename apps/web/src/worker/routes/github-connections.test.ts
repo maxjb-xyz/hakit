@@ -208,7 +208,7 @@ describe('T-402 installation and repository routes', () => {
       type: 'github.backfill',
       projectId: ids.project,
       repoId: fixtureRepo.id,
-      sinceHours: 48,
+      sinceHours: 30 * 24,
     });
   });
   it('rejects connecting an inaccessible repo without database mutations', async () => {
