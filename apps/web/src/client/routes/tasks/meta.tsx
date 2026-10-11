@@ -1,6 +1,6 @@
 /** Display metadata for S10: status order/labels/icons, derived label pills, member avatars. */
 import type { ReactNode } from 'react';
-import type { Member, Task, TaskStatus } from '@hakit/contracts';
+import type { Member, ScopeTier, Task, TaskStatus } from '@hakit/contracts';
 import { Avatar, cn } from '@hakit/ui';
 
 /** Group order on the list: active work first, finished/cut last. */
@@ -100,14 +100,31 @@ export const initials = (name: string) =>
     .join('')
     .toUpperCase();
 
-export function MemberAvatar({ member, className }: { member: Member | undefined; className?: string }) {
+export function MemberAvatar({
+  member,
+  className,
+  decorative,
+  size = 'sm',
+}: {
+  member: Member | undefined;
+  className?: string;
+  /** The name is written next to it: hide the avatar from screen readers. */
+  decorative?: boolean;
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+}) {
   if (!member) {
     return (
       <span
-        role="img"
+        role={decorative ? undefined : 'img'}
         title="Unassigned"
-        aria-label="Unassigned"
-        className={cn('size-5 shrink-0 rounded-full border border-dashed border-border-strong', className)}
+        aria-label={decorative ? undefined : 'Unassigned'}
+        aria-hidden={decorative || undefined}
+        className={cn(
+          'shrink-0',
+          size === 'xs' ? 'size-4' : size === 'md' ? 'size-6' : size === 'lg' ? 'size-8' : 'size-5',
+          ' rounded-full border border-dashed border-border-strong',
+          className,
+        )}
       />
     );
   }
@@ -119,7 +136,8 @@ export function MemberAvatar({ member, className }: { member: Member | undefined
       avatarUrl={member.user.avatarUrl}
       login={member.user.githubLogin}
       colorIndex={member.colorIndex}
-      size="sm"
+      size={size}
+      decorative={decorative}
       className={className}
     />
   );
@@ -153,3 +171,80 @@ export function Picker(props: {
     </label>
   );
 }
+
+/* ----------------------------- priority ----------------------------- */
+
+export const PRIORITIES: ScopeTier[] = ['must', 'should', 'could'];
+export const PRIORITY_LABEL: Record<ScopeTier, string> = { must: 'Must', should: 'Should', could: 'Could' };
+const PRIORITY_RANK: Record<ScopeTier, number> = { must: 0, should: 1, could: 2 };
+export const priorityRank = (p: ScopeTier) => PRIORITY_RANK[p];
+
+/** Signal bars: three for must, two for should, one for could. Shape carries the meaning, not colour. */
+export function PriorityIcon({ priority, className }: { priority: ScopeTier; className?: string }) {
+  const filled = 3 - PRIORITY_RANK[priority];
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      aria-hidden
+      className={cn('size-3.5 shrink-0', priority === 'must' ? 'text-warning' : 'text-muted', className)}
+    >
+      {[0, 1, 2].map((i) => (
+        <rect
+          key={i}
+          x={2 + i * 4}
+          y={9 - i * 3}
+          width="2.5"
+          height={3 + i * 3}
+          rx="0.75"
+          fill="currentColor"
+          opacity={i < filled ? 1 : 0.25}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** Critical-path marker: a lightning-ish chevron path, always paired with the word. */
+export function CriticalIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden className={cn('size-3.5 shrink-0', className)} fill="none">
+      <path
+        d="M8 1.5L3.5 8H7l-1 4.5L10.5 6H7z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+        fill="currentColor"
+        fillOpacity="0.25"
+      />
+    </svg>
+  );
+}
+
+/** Dependency link glyph (two chained rings). */
+export function LinkIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      aria-hidden
+      className={cn('size-3.5 shrink-0', className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+    >
+      <path d="M6 8.5l2.5-3M5 6.5L3.8 7.7a2 2 0 0 0 2.8 2.8L7.8 9.3M9 7.5l1.2-1.2a2 2 0 0 0-2.8-2.8L6.2 4.7" />
+    </svg>
+  );
+}
+
+export const prettySkill = (slug: string) =>
+  slug
+    .split('-')
+    .map((w) => (w[0] ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+
+/** Numeric part of an `HK-n` key, for stable ordering. */
+export const keyNum = (key: string) => Number(key.slice(3)) || 0;
+
+export const isTyping = (el: EventTarget | null) =>
+  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));

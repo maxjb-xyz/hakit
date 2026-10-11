@@ -1,182 +1,85 @@
-/** S10 Tasks: board (default) or list grouped by status + inspector (DESIGN §8, T-312). Data: tasks/useTaskBoard. */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
-import type { Member, Task, TaskStatus } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+/**
+ * S10 Tasks: board (default) or list, a filter/search/group toolbar, and the task inspector (DESIGN §8, T-312).
+ * Data: tasks/useTaskBoard (optimistic edits, rolled back on failure). Toolbar state lives in the URL.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useParams, useSearchParams } from 'react-router';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import type { ScopeTier, Task, TaskStatus } from '@hakit/contracts';
+import { Button, Kbd, TickNumber, cn } from '@hakit/ui';
 import {
-  LabelPill,
   MemberAvatar,
-  Picker,
+  PRIORITIES,
+  PRIORITY_LABEL,
+  PriorityIcon,
   STATUS_LABEL,
-  STATUS_ORDER,
-  StatusIcon,
   inferLabel,
+  isTyping,
 } from './tasks/meta';
 import { NewTaskDialog } from './tasks/NewTaskDialog';
-import { Board, type GroupBy, type LevelOf } from './tasks/Board';
-import { useQueries } from '@tanstack/react-query';
+import { Board, BOARD_COLUMNS, type CodeLinks, type GroupBy, type LevelOf } from './tasks/Board';
+import { TaskList } from './tasks/TaskList';
+import { Menu } from './tasks/Menu';
+import {
+  activeFilterCount,
+  applyFilters,
+  isListGroup,
+  isSortKey,
+  readFilters,
+  toggleParam,
+  type ListGroup,
+  type SortKey,
+} from './tasks/filters';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { TaskInspector } from './tasks/TaskInspector';
-import { useTaskBoard, type LabelOverrides } from './tasks/useTaskBoard';
+import { useTaskBoard } from './tasks/useTaskBoard';
 import { useProject } from '../lib/project';
 import { ProjectGate } from './page-states';
 import { useProjectSocket } from '../lib/ws';
 import { useNow, type Lookup } from './mission-control/shared';
 
-function TaskRow(props: {
-  task: Task;
-  assignee: Member | undefined;
-  labels: LabelOverrides;
-  selected: boolean;
-}) {
-  const { task, assignee } = props;
-  const set = task.id in props.labels;
-  const label = set ? props.labels[task.id] : inferLabel(task);
+function BoardSkeleton() {
   return (
-    <li>
-      <Link
-        to={{ search: `?task=${task.key}` }}
-        aria-current={props.selected || undefined}
-        className={cn(
-          'hover-light flex h-9 items-center gap-3 border-b border-hover px-6 text-body max-sm:px-4',
-          props.selected && 'bg-raised',
-        )}
-      >
-        <span className="w-12 shrink-0 text-label text-faint">{task.key}</span>
-        <StatusIcon status={task.status} />
-        <span className="sr-only">{STATUS_LABEL[task.status]}:</span>
-        <span className={cn('min-w-0 flex-1 truncate text-default', task.status === 'cut' && 'line-through')}>
-          {task.title}
-        </span>
-        {label && (
-          <span className="max-sm:hidden">
-            <LabelPill label={label} inferred={!set} />
-          </span>
-        )}
-        <span
-          className="w-8 text-right font-mono text-label text-subtle max-sm:hidden"
-          title="Estimated hours"
-        >
-          ≈{task.estimateHours}h
-        </span>
-        <MemberAvatar member={assignee} />
-      </Link>
-    </li>
-  );
-}
-
-function StatusGroup(props: {
-  status: TaskStatus;
-  tasks: Task[];
-  memberById: Map<string, Member>;
-  labels: LabelOverrides;
-  selectedKey: string | null;
-}) {
-  const [open, setOpen] = useState(true);
-  const id = `group-${props.status}`;
-  return (
-    <section aria-labelledby={`${id}-h`}>
-      <h2 id={`${id}-h`} className="sticky top-0 z-10 border-b border-hover bg-canvas">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={id}
-          onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-center gap-2 px-6 py-1.5 text-left text-label font-medium text-default hover:bg-hover max-sm:px-4"
-        >
-          <span
-            aria-hidden
-            className={cn(
-              'text-subtle transition-transform duration-(--duration-quick)',
-              !open && '-rotate-90',
-            )}
-          >
-            ▾
-          </span>
-          <StatusIcon status={props.status} />
-          {STATUS_LABEL[props.status]}
-          <span className="text-subtle">{props.tasks.length}</span>
-        </button>
-      </h2>
-      {open && (
-        <ul id={id}>
-          {props.tasks.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              assignee={t.assigneeId ? props.memberById.get(t.assigneeId) : undefined}
-              labels={props.labels}
-              selected={t.key === props.selectedKey}
-            />
+    <div
+      aria-busy="true"
+      aria-label="Loading tasks"
+      className="grid flex-1 grid-cols-5 gap-2 overflow-hidden p-3"
+    >
+      {BOARD_COLUMNS.map((s, c) => (
+        <div key={s} className="flex flex-col gap-1.5">
+          <span className="skeleton mb-1.5 h-4 w-24 rounded-xs" />
+          {Array.from({ length: 3 - (c % 3) }, (_, i) => (
+            <div key={i} className="rounded-md border border-border p-3">
+              <span className="skeleton block h-3 w-10 rounded-xs" />
+              <span className="skeleton mt-2 block h-3.5 w-4/5 rounded-xs" />
+              <span className="mt-3 flex gap-1">
+                <span className="skeleton h-4 w-14 rounded-full" />
+                <span className="skeleton h-4 w-12 rounded-full" />
+                <span className="skeleton ml-auto size-5 rounded-full" />
+              </span>
+            </div>
           ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-export function TaskList({
-  tasks,
-  members,
-  labels = {},
-  selectedKey = null,
-}: {
-  tasks: Task[];
-  members: Member[];
-  labels?: LabelOverrides;
-  selectedKey?: string | null;
-}) {
-  const memberById = useMemo(() => new Map(members.map((m) => [m.user.id, m])), [members]);
-  const groups = useMemo(
-    () =>
-      STATUS_ORDER.map((status) => ({
-        status,
-        tasks: tasks
-          .filter((t) => t.status === status)
-          .sort((a, b) => Number(a.key.slice(3)) - Number(b.key.slice(3))),
-      })).filter((g) => g.tasks.length > 0),
-    [tasks],
-  );
-
-  if (tasks.length === 0) {
-    return (
-      <div className="grid place-items-center px-6 py-16 text-center">
-        <p className="text-body-lg text-default">No tasks yet.</p>
-        <p className="mt-1 text-body text-muted">Accept a plan to generate tasks, or add one yourself.</p>
-      </div>
-    );
-  }
-  return (
-    <div>
-      {groups.map((g) => (
-        <StatusGroup
-          key={g.status}
-          status={g.status}
-          tasks={g.tasks}
-          memberById={memberById}
-          labels={labels}
-          selectedKey={selectedKey}
-        />
+        </div>
       ))}
     </div>
   );
 }
-
-const isTyping = (el: EventTarget | null) =>
-  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
 
 function ListSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading tasks">
       {[0, 1].map((g) => (
         <div key={g}>
-          <div className="h-7 border-b border-border bg-surface" />
+          <div className="flex h-control-lg items-center border-b border-border bg-surface px-4">
+            <span className="skeleton h-3 w-24 rounded-xs" />
+          </div>
           {[0, 1, 2].map((r) => (
-            <div key={r} className="flex items-center gap-3 border-b border-border px-6 py-2.5 max-sm:px-4">
-              <span className="h-3 w-10 animate-pulse rounded-xs bg-hover" />
-              <span className="h-3 flex-1 animate-pulse rounded-xs bg-hover" />
-              <span className="size-5 animate-pulse rounded-full bg-hover" />
+            <div key={r} className="flex h-row-compact items-center gap-3 border-b border-border px-4">
+              <span className="skeleton size-3.5 rounded-full" />
+              <span className="skeleton h-3 w-10 rounded-xs" />
+              <span className="skeleton h-3 flex-1 rounded-xs" />
+              <span className="skeleton size-5 rounded-full" />
             </div>
           ))}
         </div>
@@ -190,7 +93,7 @@ function Banner(props: { tone: 'warning' | 'danger'; children: ReactNode; action
     <div
       role="alert"
       className={cn(
-        'flex flex-wrap items-center gap-3 border-b px-6 py-2 text-body text-default max-sm:px-4',
+        'animate-slide-up flex flex-wrap items-center gap-3 border-b px-6 py-2 text-body text-default max-sm:px-4',
         props.tone === 'danger' ? 'border-danger' : 'border-warning',
       )}
     >
@@ -199,6 +102,30 @@ function Banner(props: { tone: 'warning' | 'danger'; children: ReactNode; action
       </span>
       <span className="min-w-0 flex-1">{props.children}</span>
       {props.action}
+    </div>
+  );
+}
+
+function EmptyState(props: { title: string; body: string; action: ReactNode }) {
+  return (
+    <div className="animate-fade-in grid flex-1 place-items-center px-6 py-16 text-center">
+      <div>
+        <div aria-hidden className="mx-auto mb-4 flex w-40 flex-col gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="flex h-6 items-center gap-2 rounded-sm border border-border bg-surface px-2"
+              style={{ opacity: 1 - i * 0.3 }}
+            >
+              <span className="size-2 rounded-full border border-border-strong" />
+              <span className="h-1.5 flex-1 rounded-full bg-hover" />
+            </span>
+          ))}
+        </div>
+        <p className="text-body-lg text-default">{props.title}</p>
+        <p className="mt-1 text-body text-muted">{props.body}</p>
+        <div className="mt-4">{props.action}</div>
+      </div>
     </div>
   );
 }
@@ -220,10 +147,44 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
   const selectedKey = search.get('task');
   const b = useTaskBoard(pid, wid, selectedKey);
   useProjectSocket(b.live ? pid : undefined);
-  const [creating, setCreating] = useState<TaskStatus | null>(null);
+  const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me'), retry: false });
+  const [creating, setCreating] = useState<{ status: TaskStatus; assignee: string | null } | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const view = search.get('view') === 'list' ? 'list' : 'board';
   const groupParam = search.get('group');
-  const groupBy: GroupBy = groupParam === 'person' || groupParam === 'milestone' ? groupParam : 'none';
+  const boardGroup: GroupBy = groupParam === 'person' || groupParam === 'milestone' ? groupParam : 'none';
+  const listGroup: ListGroup = isListGroup(groupParam) ? groupParam : 'status';
+  const sortParam = search.get('sort');
+  const sort: SortKey = isSortKey(sortParam) ? sortParam : 'key';
+  const dir = search.get('dir') === 'desc' ? 'desc' : 'asc';
+  const filters = readFilters(search);
+  const [q, setQ] = useState(filters.q);
+
+  const patch = useCallback(
+    (fn: (p: URLSearchParams) => void) =>
+      setSearch(
+        (p) => {
+          fn(p);
+          return p;
+        },
+        { replace: true },
+      ),
+    [setSearch],
+  );
+
+  // Debounce search into the URL.
+  useEffect(() => {
+    const t = setTimeout(
+      () =>
+        patch((p) => {
+          if (q.trim()) p.set('q', q);
+          else p.delete('q');
+        }),
+      150,
+    );
+    return () => clearTimeout(t);
+  }, [q, patch]);
+
   // Each member's skills, so cards can flag an assignee below a task's required level.
   const skillQs = useQueries({
     queries: b.members.map((m) => ({
@@ -242,6 +203,19 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
   const now = useNow();
 
   const { tasks, members } = b;
+  const visible = applyFilters(tasks, filters);
+
+  const links = useMemo(() => {
+    const m = new Map<string, CodeLinks>();
+    for (const e of b.activity) {
+      if (!e.taskId || e.linkKind === 'none' || e.source !== 'github') continue;
+      const l = m.get(e.taskId) ?? { confirmed: 0, inferred: 0 };
+      if (e.linkKind === 'confirmed') l.confirmed++;
+      else l.inferred++;
+      m.set(e.taskId, l);
+    }
+    return m;
+  }, [b.activity]);
   const lookup = useMemo<Lookup>(() => {
     const t = new Map(tasks.map((x) => [x.id, x]));
     const m = new Map(members.map((x) => [x.user.id, x]));
@@ -262,16 +236,61 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
     [setSearch],
   );
 
-  // DESIGN §6/§8: `c` opens quick-create from anywhere on the list.
+  // DESIGN §6/§8: `c` opens quick-create, `/` focuses search.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-      e.preventDefault();
-      setCreating('todo');
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      if (document.querySelector('dialog[open], [role="listbox"]')) return;
+      if (e.key === 'c') {
+        e.preventDefault();
+        setCreating({ status: 'todo', assignee: null });
+      } else if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  const update = (t: Task, p: Parameters<typeof b.update>[1], note?: string) => void b.update(t.id, p, note);
+  const filterCount = activeFilterCount(filters);
+  const meId = me.data?.user.id;
+  const clearFilters = () => {
+    setQ('');
+    patch((p) => {
+      p.delete('q');
+      p.delete('who');
+      p.delete('pri');
+    });
+  };
+  const deps = (t: Task) => ({
+    blockedBy: b.dependencies
+      .filter((d) => d.taskId === t.id)
+      .map((d) => ({ task: lookup.task(d.dependsOnTaskId)!, kind: d.kind }))
+      .filter((d) => d.task),
+    blocking: b.dependencies
+      .filter((d) => d.dependsOnTaskId === t.id)
+      .map((d) => ({ task: lookup.task(d.taskId)!, kind: d.kind }))
+      .filter((d) => d.task),
+  });
+
+  const groupOptions =
+    view === 'board'
+      ? [
+          { value: 'none', label: 'No grouping' },
+          { value: 'person', label: 'Person' },
+          { value: 'milestone', label: 'Milestone' },
+        ]
+      : [
+          { value: 'status', label: 'Status' },
+          { value: 'person', label: 'Person' },
+          { value: 'priority', label: 'Priority' },
+          { value: 'milestone', label: 'Milestone' },
+          { value: 'none', label: 'No grouping' },
+        ];
+  const groupValue = view === 'board' ? boardGroup : listGroup;
+  const tool = 'h-control-sm rounded-sm border border-border px-2 text-label text-muted';
 
   return (
     <div
@@ -281,8 +300,12 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
         selectedKey && !b.loading && 'md:pr-(--spacing-inspector)',
       )}
     >
-      <div className="flex h-12 items-center gap-3 border-b border-hover px-7 max-sm:px-4">
-        <div role="tablist" aria-label="Task views" className="flex items-center gap-1">
+      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border px-5 py-2 max-sm:px-3">
+        <div
+          role="tablist"
+          aria-label="Task views"
+          className="flex items-center rounded-md border border-border p-0.5"
+        >
           {(['board', 'list'] as const).map((v) => (
             <button
               key={v}
@@ -293,51 +316,156 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
                 setSearch((p) => {
                   if (v === 'board') p.delete('view');
                   else p.set('view', v);
+                  p.delete('group');
                   return p;
                 })
               }
               className={cn(
-                'h-control-sm rounded-sm px-2.5 text-body capitalize',
-                view === v ? 'bg-hover text-strong' : 'text-subtle hover:bg-raised hover:text-strong',
+                'press h-control-sm rounded-sm px-2.5 text-label capitalize',
+                view === v ? 'bg-pressed text-strong' : 'text-subtle hover:bg-hover hover:text-strong',
               )}
             >
               {v}
             </button>
           ))}
         </div>
-        {!b.loading && (
-          <span className="whitespace-nowrap text-label text-subtle max-sm:hidden">{tasks.length} tasks</span>
-        )}
-        {view === 'board' && (
-          <label className="ml-auto flex items-center gap-2 text-label whitespace-nowrap text-subtle">
-            <span className="max-sm:sr-only">Group by</span>
-            <Picker
-              label="Group by"
-              value={groupBy}
-              onChange={(v) =>
-                setSearch((p) => {
-                  if (v === 'none') p.delete('group');
-                  else p.set('group', v);
-                  return p;
-                })
+
+        <label className="relative flex min-w-0 items-center max-sm:order-last max-sm:basis-full">
+          <span className="sr-only">Search tasks</span>
+          <svg
+            viewBox="0 0 14 14"
+            aria-hidden
+            className="pointer-events-none absolute left-2 size-3.5 text-subtle"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <circle cx="6" cy="6" r="4" />
+            <path d="M9 9l3 3" strokeLinecap="round" />
+          </svg>
+          <input
+            ref={searchRef}
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                if (q) setQ('');
+                else e.currentTarget.blur();
               }
-            >
-              <option value="none">None</option>
-              <option value="person">Person</option>
-              <option value="milestone">Milestone</option>
-            </Picker>
-          </label>
-        )}
-        <Button
-          variant="secondary"
-          size="sm"
-          className={cn('whitespace-nowrap', view !== 'board' && 'ml-auto')}
-          onClick={() => setCreating('todo')}
-          disabled={b.loading}
-          title="New task (C)"
+            }}
+            placeholder="Search tasks"
+            aria-keyshortcuts="/"
+            className="field h-control-sm w-52 rounded-sm pr-7 pl-7 text-label max-sm:w-full"
+          />
+          {!q && <Kbd className="pointer-events-none absolute right-1.5">/</Kbd>}
+        </label>
+
+        <Menu
+          label="Filter by assignee"
+          value={null}
+          selected={(v) => filters.who.includes(v)}
+          onChange={(v) => patch((p) => toggleParam(p, 'who', v))}
+          className={cn(tool, filters.who.length && 'border-border-strong text-strong')}
+          options={[
+            ...(meId && members.some((m) => m.user.id === meId)
+              ? [
+                  {
+                    value: meId,
+                    label: 'Me',
+                    icon: (
+                      <MemberAvatar member={members.find((m) => m.user.id === meId)} size="xs" decorative />
+                    ),
+                  },
+                ]
+              : []),
+            ...members
+              .filter((m) => m.user.id !== meId)
+              .map((m) => ({
+                value: m.user.id,
+                label: m.user.name ?? m.user.githubLogin,
+                icon: <MemberAvatar member={m} size="xs" decorative />,
+              })),
+            {
+              value: 'none',
+              label: 'Unassigned',
+              icon: <MemberAvatar member={undefined} size="xs" decorative />,
+            },
+          ]}
         >
-          New task
-        </Button>
+          <span>Assignee</span>
+          {filters.who.length > 0 && <span className="text-subtle">· {filters.who.length}</span>}
+          <span aria-hidden className="text-caption text-subtle">
+            ▾
+          </span>
+        </Menu>
+        <Menu
+          label="Filter by priority"
+          value={null}
+          selected={(v) => filters.pri.includes(v as ScopeTier)}
+          onChange={(v) => patch((p) => toggleParam(p, 'pri', v))}
+          className={cn(tool, filters.pri.length && 'border-border-strong text-strong')}
+          options={PRIORITIES.map((p) => ({
+            value: p,
+            label: PRIORITY_LABEL[p],
+            icon: <PriorityIcon priority={p} />,
+          }))}
+        >
+          <span>Priority</span>
+          {filters.pri.length > 0 && <span className="text-subtle">· {filters.pri.length}</span>}
+          <span aria-hidden className="text-caption text-subtle">
+            ▾
+          </span>
+        </Menu>
+        {filterCount > 0 && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="interactive press h-control-sm rounded-sm px-2 text-label text-subtle"
+          >
+            Clear
+          </button>
+        )}
+
+        <span className="ml-auto flex items-center gap-2">
+          {!b.loading && (
+            <span className="text-label whitespace-nowrap text-subtle max-md:hidden" aria-live="polite">
+              <TickNumber value={visible.length} />
+              {visible.length !== tasks.length && <> of {tasks.length}</>} tasks
+            </span>
+          )}
+          <Menu
+            label="Group by"
+            value={groupValue}
+            align="end"
+            onChange={(v) =>
+              patch((p) => {
+                const dflt = view === 'board' ? 'none' : 'status';
+                if (v === dflt) p.delete('group');
+                else p.set('group', v);
+              })
+            }
+            className={tool}
+            options={groupOptions}
+          >
+            <span className="text-subtle max-sm:sr-only">Group:</span>
+            <span>{groupOptions.find((o) => o.value === groupValue)?.label}</span>
+            <span aria-hidden className="text-caption text-subtle">
+              ▾
+            </span>
+          </Menu>
+          <Button
+            variant="primary"
+            size="sm"
+            className="whitespace-nowrap"
+            onClick={() => setCreating({ status: 'todo', assignee: null })}
+            disabled={b.loading}
+            aria-keyshortcuts="c"
+            title="New task (C)"
+          >
+            New task <Kbd className="ml-1 max-sm:hidden">C</Kbd>
+          </Button>
+        </span>
       </div>
 
       {b.saveError && (
@@ -354,7 +482,11 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
       )}
 
       {b.loading ? (
-        <ListSkeleton />
+        view === 'board' ? (
+          <BoardSkeleton />
+        ) : (
+          <ListSkeleton />
+        )
       ) : b.loadError ? (
         <Banner
           tone="danger"
@@ -364,23 +496,78 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
             </Button>
           }
         >
-          Couldn't load tasks ({b.loadError}).
+          Couldn't load tasks ({b.loadError}). Nothing was changed.
         </Banner>
+      ) : tasks.length === 0 ? (
+        <EmptyState
+          title="No tasks yet"
+          body="Accept a plan to generate tasks, or add the first one yourself."
+          action={
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setCreating({ status: 'todo', assignee: null })}
+            >
+              New task
+            </Button>
+          }
+        />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          title="No tasks match"
+          body="Try a different search or clear the filters."
+          action={
+            <Button variant="secondary" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          }
+        />
       ) : view === 'board' ? (
         <Board
-          tasks={tasks}
+          tasks={visible}
+          allTasks={tasks}
           dependencies={b.dependencies}
           members={members}
           milestones={b.milestones}
-          groupBy={groupBy}
+          critical={b.critical}
+          links={links}
+          groupBy={boardGroup}
           levelOf={levelOf}
           selectedKey={selectedKey}
           now={now}
-          onMove={(t, status) => void b.update(t.id, { status }, `moved this to ${STATUS_LABEL[status]}`)}
-          onCreate={(status) => setCreating(status)}
+          onMove={(t, status) => update(t, { status }, `moved this to ${STATUS_LABEL[status]}`)}
+          onAssign={(t, uid) => update(t, { assigneeId: uid })}
+          onCreate={(status, assignee) => setCreating({ status, assignee: assignee ?? null })}
         />
       ) : (
-        <TaskList tasks={tasks} members={members} labels={b.labels} selectedKey={selectedKey} />
+        <TaskList
+          tasks={visible}
+          allTasks={tasks}
+          members={members}
+          milestones={b.milestones}
+          dependencies={b.dependencies}
+          critical={b.critical}
+          labels={b.labels}
+          selectedKey={selectedKey}
+          group={listGroup}
+          sort={sort}
+          dir={dir}
+          now={now}
+          onSort={(k) =>
+            patch((p) => {
+              const nextDir = k === sort && dir === 'asc' ? 'desc' : 'asc';
+              if (k === 'key' && nextDir === 'asc') {
+                p.delete('sort');
+                p.delete('dir');
+              } else {
+                p.set('sort', k);
+                p.set('dir', nextDir);
+              }
+            })
+          }
+          onUpdate={(t, p, note) => update(t, p, note)}
+          onCreate={(status, assignee) => setCreating({ status, assignee: assignee ?? null })}
+        />
       )}
 
       {selectedKey && !b.loading && !b.loadError && (
@@ -392,16 +579,25 @@ function TasksScreen({ wid, pid }: { wid: string; pid: string }) {
           lookup={lookup}
           label={selected ? (selected.id in b.labels ? b.labels[selected.id]! : inferLabel(selected)) : null}
           labelInferred={!selected || !(selected.id in b.labels)}
+          critical={!!selected && b.critical.has(selected.id)}
+          assignment={
+            selected
+              ? b.assignments.find((a) => a.taskId === selected.id && a.status === 'active')
+              : undefined
+          }
+          {...(selected ? deps(selected) : { blockedBy: [], blocking: [] })}
           events={selected ? b.activity.filter((e) => e.taskId === selected.id) : []}
           history={selected ? (b.history[selected.id] ?? []) : []}
-          onUpdate={(patch, note) => selected && void b.update(selected.id, patch, note)}
+          historyLoading={b.historyLoading}
+          onUpdate={(p, note) => selected && update(selected, p, note)}
           onLabel={(l) => selected && b.setLabel(selected.id, l)}
           onClose={closeInspector}
         />
       )}
       <NewTaskDialog
         open={creating !== null}
-        initialStatus={creating ?? undefined}
+        initialStatus={creating?.status}
+        initialAssignee={creating?.assignee}
         onClose={() => setCreating(null)}
         onCreate={(input) => void b.create(input)}
         members={members}
