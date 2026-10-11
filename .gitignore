@@ -13,4 +13,3 @@ dist/
 coverage/
 playwright-report/
 test-results/
-scripts/.demo-video.env
