@@ -49,7 +49,7 @@ Use a test workspace/project; keep all tokens in ignored `.dev.vars` or deployme
 4. Leave a real agent waiting for input for more than ten minutes. Look for its check-in. Resume it and verify the card expires. Cron/Queue must be configured for this to happen automatically.
 5. Complete a task before accepting an older reassignment card. Acceptance should fail with a stale-recommendation message, preserving the completed task.
 
-The UI still uses fixture project IDs in some screens; project selection is a separate frontend task. Test the intended project's API when that navigation prevents these checks.
+Workspace screens select real projects through `useProject`; choose the intended project in the app. Mission Control's explicit `?demo=1` mode and its request-error fallback display sample data. Leave demo mode off and treat any "Demo data" label or request-error banner as a failed live check, not as evidence that the backend works.
 
 ## Skill import and usability checks
 

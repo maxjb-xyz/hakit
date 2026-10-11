@@ -31,7 +31,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-007 CI/CD | 🟡 check, approval-gated migrate, deploy (no preview env, so no PR previews) | Add required reviewers + `DATABASE_URL` secret to the `migrations` environment |
 | T-008 Deep health | 🟡 DO, DB, queue, GitHub App JWT, Gemini, HF embed checks | Run against prod; record ARCHITECTURE §13 results in RISKS §4 |
 | T-101 Tokens | ✅ done | Sync Figma variables |
-| T-104 App shell | ✅ routes, nav, ⌘K palette (screens, `HK-n` tasks, people, actions), shell inspector with assignment explanation, `?` shortcut sheet | Screens still address the fixture workspace/project ids (`@hakit/contracts/fixtures` `ids`); add project selection |
+| T-104 App shell | ✅ routes, nav, ⌘K palette (screens, `HK-n` tasks, people, actions), shell inspector with assignment explanation, `?` shortcut sheet; real workspace project selection through `useProject` | Verify navigation with real workspaces on deployment |
 | T-201 Sign-in & sessions | ✅ OAuth + state cookie, AES-GCM tokens, lazy locked refresh, hashed sessions | Live test against the GitHub App |
 | T-202 Workspaces & invites | ✅ templates, invites (expiry, max uses), `requireMember`/`assertOwner` | – |
 | T-203 Profile & availability | ✅ GET/PATCH, window validation, `available_hours` | – |
@@ -70,7 +70,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-706 Submission | 🟡 docs/SUBMISSION.md (Devpost text, built-with, sponsor paragraphs, capture checklist) | Screenshots, video, architecture PNG, Figma link |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 
-**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. On the product side: project selection in place of the fixture ids. Intelligence code and local QA are covered in `docs/INTELLIGENCE-QA.md`; live deployment checks remain separate.
+**What still needs doing:** verify the external setup tasks T-002 (Hyperdrive id, queues), T-003 (migrations on Tiger and `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. Real project selection is implemented; validate it on deployment. Intelligence code and local QA are covered in `docs/INTELLIGENCE-QA.md`; live deployment checks remain separate.
 
 Also in the scaffold:
 - **Mock mode** (`HAKIT_MOCKS=1`): every endpoint serves fixtures.
