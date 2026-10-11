@@ -158,7 +158,14 @@ function PlanFlow({ wid, project }: { wid: string; project: Project }) {
         aria-label={STEPS.find((s) => s.key === step)!.label}
         className="animate-fade-in"
       >
-        {step === 'idea' && <IdeaStep pid={pid} selectedId={ideaId} onPick={(id) => go({ idea: id })} />}
+        {step === 'idea' && (
+          <IdeaStep
+            pid={pid}
+            selectedId={ideaId}
+            onPick={(id) => go({ idea: id })}
+            onContinue={() => go({ step: 'constraints' })}
+          />
+        )}
         {step === 'constraints' && (
           <ConstraintsStep
             deadlineAt={workspace.data?.deadlineAt}

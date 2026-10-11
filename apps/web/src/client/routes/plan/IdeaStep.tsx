@@ -16,7 +16,12 @@ import { Field, GrowBar, SectionHead, StageProgress, pct, stagger } from './ui';
 
 const REFINE_PRESETS = ['Make it simpler', 'More ML', 'Fit a sponsor challenge'];
 
-export function IdeaStep(props: { pid: string; selectedId: string | null; onPick: (id: string) => void }) {
+export function IdeaStep(props: {
+  pid: string;
+  selectedId: string | null;
+  onPick: (id: string) => void;
+  onContinue: () => void;
+}) {
   const { pid } = props;
   const qc = useQueryClient();
   const ideas = useQuery({
@@ -141,6 +146,13 @@ export function IdeaStep(props: { pid: string; selectedId: string | null; onPick
           </ul>
         )}
       </section>
+
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {!selected && <p className="text-label text-muted">Pick an idea to continue.</p>}
+        <Button variant="primary" disabled={!selected || gen.state.running} onClick={props.onContinue}>
+          Continue to constraints
+        </Button>
+      </div>
     </div>
   );
 }

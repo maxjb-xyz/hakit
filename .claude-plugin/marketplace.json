@@ -1,0 +1,11 @@
+{
+  "name": "hakit",
+  "owner": { "name": "Hakit" },
+  "plugins": [
+    {
+      "name": "hakit",
+      "source": "./packages/agent-plugin",
+      "description": "Share your Claude Code session status with your Hakit team."
+    }
+  ]
+}
