@@ -1,6 +1,6 @@
 /** S11 status band: countdown · health · progress · critical-path slack. Four columns, no boxes. */
 import type { HealthStatus, MissionControlSnapshot } from '@hakit/contracts';
-import { cn } from '@hakit/ui';
+import { TickNumber, cn } from '@hakit/ui';
 import { Countdown } from '../../shell/Countdown';
 import { Link } from 'react-router';
 import { KeyedText, ago, clock, duration, taskHref, type Lookup } from './shared';
@@ -28,7 +28,7 @@ function Col(props: { label: string; children: React.ReactNode; first?: boolean 
     <div
       className={cn('flex min-w-0 flex-col gap-1.5', !props.first && 'lg:border-l lg:border-hover lg:px-7')}
     >
-      <p className="text-body text-subtle">{props.label}</p>
+      <p className="text-caption font-medium tracking-wide text-subtle uppercase">{props.label}</p>
       {props.children}
     </div>
   );
@@ -65,10 +65,12 @@ export function StatusBand({
   );
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_1fr] lg:gap-0">
+    <div className="grid animate-fade-in gap-6 border-b border-border pb-7 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_1fr] lg:gap-0">
       <div className="flex flex-col gap-1.5 lg:pr-7">
         <Countdown deadlineAt={s.deadlineAt} size="hero" neutral={Boolean(staleSince)} />
-        <p className="text-body text-subtle">until submission · {clock(s.deadlineAt)}</p>
+        <p className="text-body text-subtle">
+          until submission · <time dateTime={s.deadlineAt}>{clock(s.deadlineAt)}</time>
+        </p>
       </div>
 
       <Col label="Health">
@@ -82,7 +84,8 @@ export function StatusBand({
 
       <Col label="Progress">
         <p className="text-body-lg font-medium text-strong">
-          {tasksDone} / {tasksTotal} done
+          <TickNumber value={tasksDone} /> / {tasksTotal} done
+          <span className="font-normal text-subtle"> · {Math.round(measuredDone * 100)}%</span>
           {forecastFinishAt && (
             <span className={cn('font-normal', forecastLate ? 'text-danger' : 'text-subtle')}>
               {' '}
@@ -95,7 +98,10 @@ export function StatusBand({
           aria-label={`${Math.round(measuredDone * 100)}% of estimated work done (measured)${forecastLate ? ', forecast finishes after the deadline' : ''}`}
           className="mt-1 flex h-1 gap-0.5"
         >
-          <span className="rounded-full bg-default" style={{ width: `${measuredDone * 100}%` }} />
+          <span
+            className="rounded-full bg-default transition-[width] duration-(--duration-slow) ease-emphasized"
+            style={{ width: `${measuredDone * 100}%` }}
+          />
           {forecastShare > 0 && (
             <span className="bg-hatch rounded-full" style={{ width: `${forecastShare * 100}%` }} />
           )}

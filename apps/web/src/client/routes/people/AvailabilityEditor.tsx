@@ -7,7 +7,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import type { MemberProfile } from '@hakit/contracts';
-import { Button, TickNumber, cn } from '@hakit/ui';
+import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import {
   availableHoursOf,
@@ -98,7 +98,7 @@ export function AvailabilityEditor(props: {
         <p className="text-body text-default">
           <span className="font-medium text-strong">
             {dirty ? '≈' : ''}
-            <TickNumber value={hours} label={`${hours} hours`} />h
+            {hours}h
           </span>{' '}
           available of {Math.round((props.event.end - props.event.start) / 3_600_000)}h
           <span className="text-subtle"> · self-reported · times in {tz}</span>
@@ -114,10 +114,10 @@ export function AvailabilityEditor(props: {
                 aria-checked={brush === b}
                 onClick={() => setBrush(b)}
                 className={cn(
-                  'press flex h-control-sm items-center gap-1.5 rounded-sm border px-2 text-label',
+                  'flex h-control-sm items-center gap-1.5 rounded-sm border px-2 text-label',
                   brush === b
-                    ? 'border-accent-400 bg-accent-a12 text-strong'
-                    : 'border-border text-muted hover:bg-hover hover:text-strong',
+                    ? 'border-accent-500 text-strong'
+                    : 'border-border text-muted hover:text-strong',
                 )}
               >
                 <span
@@ -146,7 +146,7 @@ export function AvailabilityEditor(props: {
                 const hour = fmtSlot(slots[i]!.start, tz, { hour: 'numeric' });
                 const label = `${d.label} ${hour}: ${KIND[k].label}`;
                 const cls = cn(
-                  'grid h-7 w-6 place-items-center rounded-xs border text-caption transition-colors duration-(--duration-fast) ease-(--ease-standard) select-none',
+                  'grid h-7 w-6 place-items-center rounded-xs border text-caption select-none',
                   KIND[k].cell,
                 );
                 return props.editable ? (
@@ -155,10 +155,7 @@ export function AvailabilityEditor(props: {
                     type="button"
                     aria-label={label}
                     title={label}
-                    className={cn(
-                      cls,
-                      'cursor-crosshair hover:border-accent-400 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-500 active:scale-95',
-                    )}
+                    className={cn(cls, 'hover:border-accent-400')}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       setPainting(true);
@@ -200,15 +197,11 @@ export function AvailabilityEditor(props: {
         {props.editable && (
           <span className="ml-auto flex items-center gap-2">
             {save.isError && (
-              <span role="alert" className="animate-fade-in text-danger">
+              <span role="alert" className="text-danger">
                 Couldn't save availability: {save.error.message}
               </span>
             )}
-            {save.isSuccess && !dirty && (
-              <span role="status" className="animate-fade-in text-success">
-                ✓ Saved
-              </span>
-            )}
+            {save.isSuccess && !dirty && <span role="status">Saved</span>}
             {draft && (
               <Button size="sm" variant="ghost" onClick={() => setDraft(null)} disabled={save.isPending}>
                 Undo changes

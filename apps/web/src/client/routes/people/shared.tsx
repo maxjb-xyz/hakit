@@ -1,5 +1,5 @@
 /** Shared bits for the people screens (S1–S4): avatars, category names, tabs, step dots, query helpers. */
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SkillCategory } from '@hakit/contracts';
 import { Avatar, cn } from '@hakit/ui';
@@ -69,53 +69,8 @@ export function Tabs<T extends string>(props: {
     props.onChange(props.tabs[next]!.id);
     refs.current[next]?.focus();
   };
-  // Sliding pill behind the selected tab. Measured after layout; it only animates once it has a first position.
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const [pill, setPill] = useState<{ x: number; y: number; w: number; h: number; ready: boolean } | null>(
-    null,
-  );
-  const selectedIndex = props.tabs.findIndex((t) => t.id === props.value);
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = refs.current[selectedIndex];
-      if (!el) return setPill(null);
-      setPill((prev) => ({
-        x: el.offsetLeft,
-        y: el.offsetTop,
-        w: el.offsetWidth,
-        h: el.offsetHeight,
-        ready: prev !== null,
-      }));
-    };
-    measure();
-    const list = listRef.current;
-    if (!list || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(list);
-    return () => ro.disconnect();
-  }, [selectedIndex, props.tabs.length]);
   return (
-    <div
-      ref={listRef}
-      role="tablist"
-      aria-label={props.label}
-      className="relative flex flex-wrap items-center gap-1"
-    >
-      {pill && (
-        <span
-          aria-hidden
-          className={cn(
-            'pointer-events-none absolute top-0 left-0 rounded-sm bg-hover',
-            pill.ready &&
-              'transition-[transform,width,height] duration-(--duration-base) ease-(--ease-emphasized) motion-reduce:transition-none',
-          )}
-          style={{
-            width: pill.w,
-            height: pill.h,
-            transform: `translate(${pill.x}px, ${pill.y}px)`,
-          }}
-        />
-      )}
+    <div role="tablist" aria-label={props.label} className="flex flex-wrap items-center gap-1">
       {props.tabs.map((t, i) => {
         const selected = t.id === props.value;
         return (
@@ -133,16 +88,12 @@ export function Tabs<T extends string>(props: {
             onKeyDown={(e) => onKey(e, i)}
             onClick={() => props.onChange(t.id)}
             className={cn(
-              'press relative h-control-sm rounded-sm px-2.5 text-body transition-colors duration-(--duration-instant)',
-              selected
-                ? cn('text-strong', !pill && 'bg-hover')
-                : 'text-subtle hover:bg-raised hover:text-strong',
+              'h-control-sm rounded-sm px-2.5 text-body transition-colors duration-(--duration-instant)',
+              selected ? 'bg-hover text-strong' : 'text-subtle hover:bg-raised hover:text-strong',
             )}
           >
             {t.label}
-            {t.count !== undefined && (
-              <span className="ml-1.5 text-label text-subtle tabular-nums">{t.count}</span>
-            )}
+            {t.count !== undefined && <span className="ml-1.5 text-label text-subtle">{t.count}</span>}
           </button>
         );
       })}

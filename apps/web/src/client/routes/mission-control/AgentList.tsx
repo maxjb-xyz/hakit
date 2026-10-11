@@ -2,16 +2,18 @@
 import { Link } from 'react-router';
 import type { AgentSessionStatus, MissionControlSnapshot } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
+import { SESSION_STATUS, SessionStateIcon } from '../agents/meta';
 import { SectionHead } from './TeamLanes';
-import { firstName, taskHref, type Lookup } from './shared';
+import { PersonAvatar, PersonLink, taskHref, type Lookup } from './shared';
 
-const STATUS: Record<Exclude<AgentSessionStatus, 'ended'>, { label: string; dot: string; text: string }> = {
-  awaiting_input: { label: 'waiting for input', dot: 'bg-warning', text: 'text-warning' },
-  error: { label: 'error', dot: 'bg-danger', text: 'text-danger' },
-  active: { label: 'working', dot: 'bg-muted', text: 'text-subtle' },
-  idle: { label: 'idle', dot: 'bg-level-4', text: 'text-subtle' },
+const LABEL: Record<Exclude<AgentSessionStatus, 'ended'>, string> = {
+  awaiting_input: 'waiting for input',
+  error: 'error',
+  active: 'working',
+  idle: 'idle',
 };
 const ORDER: AgentSessionStatus[] = ['awaiting_input', 'error', 'active', 'idle'];
+const TEXT = { success: 'text-subtle', warning: 'text-warning', danger: 'text-danger', muted: 'text-subtle' };
 
 export function AgentList({ s, lookup }: { s: MissionControlSnapshot; lookup: Lookup }) {
   const sessions = s.lanes
@@ -19,6 +21,7 @@ export function AgentList({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
     .filter((a) => a.status !== 'ended')
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
   const waiting = sessions.filter((a) => a.status === 'awaiting_input').length;
+  const agentsHref = `/w/${lookup.wid}/agents`;
 
   return (
     <section>
@@ -28,41 +31,61 @@ export function AgentList({ s, lookup }: { s: MissionControlSnapshot; lookup: Lo
           sessions.length ? `${sessions.length} running${waiting ? `, ${waiting} waiting` : ''}` : undefined
         }
         right={
-          <Link
-            to={`/w/${lookup.wid}/agents`}
-            className="rounded-xs text-label text-subtle hover:text-strong"
-          >
+          <Link to={agentsHref} className="rounded-xs text-label text-subtle hover:text-strong">
             All sessions
           </Link>
         }
       />
       {sessions.length === 0 ? (
-        <p className="text-body text-subtle">
-          No coding agents running. Teammates opt in from the Agents page.
+        <p className="rounded-md border border-dashed border-border-strong px-4 py-5 text-body text-subtle">
+          No coding agents running. Teammates opt in from the{' '}
+          <Link
+            to={agentsHref}
+            className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+          >
+            Agents page
+          </Link>
+          .
         </p>
       ) : (
-        <ul>
-          {sessions.map((a) => {
-            const st = STATUS[a.status as Exclude<AgentSessionStatus, 'ended'>];
+        <ul className="-mx-2">
+          {sessions.map((a, i) => {
+            const status = a.status as Exclude<AgentSessionStatus, 'ended'>;
             const task = lookup.task(a.taskId);
             return (
-              <li key={a.id} className="flex h-row-compact items-center gap-3 text-body">
-                <span aria-hidden className={cn('size-dot shrink-0 rounded-full', st.dot)} />
+              <li
+                key={a.id}
+                style={{ '--i': i } as React.CSSProperties}
+                className="row-interactive flex h-row-compact animate-list-in items-center gap-2.5 rounded-sm px-2 text-body"
+              >
+                <span key={status} className="animate-pop-in">
+                  <SessionStateIcon status={status} />
+                </span>
+                <PersonAvatar member={lookup.member(a.userId)} size="xs" decorative />
                 <span className="min-w-0 flex-1 truncate text-subtle">
-                  <span className="text-default">{firstName(lookup.member(a.userId))}</span>
+                  <PersonLink userId={a.userId} lookup={lookup} first className="relative z-1 text-default" />
                   {"'s agent on "}
                   {task ? (
                     <Link
                       to={taskHref(task.key)}
-                      className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+                      title={task.title}
+                      className="relative z-1 rounded-xs font-mono text-label text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
                     >
                       {task.key}
                     </Link>
                   ) : (
                     'no linked task'
                   )}
+                  <Link to={agentsHref} className="row-link" aria-label={`Open ${LABEL[status]} session`}>
+                    <span className="sr-only">Open in Agents</span>
+                  </Link>
                 </span>
-                <span className={cn('shrink-0 text-label', st.text)}>{st.label}</span>
+                <span
+                  key={`l-${status}`}
+                  className={cn('shrink-0 animate-fade-in text-label', TEXT[SESSION_STATUS[status].tone])}
+                >
+                  {LABEL[status]}
+                </span>
               </li>
             );
           })}

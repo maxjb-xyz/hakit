@@ -3,8 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ActivityEvent } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
-import { MemberAvatar } from '../tasks/meta';
-import { ago, firstName, midTruncate, taskHref, type Lookup } from './shared';
+import {
+  PersonAvatar,
+  PersonLink,
+  activityHref,
+  ago,
+  firstName,
+  midTruncate,
+  taskHref,
+  type Lookup,
+} from './shared';
 import { SectionHead } from './TeamLanes';
 
 const VERB: Record<ActivityEvent['kind'], string> = {
@@ -64,10 +72,16 @@ export function ActivityItem({
   const verb = VERB[e.kind];
   return (
     <li className="flex gap-3 border-b border-border px-4 py-2.5 last:border-b-0">
-      <MemberAvatar member={member} className="mt-0.5" />
+      <PersonAvatar member={member} className="mt-0.5" decorative={Boolean(member)} />
       <div className="min-w-0 flex-1">
         <p className="text-label text-muted">
-          <span className="font-medium text-default">{who}</span>
+          <PersonLink
+            userId={e.actorUserId}
+            lookup={lookup}
+            fallback={who}
+            first
+            className="font-medium text-default"
+          />
           {verb.startsWith("'") ? verb : ` ${verb}`}
           <span className="text-subtle"> · {ago(e.ts, lookup.now)}</span>
         </p>
@@ -136,36 +150,87 @@ function KindIcon({ kind }: { kind: ActivityEvent['kind'] }) {
   );
 }
 
-function FeedRow({ e, lookup, arrived }: { e: ActivityEvent; lookup: Lookup; arrived?: boolean }) {
+const rel = (mins: number) =>
+  mins < 1
+    ? 'now'
+    : mins < 60
+      ? `${mins}m`
+      : mins < 1440
+        ? `${Math.floor(mins / 60)}h`
+        : `${Math.floor(mins / 1440)}d`;
+
+/**
+ * One compact feed row. The whole row opens the GitHub commit / PR in a new tab when there is one (else
+ * the linked task); the task key and the person stay their own links (`relative z-1`).
+ */
+function FeedRow({
+  e,
+  lookup,
+  arrived,
+  index,
+}: {
+  e: ActivityEvent;
+  lookup: Lookup;
+  arrived?: boolean;
+  index: number;
+}) {
   const member = lookup.member(e.actorUserId);
-  const who = member ? firstName(member) : (e.actorRaw ?? 'Someone');
   const task = lookup.task(e.taskId);
   const inferred = e.linkKind === 'inferred';
   const linked = task && e.linkKind !== 'none';
+  const href = activityHref(e, lookup);
   const mins = Math.max(0, Math.round((lookup.now - Date.parse(e.ts)) / 60_000));
+  const what = e.ref ? (
+    <span className="text-muted">{midTruncate(e.ref)}</span>
+  ) : (
+    !linked && <span className="text-default">{e.title}</span>
+  );
+  const verb = SHORT_VERB[e.kind] ?? VERB[e.kind];
+  const primary = href || linked;
   return (
     <li
       className={cn(
-        'flex h-row-compact items-center gap-3 rounded-xs text-body',
-        arrived && 'animate-arrive',
+        'flex h-row-compact items-center gap-2.5 rounded-sm px-2 text-body',
+        primary && 'row-interactive',
+        arrived ? 'animate-arrive' : 'animate-list-in',
       )}
+      style={{ '--i': index } as React.CSSProperties}
       title={e.title}
     >
       <KindIcon kind={e.kind} />
+      <PersonAvatar member={member} size="xs" decorative />
       <span className="min-w-0 flex-1 truncate text-subtle">
         {linked && (
           <Link
             to={taskHref(task.key)}
-            className="mr-1.5 rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+            className={cn(
+              'mr-1.5 rounded-xs font-mono text-label text-default underline decoration-border-strong underline-offset-2 hover:text-strong',
+              href ? 'relative z-1' : 'row-link',
+            )}
           >
             {task.key}
           </Link>
         )}
-        <span className="text-default">{who}</span> {SHORT_VERB[e.kind] ?? VERB[e.kind]}{' '}
-        {e.ref ? (
-          <span className="text-muted">{midTruncate(e.ref)}</span>
+        <PersonLink
+          userId={e.actorUserId}
+          lookup={lookup}
+          fallback={e.actorRaw ?? 'Someone'}
+          first
+          className="relative z-1 text-default"
+        />{' '}
+        {verb}{' '}
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="row-link"
+            aria-label={`${e.title} on GitHub (opens in a new tab)`}
+          >
+            {what || <span className="text-muted">{e.title}</span>}
+          </a>
         ) : (
-          !linked && <span className="text-default">{e.title}</span>
+          what
         )}
       </span>
       {inferred && (
@@ -176,15 +241,22 @@ function FeedRow({ e, lookup, arrived }: { e: ActivityEvent; lookup: Lookup; arr
           inferred{e.linkConfidence !== null && ` ${Math.round(e.linkConfidence * 100)}%`}
         </span>
       )}
-      <span className="w-8 shrink-0 text-right text-label text-subtle">
-        {mins < 1
-          ? 'now'
-          : mins < 60
-            ? `${mins}m`
-            : mins < 1440
-              ? `${Math.floor(mins / 60)}h`
-              : `${Math.floor(mins / 1440)}d`}
-      </span>
+      {href && (
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden
+          className="size-3 shrink-0 text-faint"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        >
+          <path d="M6 3H3v10h10v-3M9 3h4v4M13 3L7.5 8.5" />
+        </svg>
+      )}
+      <time dateTime={e.ts} className="w-7 shrink-0 text-right text-label text-subtle tabular-nums">
+        {rel(mins)}
+      </time>
     </li>
   );
 }
@@ -218,15 +290,24 @@ export function ActivityFeed({ events, lookup }: { events: ActivityEvent[]; look
     <section className="flex min-h-0 flex-1 flex-col">
       <SectionHead title="Activity" meta="GitHub, agents" />
       {sorted.length === 0 ? (
-        <p className="text-body text-subtle">No activity yet. Connect a repo on the Code page.</p>
+        <p className="rounded-md border border-dashed border-border-strong px-4 py-5 text-body text-subtle">
+          No activity yet. Commits, PRs and agent sessions show up here once a repo is{' '}
+          <Link
+            to={`/w/${lookup.wid}/code`}
+            className="rounded-xs text-default underline decoration-border-strong underline-offset-2 hover:text-strong"
+          >
+            connected on the Code page
+          </Link>
+          .
+        </p>
       ) : (
         <ul
           aria-live="polite"
           aria-relevant="additions"
-          className="min-h-0 flex-1 overflow-auto max-lg:max-h-96"
+          className="-mx-2 min-h-0 flex-1 overflow-auto max-lg:max-h-96"
         >
-          {sorted.map((e) => (
-            <FeedRow key={e.id} e={e} lookup={lookup} arrived={fresh.has(e.id)} />
+          {sorted.map((e, i) => (
+            <FeedRow key={e.id} e={e} lookup={lookup} arrived={fresh.has(e.id)} index={i} />
           ))}
         </ul>
       )}

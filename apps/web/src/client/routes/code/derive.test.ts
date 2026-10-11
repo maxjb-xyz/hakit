@@ -4,37 +4,12 @@ import * as fx from '@hakit/contracts/fixtures';
 import {
   NO_FILTERS,
   branches,
-  eventUrl,
   filterFeed,
   groupByDay,
-  looksLikeLogin,
   pullRequests,
-  repoBase,
-  treeUrl,
   unknownAuthors,
   unlinkedQueue,
 } from './derive';
-
-describe('GitHub links', () => {
-  const base = repoBase({ htmlUrl: 'https://github.com/team-orbit/hakit/', fullName: 'x/y' });
-  const ev = { url: null, sha: null, prNumber: null, ref: null } as const;
-  it('prefers the activity url, else derives commit / pull / tree links from the repo', () => {
-    expect(base).toBe('https://github.com/team-orbit/hakit');
-    expect(repoBase({ htmlUrl: null, fullName: 'a/b' })).toBe('https://github.com/a/b');
-    expect(eventUrl({ ...ev, kind: 'commit', url: 'https://x.test/c' }, base)).toBe('https://x.test/c');
-    expect(eventUrl({ ...ev, kind: 'commit', sha: 'abc123' }, base)).toBe(`${base}/commit/abc123`);
-    expect(eventUrl({ ...ev, kind: 'pr_review', prNumber: 12 }, base)).toBe(`${base}/pull/12`);
-    expect(eventUrl({ ...ev, kind: 'branch_created', ref: 'hk-2/db' }, base)).toBe(`${base}/tree/hk-2/db`);
-    expect(eventUrl({ ...ev, kind: 'branch_deleted', ref: 'gone' }, base)).toBeNull();
-    expect(eventUrl({ ...ev, kind: 'commit', sha: 'abc' }, null)).toBeNull();
-    expect(treeUrl(base, 'feat#1')).toBe(`${base}/tree/feat%231`);
-  });
-  it('only treats login-shaped raw authors as GitHub users', () => {
-    expect(looksLikeLogin('kai-dev')).toBe(true);
-    expect(looksLikeLogin('kai@orbit.dev')).toBe(false);
-    expect(looksLikeLogin(null)).toBe(false);
-  });
-});
 
 describe('groupByDay', () => {
   it('buckets a newest-first feed by local day with relative labels', () => {

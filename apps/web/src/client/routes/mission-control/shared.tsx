@@ -1,8 +1,8 @@
 /** Shared bits for S11 Mission Control: panel frame, lookups, time formatting, measured bars, task refs. */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { AssignmentAlternative, Member, Task, TaskDependency } from '@hakit/contracts';
-import { cn } from '@hakit/ui';
+import type { ActivityEvent, AssignmentAlternative, Member, Task, TaskDependency } from '@hakit/contracts';
+import { Avatar, cn } from '@hakit/ui';
 
 /** Resolves ids in the snapshot to tasks/members, plus the "now" every relative time is measured from. */
 export type Lookup = {
@@ -15,7 +15,91 @@ export type Lookup = {
   /** Solver alternatives for a task's active assignment (board `assignments`). */
   alternatives?: (taskId: string) => AssignmentAlternative[];
   dependencies?: TaskDependency[];
+  /** `owner/name` of a GitHub repo by id, for building commit / PR links when an event has no url. */
+  repo?: (repoId: number | null) => string | undefined;
 };
+
+/**
+ * Where a GitHub event lives on github.com: its own url, else derived from the repo + sha / PR number.
+ * Agent and task events have no GitHub page (null).
+ */
+export function activityHref(e: ActivityEvent, lookup: Pick<Lookup, 'repo'>): string | null {
+  if (e.url) return e.url;
+  if (e.source !== 'github') return null;
+  const repo = lookup.repo?.(e.repoId);
+  if (!repo) return null;
+  if (e.prNumber !== null) return `https://github.com/${repo}/pull/${e.prNumber}`;
+  if (e.sha) return `https://github.com/${repo}/commit/${e.sha}`;
+  if (e.ref && e.kind === 'branch_created')
+    return `https://github.com/${repo}/tree/${encodeURIComponent(e.ref)}`;
+  return null;
+}
+
+/** Team profile route for a member. */
+export const personHref = (wid: string, userId: string) => `/w/${wid}/team/${userId}`;
+
+/**
+ * Member picture (GitHub avatar, initials fallback) for Mission Control / Agents. `decorative` when the
+ * name is written right next to it; an unknown person is a dashed ring.
+ */
+export function PersonAvatar(props: {
+  member: Member | undefined;
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+  decorative?: boolean;
+  className?: string;
+}) {
+  const m = props.member;
+  if (!m)
+    return (
+      <span
+        aria-hidden={props.decorative || undefined}
+        role={props.decorative ? undefined : 'img'}
+        aria-label={props.decorative ? undefined : 'Unassigned'}
+        title="Unassigned"
+        className={cn(
+          'shrink-0 rounded-full border border-dashed border-border-strong',
+          { xs: 'size-4', sm: 'size-5', md: 'size-6', lg: 'size-8' }[props.size ?? 'sm'],
+          props.className,
+        )}
+      />
+    );
+  const name = memberName(m);
+  return (
+    <Avatar
+      name={name}
+      title={name}
+      avatarUrl={m.user.avatarUrl}
+      login={m.user.githubLogin}
+      colorIndex={m.colorIndex}
+      size={props.size ?? 'sm'}
+      decorative={props.decorative}
+      className={props.className}
+    />
+  );
+}
+
+/** A person's name linking to their team profile. Plain text when the person isn't a member. */
+export function PersonLink(props: {
+  userId: string | null;
+  lookup: Pick<Lookup, 'wid' | 'member'>;
+  fallback?: string;
+  first?: boolean;
+  className?: string;
+}) {
+  const m = props.lookup.member(props.userId);
+  if (!m || !props.userId) return <span className={props.className}>{props.fallback ?? 'Someone'}</span>;
+  return (
+    <Link
+      to={personHref(props.lookup.wid, props.userId)}
+      className={cn(
+        'rounded-xs underline decoration-border-strong underline-offset-2 hover:text-strong hover:decoration-current',
+        props.className,
+      )}
+    >
+      {props.first ? firstName(m) : memberName(m)}
+    </Link>
+  );
+}
 
 /**
  * Link target for a task: `?task=` on the current screen. Mission Control peeks in the shell inspector
@@ -117,7 +201,7 @@ export function MeasuredBar(props: { value: number; label: string; tone?: 'succe
     >
       <div
         className={cn(
-          'h-full rounded-full',
+          'h-full rounded-full transition-[width] duration-(--duration-slow) ease-emphasized',
           props.tone === 'danger' ? 'bg-danger' : props.tone === 'accent' ? 'bg-accent-500' : 'bg-success',
         )}
         style={{ width: `${pct}%` }}

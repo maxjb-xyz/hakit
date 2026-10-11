@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ProjectBoard, Recommendation, RecommendationAction } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Button, Kbd, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
 import { STATUS_LABEL } from '../tasks/meta';
-import { KeyedText, duration, fmtHours, memberName, type Lookup } from './shared';
+import { KeyedText, PersonAvatar, duration, fmtHours, memberName, type Lookup } from './shared';
 import { SectionHead } from './TeamLanes';
 
 const SEVERITY = {
@@ -111,7 +111,7 @@ function ModifyPanel(props: {
   const alts = (props.lookup.alternatives?.(action.taskId) ?? []).filter((x) => x.userId !== action.toUserId);
   return (
     <div
-      className="mt-3 rounded-sm border border-border-strong p-2"
+      className="mt-3 animate-pop-in rounded-sm border border-border-strong bg-sunken p-2"
       role="group"
       aria-label={`Other people for ${key}`}
     >
@@ -132,13 +132,14 @@ function ModifyPanel(props: {
                       `${key} → ${name.split(' ')[0]}`,
                     )
                   }
-                  className="hover-light flex h-8 w-full items-center gap-2 rounded-xs border border-transparent px-1.5 text-left text-body"
+                  className="interactive press flex h-8 w-full items-center gap-2 rounded-xs px-1.5 text-left text-body"
                 >
+                  <PersonAvatar member={props.lookup.member(alt.userId)} size="xs" decorative />
                   <span className="min-w-0 flex-1 truncate text-default">{name}</span>
-                  <span className="text-label text-subtle">score {alt.score.toFixed(2)}</span>
+                  <span className="text-label text-subtle tabular-nums">score {alt.score.toFixed(2)}</span>
                   <span
                     className={cn(
-                      'w-12 text-right text-label',
+                      'w-12 text-right text-label tabular-nums',
                       alt.delta < 0 ? 'text-warning' : 'text-default',
                     )}
                   >
@@ -187,22 +188,41 @@ function RecommendationCard(props: {
         <button
           type="button"
           onClick={props.onExpand}
-          className="hover-light flex h-10 w-full items-center gap-3 rounded-md border border-border bg-surface px-4 text-left"
+          aria-expanded={false}
+          className="hover-light press group flex h-10 w-full items-center gap-3 rounded-md border border-border bg-surface px-4 text-left"
         >
           <AiGlyph />
-          <span className="min-w-0 flex-1 truncate text-body text-default">{headlineAction}</span>
-          <span className="shrink-0 text-label text-subtle">{shortImpact(rec)}</span>
+          <span className="min-w-0 flex-1 truncate text-body text-muted group-hover:text-default">
+            {headlineAction}
+          </span>
+          <span className="shrink-0 text-label text-subtle tabular-nums">{shortImpact(rec)}</span>
+          <svg
+            viewBox="0 0 16 16"
+            aria-hidden
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            className="size-3 shrink-0 text-faint transition-transform duration-(--duration-fast) ease-standard group-hover:translate-y-px"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
         </button>
       </li>
     );
 
   return (
-    <li className="rounded-md border border-border bg-surface p-4" aria-current="true">
+    <li
+      className="animate-pop-in rounded-md border border-border-strong bg-surface p-4 shadow-[inset_0_1px_0_var(--color-sheen)]"
+      aria-current="true"
+    >
       <p className="flex items-center gap-2 text-label text-subtle">
         <AiGlyph />
         {KIND_LABEL[rec.kind]}
         {rec.severity !== 'info' && <span className={sev.className}>· {sev.label}</span>}
-        <span className="ml-auto">{duration(age)}</span>
+        <span className="ml-auto" title={new Date(rec.createdAt).toLocaleString()}>
+          {duration(age)} ago
+        </span>
       </p>
       <p className="mt-2 text-body-lg font-medium text-strong">
         <KeyedText text={headlineAction} lookup={lookup} />
@@ -222,38 +242,43 @@ function RecommendationCard(props: {
       </p>
 
       <details className="group mt-2">
-        <summary className="cursor-pointer list-none rounded-xs text-label text-subtle hover:text-strong">
-          <span aria-hidden className="inline-block transition-transform group-open:rotate-90">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-label text-subtle hover:text-strong [&::-webkit-details-marker]:hidden">
+          <span
+            aria-hidden
+            className="inline-block transition-transform duration-(--duration-fast) ease-standard group-open:rotate-90"
+          >
             ›
           </span>{' '}
           Why?
         </summary>
-        <KeyedText text={rec.rationale} lookup={lookup} className="mt-1.5 block text-body text-subtle" />
-        {rec.actions.length > 1 && (
-          <ul className="mt-2 space-y-0.5">
-            {rec.actions.map((a, i) => (
-              <li key={i} className="text-label text-muted">
-                <span aria-hidden className="text-faint">
-                  ›{' '}
-                </span>
-                {describe(a, lookup)}
-              </li>
-            ))}
-          </ul>
-        )}
-        {rec.signals.length > 0 && (
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-label">
-            {rec.signals.map((sg) => (
-              <div key={sg.label} className="contents">
-                <dt className="text-subtle">{sg.label}</dt>
-                <dd className="text-default">
-                  <KeyedText text={sg.value} lookup={lookup} />
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        {imp && <p className="mt-1.5 text-label text-subtle">{imp}</p>}
+        <div className="animate-fade-in">
+          <KeyedText text={rec.rationale} lookup={lookup} className="mt-1.5 block text-body text-subtle" />
+          {rec.actions.length > 1 && (
+            <ul className="mt-2 space-y-0.5">
+              {rec.actions.map((a, i) => (
+                <li key={i} className="text-label text-muted">
+                  <span aria-hidden className="text-faint">
+                    ›{' '}
+                  </span>
+                  {describe(a, lookup)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {rec.signals.length > 0 && (
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-label">
+              {rec.signals.map((sg) => (
+                <div key={sg.label} className="contents">
+                  <dt className="text-subtle">{sg.label}</dt>
+                  <dd className="text-default">
+                    <KeyedText text={sg.value} lookup={lookup} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {imp && <p className="mt-1.5 text-label text-subtle">{imp}</p>}
+        </div>
       </details>
 
       {props.mode === 'modify' ? (
@@ -265,7 +290,7 @@ function RecommendationCard(props: {
         />
       ) : props.mode === 'dismiss' ? (
         <form
-          className="mt-3 flex flex-wrap items-center gap-2"
+          className="mt-3 flex animate-pop-in flex-wrap items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             props.onDismiss(reason.trim());
@@ -281,7 +306,7 @@ function RecommendationCard(props: {
             maxLength={500}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Why not? (optional)"
-            className="h-control-md min-w-0 flex-1 rounded-sm border border-border-strong bg-canvas px-2 text-body text-default placeholder:text-subtle"
+            className="field h-control-md min-w-0 flex-1 rounded-sm px-2 text-body placeholder:text-subtle"
           />
           <Button size="sm" type="submit" loading={props.dismissing}>
             Dismiss
@@ -291,16 +316,42 @@ function RecommendationCard(props: {
           </Button>
         </form>
       ) : (
-        <div className="mt-4 flex items-center gap-2">
-          <Button variant="primary" size="sm" onClick={() => props.onAccept()} title="Accept (A)">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => props.onAccept()}
+            title="Accept (A)"
+            aria-keyshortcuts="a"
+          >
             Accept
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => props.setMode('modify')} title="Modify (M)">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => props.setMode('modify')}
+            title="Modify (M)"
+            aria-keyshortcuts="m"
+          >
             Modify
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => props.setMode('dismiss')} title="Dismiss (D)">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => props.setMode('dismiss')}
+            title="Dismiss (D)"
+            aria-keyshortcuts="d"
+          >
             Dismiss
           </Button>
+          <span aria-hidden className="ml-auto flex items-center gap-1 text-caption text-faint max-sm:hidden">
+            <Kbd>A</Kbd>
+            <Kbd>M</Kbd>
+            <Kbd>D</Kbd>
+            <span className="ml-1">
+              <Kbd>J</Kbd> <Kbd>K</Kbd>
+            </span>
+          </span>
         </div>
       )}
       {props.error && (
@@ -309,6 +360,52 @@ function RecommendationCard(props: {
         </p>
       )}
     </li>
+  );
+}
+
+/** "Accepted · HK-4 → Sam  [Undo]" with a bar that drains over the undo window. */
+function UndoBar({ label, onUndo }: { label: string; onUndo: () => void }) {
+  const [draining, setDraining] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setDraining(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return (
+    <p
+      role="status"
+      className="relative mb-2.5 flex h-10 animate-slide-up items-center gap-2 overflow-hidden rounded-md border border-border-strong bg-surface px-4 text-body text-default"
+    >
+      <svg
+        viewBox="0 0 16 16"
+        aria-hidden
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        className="size-3.5 shrink-0 text-success"
+      >
+        <path d="M3.5 8.5l3 3 6-7" />
+      </svg>
+      <span className="text-subtle">Accepted ·</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onUndo}
+        aria-keyshortcuts="u"
+        className="interactive press inline-flex h-control-sm items-center gap-1.5 rounded-xs px-2 text-label text-strong"
+      >
+        Undo <Kbd aria-hidden>U</Kbd>
+      </button>
+      <span
+        aria-hidden
+        className="absolute bottom-0 left-0 h-px bg-accent-400 ease-linear"
+        style={{
+          width: draining ? '0%' : '100%',
+          transitionProperty: 'width',
+          transitionDuration: `${UNDO_MS}ms`,
+        }}
+      />
+    </p>
   );
 }
 
@@ -407,8 +504,14 @@ export function RecommendationList(props: {
   // j/k move between suggestions, a accept, m modify, d dismiss (handoff keyboard map).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || !active) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       if (document.querySelector('dialog[open]')) return;
+      if (e.key === 'u' && pending) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (!active) return;
       const i = open.findIndex((r) => r.id === active.id);
       if (e.key === 'j' || e.key === 'k') {
         const next = open[i + (e.key === 'j' ? 1 : -1)];
@@ -427,7 +530,7 @@ export function RecommendationList(props: {
   });
 
   return (
-    <section aria-keyshortcuts="j k a m d">
+    <section aria-keyshortcuts="j k a m d u">
       <SectionHead title="Suggestions" meta={open.length} />
       {props.unavailable && (
         <p role="alert" className="mb-2.5 flex flex-wrap items-center gap-2 text-label text-subtle">
@@ -437,30 +540,19 @@ export function RecommendationList(props: {
           </Button>
         </p>
       )}
-      {pending && (
-        <p
-          role="status"
-          className="mb-2.5 flex h-10 items-center gap-2 rounded-md border border-border px-4 text-body text-default"
-        >
-          <span className="text-subtle">Accepted ·</span>
-          <span className="min-w-0 flex-1 truncate">{pending.label}</span>
-          <button
-            type="button"
-            onClick={undo}
-            className="rounded-xs text-strong underline underline-offset-2"
-          >
-            Undo
-          </button>
-        </p>
-      )}
+      {pending && <UndoBar key={pending.id} label={pending.label} onUndo={undo} />}
       {open.length === 0 ? (
         !pending && (
-          <p className="text-body text-subtle" role="status">
-            Nothing needs attention right now.
+          <p
+            className="flex animate-fade-in items-center gap-2 rounded-md border border-dashed border-border-strong px-4 py-5 text-body text-subtle"
+            role="status"
+          >
+            <AiGlyph />
+            Nothing needs attention right now. New suggestions appear here as work moves.
           </p>
         )
       ) : (
-        <ul aria-live="polite" className="space-y-2.5">
+        <ul aria-live="polite" className="space-y-2">
           {open.map((r) => (
             <RecommendationCard
               key={r.id}

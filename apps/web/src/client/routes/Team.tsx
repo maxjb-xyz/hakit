@@ -3,28 +3,16 @@
  * coverage + gaps + overlaps from `teamCapability` (engine-computed), and an availability stack built
  * from self-reported profile windows. Tabs: Capability (default) · Availability · Members.
  */
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import type {
-  CoverageLabel,
-  Member,
-  MemberSkill,
-  SkillCategory,
-  Task,
-  TeamCapability,
-} from '@hakit/contracts';
+import type { CoverageLabel, Member, MemberSkill, SkillCategory, TeamCapability } from '@hakit/contracts';
 import { Avatar, Button, cn } from '@hakit/ui';
 import { api } from '../lib/api';
 import { useProject } from '../lib/project';
 import { qk } from '../lib/query';
-import { useProjectSocket } from '../lib/ws';
 import { useNow } from './mission-control/shared';
 import { InvitePanel } from './people/InvitePanel';
-import { Tabs, tabPanelProps } from './people/shared';
-import { StatusIcon } from './tasks/meta';
-
-const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
 
 const CATEGORIES: { key: SkillCategory; label: string }[] = [
   { key: 'frontend', label: 'Frontend' },
@@ -236,21 +224,22 @@ function CapabilityMatrix(props: {
             const row = props.cells.get(m.user.id);
             return (
               <div key={m.user.id} role="row" className="grid gap-1 py-0.5" style={cols}>
-                <span role="rowheader" className="flex min-w-0 items-center">
+                <span role="rowheader" className="flex min-w-0 items-center gap-2">
+                  <MemberPic m={m} />
                   <Link
-                    to={`/w/${props.wid}/team/${m.user.id}`}
-                    title={`${nameOf(m)}'s profile`}
-                    className="interactive press -ml-1.5 flex min-w-0 items-center gap-2 rounded-sm px-1.5 py-1 text-body text-default"
+                    to={m.user.id}
+                    className="truncate rounded-xs text-body text-default hover:text-strong"
                   >
-                    <MemberPic m={m} />
-                    <span className="truncate">{nameOf(m)}</span>
+                    {nameOf(m)}
                   </Link>
                 </span>
                 {shown.map((c) => {
                   const cell = row?.get(c.key);
                   const isOpen = open?.uid === m.user.id && open.cat === c.key;
                   if (!row && props.skillsLoading)
-                    return <span key={c.key} role="cell" className="skeleton h-10 rounded-xs" />;
+                    return (
+                      <span key={c.key} role="cell" className="h-10 animate-pulse rounded-xs bg-raised" />
+                    );
                   if (!cell)
                     return (
                       <span key={c.key} role="cell" className="h-10 rounded-xs bg-surface">
@@ -265,13 +254,13 @@ function CapabilityMatrix(props: {
                         aria-label={`${nameOf(m)}, ${c.label}: level ${cell.level}${cell.inferred ? ', inferred' : ''}. Show evidence`}
                         onClick={() => setOpen(isOpen ? null : { uid: m.user.id, cat: c.key })}
                         className={cn(
-                          'press h-10 cursor-pointer rounded-xs border text-body tabular-nums transition-[background-color,border-color,transform] duration-(--duration-instant)',
+                          'h-10 rounded-xs border text-body tabular-nums transition-colors duration-(--duration-instant)',
                           cell.inferred
                             ? 'border-dashed border-level-4 bg-transparent text-muted'
                             : cn(LEVEL_BG[cell.level], 'border-transparent'),
                           !cell.inferred && (cell.level >= 5 ? 'text-on-light' : 'text-default'),
-                          'hover:border-accent-400',
-                          isOpen && 'border-accent-400 ring-1 ring-accent-400',
+                          'hover:border-disabled',
+                          isOpen && 'border-default',
                         )}
                       >
                         {cell.inferred ? `≈${cell.level}` : cell.level}
@@ -356,33 +345,25 @@ function CapabilityMatrix(props: {
 
       {selected && selectedMember && (
         <div
-          key={`${open!.uid}-${open!.cat}`}
-          className="mt-4 animate-pop-in rounded-md border border-border bg-surface p-4"
+          className="mt-4 rounded-md border border-border bg-surface p-4"
           role="region"
           aria-label="Evidence"
         >
           <div className="mb-2 flex items-center gap-2">
-            <MemberPic m={selectedMember} />
             <span className="text-body font-medium text-strong">
-              <Link
-                to={`/w/${props.wid}/team/${selectedMember.user.id}`}
-                className="rounded-xs underline-offset-2 hover:underline"
-              >
-                {nameOf(selectedMember)}
-              </Link>{' '}
-              · {catLabel(open!.cat)}
+              {nameOf(selectedMember)} · {catLabel(open!.cat)}
             </span>
             <button
               type="button"
               onClick={() => setOpen(null)}
-              className="interactive press ml-auto h-control-sm rounded-sm px-2 text-label text-subtle"
+              className="ml-auto rounded-xs px-1 text-label text-subtle hover:text-strong"
             >
               Close
             </button>
           </div>
           <ul className="space-y-2">
-            {selected.skills.map((s, i) => (
-              <li key={s.skill.id} className="animate-list-in text-body" style={stagger(i)}>
+            {selected.skills.map((s) => (
+              <li key={s.skill.id} className="text-body">
                 <span className="text-default">{s.skill.name}</span>{' '}
                 <span className="text-subtle">
                   level {s.source === 'inferred' ? '≈' : ''}
@@ -402,15 +383,10 @@ function CapabilityMatrix(props: {
                           <a
                             href={e.url}
                             target="_blank"
-                            rel="noopener noreferrer"
-                            title="Open on GitHub"
-                            className="rounded-xs font-mono text-muted underline decoration-border-strong underline-offset-2 hover:text-strong hover:decoration-current"
+                            rel="noreferrer"
+                            className="text-muted hover:text-strong"
                           >
                             {e.sourceRef}
-                            <span aria-hidden className="ml-0.5">
-                              ↗
-                            </span>
-                            <span className="sr-only"> (opens GitHub in a new tab)</span>
                           </a>
                         ) : (
                           <span className="text-muted">{e.sourceRef}</span>
@@ -582,12 +558,9 @@ function AvailabilityChart(props: {
 
 /* ------------------------------ gaps & overlaps ---------------------------- */
 
-function Callout(props: { kind: 'gap' | 'overlap'; title: string; body: string; index: number }) {
+function Callout(props: { kind: 'gap' | 'overlap'; title: string; body: string }) {
   return (
-    <li
-      className="animate-list-in rounded-md border border-border bg-surface p-4"
-      style={stagger(props.index)}
-    >
+    <li className="rounded-md border border-border bg-surface p-4">
       <p className="flex items-start gap-2.5 text-body font-medium text-strong">
         {props.kind === 'gap' ? (
           <span
@@ -607,7 +580,7 @@ function Callout(props: { kind: 'gap' | 'overlap'; title: string; body: string; 
   );
 }
 
-function SidePanel({ cap, members, wid }: { cap: TeamCapability; members: Member[]; wid: string }) {
+function SidePanel({ cap, members }: { cap: TeamCapability; members: Member[] }) {
   const byId = new Map(members.map((m) => [m.user.id, m]));
   const thin = cap.categories.filter(
     (c) => c.label === 'thin' && !cap.gaps.some((g) => g.category === c.category),
@@ -629,18 +602,16 @@ function SidePanel({ cap, members, wid }: { cap: TeamCapability; members: Member
           <p className="text-body text-subtle">No category is uncovered.</p>
         ) : (
           <ul className="space-y-3">
-            {cap.gaps.map((g, i) => (
+            {cap.gaps.map((g) => (
               <Callout
-                index={i}
                 key={g.category}
                 kind="gap"
                 title={`No one covers ${catLabel(g.category)}`}
                 body={g.note}
               />
             ))}
-            {thin.map((c, i) => (
+            {thin.map((c) => (
               <Callout
-                index={cap.gaps.length + i}
                 key={c.category}
                 kind="gap"
                 title={`${catLabel(c.category)} is thin`}
@@ -656,13 +627,12 @@ function SidePanel({ cap, members, wid }: { cap: TeamCapability; members: Member
           <p className="text-body text-subtle">No skill is shared by two or more people.</p>
         ) : (
           <ul className="space-y-3">
-            {cap.overlaps.map((o, i) => {
+            {cap.overlaps.map((o) => {
               const names = o.userIds.map((id) =>
                 byId.get(id) ? nameOf(byId.get(id)!).split(' ')[0] : 'Unknown',
               );
               return (
                 <Callout
-                  index={i}
                   key={o.skillSlug}
                   kind="overlap"
                   title={`${o.userIds.length} people strong in ${prettySlug(o.skillSlug)}`}
@@ -680,19 +650,10 @@ function SidePanel({ cap, members, wid }: { cap: TeamCapability; members: Member
             {busOne.map((c) => {
               const top = byId.get(c.topMembers[0]?.userId ?? '');
               return (
-                <li key={c.category}>
-                  {top ? (
-                    <Link
-                      to={`/w/${wid}/team/${top.user.id}`}
-                      className="interactive press -mx-1.5 flex items-center gap-2 rounded-sm px-1.5 py-1 text-body"
-                    >
-                      <MemberPic m={top} />
-                      <span className="text-default">{catLabel(c.category)}</span>
-                      <span className="text-subtle">only {nameOf(top).split(' ')[0]}</span>
-                    </Link>
-                  ) : (
-                    <span className="text-body text-default">{catLabel(c.category)}</span>
-                  )}
+                <li key={c.category} className="flex items-center gap-2 text-body">
+                  {top && <MemberPic m={top} />}
+                  <span className="text-default">{catLabel(c.category)}</span>
+                  <span className="text-subtle">{top ? `only ${nameOf(top).split(' ')[0]}` : ''}</span>
                 </li>
               );
             })}
@@ -705,100 +666,42 @@ function SidePanel({ cap, members, wid }: { cap: TeamCapability; members: Member
 
 /* --------------------------------- members --------------------------------- */
 
-function MembersList(props: {
-  members: Member[];
-  wid: string;
-  online: Set<string>;
-  live: boolean;
-  task: (id: string | null) => Task | undefined;
-}) {
+function MembersList({ members }: { members: Member[] }) {
   return (
-    <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {props.members.map((m, i) => {
-        const current = props.task(m.currentTaskId);
-        const online = props.online.has(m.user.id);
-        return (
-          <li
-            key={m.user.id}
-            className="row-interactive flex animate-list-in flex-col gap-3 rounded-md border border-border bg-surface p-4 hover:border-border-strong"
-            style={stagger(i)}
+    <ul className="divide-y divide-hover rounded-md border border-border">
+      {members.map((m) => (
+        <li key={m.user.id}>
+          <Link
+            to={m.user.id}
+            className="hover-light grid grid-cols-(--grid-member-row) items-center gap-3 rounded-md px-4 py-3 sm:grid-cols-(--grid-member-row-sm)"
           >
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="relative shrink-0">
-                <Avatar
-                  decorative
-                  size="lg"
-                  name={nameOf(m)}
-                  avatarUrl={m.user.avatarUrl}
-                  login={m.user.githubLogin}
-                  colorIndex={m.colorIndex}
-                />
-                {online && (
-                  <span
-                    aria-hidden
-                    className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-success ring-2 ring-surface"
-                  />
-                )}
+            <MemberPic m={m} />
+            <span className="min-w-0">
+              <span className="block truncate text-body font-medium text-strong">{nameOf(m)}</span>
+              <span className="block truncate text-label text-subtle">
+                {m.role === 'owner' ? 'Owner · ' : ''}
+                {m.profile.headline ?? `@${m.user.githubLogin}`}
               </span>
-              <span className="min-w-0 flex-1">
-                <Link
-                  to={`/w/${props.wid}/team/${m.user.id}`}
-                  className="row-link block truncate text-body font-medium text-strong"
+            </span>
+            <span className="flex flex-wrap gap-1.5 max-sm:hidden">
+              {m.topSkills.map((s) => (
+                <span
+                  key={s.slug}
+                  className={cn(
+                    'inline-flex h-5 items-center rounded-full border px-2 text-caption',
+                    s.confirmed
+                      ? 'border-border-strong text-muted'
+                      : 'border-dashed border-level-4 text-subtle',
+                  )}
                 >
-                  {nameOf(m)}
-                </Link>
-                <span className="block truncate text-label text-subtle">
-                  {m.role === 'owner' ? 'Owner · ' : ''}
-                  {m.profile.headline ?? `@${m.user.githubLogin}`}
+                  {prettySlug(s.slug)} {s.confirmed ? s.level : `≈${s.level}`}
                 </span>
-              </span>
-              <span className="shrink-0 text-right text-label text-subtle">
-                {props.live && (
-                  <span className={cn('block', online ? 'text-success' : 'text-subtle')}>
-                    {online ? 'Online' : 'Offline'}
-                  </span>
-                )}
-                <span className="block text-muted tabular-nums" title="Self-reported available hours">
-                  ≈{Math.round(m.profile.availableHours)}h
-                </span>
-              </span>
-            </div>
-            <div className="min-w-0 text-label">
-              {current ? (
-                <Link
-                  to={`/w/${props.wid}/tasks?task=${current.key}`}
-                  title="Open in the task inspector"
-                  className="interactive press relative z-1 -mx-1 flex min-w-0 items-center gap-1.5 rounded-xs px-1 py-0.5"
-                >
-                  <span className="shrink-0 text-subtle">Working on</span>
-                  <StatusIcon status={current.status} />
-                  <span className="shrink-0 font-mono text-subtle">{current.key}</span>
-                  <span className="truncate text-default">{current.title}</span>
-                </Link>
-              ) : (
-                <span className="text-subtle">Nothing in progress</span>
-              )}
-            </div>
-            {m.topSkills.length > 0 && (
-              <span className="flex flex-wrap gap-1.5">
-                {m.topSkills.map((sk) => (
-                  <span
-                    key={sk.slug}
-                    className={cn(
-                      'inline-flex h-5 items-center rounded-full border px-2 text-caption',
-                      sk.confirmed
-                        ? 'border-border-strong text-muted'
-                        : 'border-dashed border-level-4 text-subtle',
-                    )}
-                  >
-                    {prettySlug(sk.slug)} {sk.confirmed ? sk.level : `≈${sk.level}`}
-                  </span>
-                ))}
-              </span>
-            )}
-          </li>
-        );
-      })}
+              ))}
+            </span>
+            <span className="text-right text-body text-muted">{Math.round(m.profile.availableHours)}h</span>
+          </Link>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -806,7 +709,7 @@ function MembersList(props: {
 /* ---------------------------------- page ---------------------------------- */
 
 function Skeleton() {
-  const b = 'skeleton rounded-md';
+  const b = 'animate-pulse rounded-md bg-raised';
   return (
     <div className="grid gap-7 p-7 lg:grid-cols-(--grid-side-320)" aria-busy="true" aria-label="Loading team">
       <div className="space-y-7">
@@ -841,7 +744,6 @@ function TeamScreen() {
   const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me') });
   // Team is workspace-wide; the project board only adds "working on" context when there is one.
   const { pid } = useProject(wid);
-  const socket = useProjectSocket(pid ?? undefined);
   const board = useQuery({
     queryKey: qk('getBoard', { pid: pid ?? '' }),
     queryFn: () => api('getBoard', { params: { pid: pid! } }),
@@ -915,19 +817,24 @@ function TeamScreen() {
   const end = Date.parse(workspace.data?.deadlineAt ?? new Date(start + 36 * 3_600_000).toISOString());
 
   const tabs = (
-    <Tabs
-      label="Team views"
-      idPrefix="team"
-      value={tab}
-      onChange={(t) => setSearch(t === 'capability' ? {} : { tab: t }, { replace: true })}
-      tabs={TABS.map((t) => ({
-        id: t,
-        label: t[0]!.toUpperCase() + t.slice(1),
-        count: t === 'members' ? ms.length : undefined,
-      }))}
-    />
+    <div role="tablist" aria-label="Team views" className="flex items-center gap-1">
+      {TABS.map((t) => (
+        <button
+          key={t}
+          role="tab"
+          type="button"
+          aria-selected={tab === t}
+          onClick={() => setSearch(t === 'capability' ? {} : { tab: t }, { replace: true })}
+          className={cn(
+            'h-control-sm rounded-sm px-2.5 text-body capitalize transition-colors duration-(--duration-instant)',
+            tab === t ? 'bg-hover text-strong' : 'text-subtle hover:bg-raised hover:text-strong',
+          )}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
   );
-  const online = new Set(socket.state === 'open' ? socket.presence : []);
 
   // A team of one gets the invite panel up front (DESIGN S2 empty state); otherwise it opens on demand.
   const showInvite = search.has('invite') || ms.length <= 1;
@@ -954,7 +861,7 @@ function TeamScreen() {
           )}
           <Link
             to="../plan"
-            className="press inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600"
+            className="inline-flex h-control-md items-center rounded-sm bg-accent-500 px-3 text-body font-medium text-strong transition-colors duration-(--duration-instant) hover:bg-accent-600"
           >
             Plan a project with this team
           </Link>
@@ -967,52 +874,44 @@ function TeamScreen() {
         </div>
       )}
 
-      <div key={tab} {...tabPanelProps('team', tab)} className="animate-fade-in outline-none">
-        {ms.length === 0 ? (
-          <p className="py-10 text-center text-body text-muted">
-            Invite teammates to see what this team can build.
-          </p>
-        ) : tab === 'members' ? (
-          <MembersList
-            members={ms}
-            wid={wid}
-            online={online}
-            live={socket.state === 'open'}
-            task={(id) => (id ? board.data?.tasks.find((t) => t.id === id) : undefined)}
-          />
-        ) : tab === 'availability' ? (
-          <AvailabilityChart
-            members={ms}
-            start={start}
-            end={end}
-            now={now}
-            totalHours={cap.data.totalAvailableHours}
-            tall
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-7 lg:grid-cols-(--grid-side-320)">
-            <div className="min-w-0 space-y-9">
-              <CapabilityMatrix
-                members={ms}
-                cells={cells}
-                cap={cap.data}
-                skillsLoading={skills.some((s) => s.isPending)}
-                needs={needs}
-                meId={me.data?.user.id ?? null}
-                wid={wid}
-              />
-              <AvailabilityChart
-                members={ms}
-                start={start}
-                end={end}
-                now={now}
-                totalHours={cap.data.totalAvailableHours}
-              />
-            </div>
-            <SidePanel cap={cap.data} members={ms} wid={wid} />
+      {ms.length === 0 ? (
+        <p className="py-10 text-center text-body text-muted">
+          Invite teammates to see what this team can build.
+        </p>
+      ) : tab === 'members' ? (
+        <MembersList members={ms} />
+      ) : tab === 'availability' ? (
+        <AvailabilityChart
+          members={ms}
+          start={start}
+          end={end}
+          now={now}
+          totalHours={cap.data.totalAvailableHours}
+          tall
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-7 lg:grid-cols-(--grid-side-320)">
+          <div className="min-w-0 space-y-9">
+            <CapabilityMatrix
+              members={ms}
+              cells={cells}
+              cap={cap.data}
+              skillsLoading={skills.some((s) => s.isPending)}
+              needs={needs}
+              meId={me.data?.user.id ?? null}
+              wid={wid}
+            />
+            <AvailabilityChart
+              members={ms}
+              start={start}
+              end={end}
+              now={now}
+              totalHours={cap.data.totalAvailableHours}
+            />
           </div>
-        )}
-      </div>
+          <SidePanel cap={cap.data} members={ms} />
+        </div>
+      )}
     </div>
   );
 }

@@ -5,9 +5,8 @@
 import { Link } from 'react-router';
 import type { MissionControlSnapshot, Task } from '@hakit/contracts';
 import { cn } from '@hakit/ui';
-import { MemberAvatar } from '../tasks/meta';
 import { SectionHead } from './TeamLanes';
-import { taskHref, type Lookup } from './shared';
+import { PersonAvatar, memberName, personHref, taskHref, type Lookup } from './shared';
 
 const PRIORITY: Record<string, number> = { must: 0, should: 1, could: 2 };
 
@@ -35,37 +34,75 @@ export function UpNext({ s, tasks, lookup }: { s: MissionControlSnapshot; tasks:
     <section className="flex min-h-0 flex-1 flex-col">
       <SectionHead title="Up next" meta={`${ready} ready, ${queue.length - ready} waiting`} />
       {queue.length === 0 ? (
-        <p className="text-body text-subtle">Nothing left to start. Every task is in progress or done.</p>
+        <p className="rounded-md border border-dashed border-border-strong px-5 py-6 text-body text-subtle">
+          Nothing left to start. Every task is in progress or done.
+        </p>
       ) : (
         <ol className="min-h-0 flex-1 overflow-auto rounded-md border border-border max-lg:max-h-96">
-          {queue.map(({ t, waits }) => (
-            <li key={t.id}>
-              <Link
-                to={taskHref(t.key)}
-                className="hover-light grid h-11 grid-cols-(--grid-up-next) items-center gap-3 border-b border-border px-5 text-body last:border-b-0"
+          {queue.map(({ t, waits }, i) => {
+            const who = lookup.member(t.assigneeId);
+            return (
+              <li
+                key={t.id}
+                style={{ '--i': i } as React.CSSProperties}
+                className="row-interactive grid h-11 animate-list-in grid-cols-(--grid-up-next) items-center gap-3 border-b border-border px-5 text-body last:border-b-0"
               >
-                <MemberAvatar member={lookup.member(t.assigneeId)} className="size-5" />
-                <span className={cn('min-w-0 truncate', waits.length ? 'text-subtle' : 'text-default')}>
-                  <span className="text-faint">{t.key}</span> {t.title}
-                </span>
+                {who && t.assigneeId ? (
+                  <Link
+                    to={personHref(lookup.wid, t.assigneeId)}
+                    title={`${memberName(who)} — open profile`}
+                    className="relative z-1 rounded-full"
+                  >
+                    <PersonAvatar member={who} />
+                  </Link>
+                ) : (
+                  <PersonAvatar member={undefined} />
+                )}
+                <Link
+                  to={taskHref(t.key)}
+                  className={cn('row-link min-w-0 truncate', waits.length ? 'text-subtle' : 'text-default')}
+                >
+                  <span className="font-mono text-label text-faint">{t.key}</span> {t.title}
+                </Link>
                 <span className="flex items-center gap-2 text-label">
-                  {critical.has(t.id) && <span className="text-default">critical path</span>}
+                  {critical.has(t.id) && (
+                    <span className="inline-flex items-center gap-1 text-default">
+                      <span aria-hidden className="h-px w-2.5 bg-current" />
+                      critical path
+                    </span>
+                  )}
                   {waits.length > 0 ? (
-                    <span className="text-subtle">after {waits.map((w) => w.key).join(', ')}</span>
+                    <span className="text-subtle">
+                      after{' '}
+                      {waits.map((w, j) => (
+                        <span key={w.id}>
+                          {j > 0 && ', '}
+                          <Link
+                            to={taskHref(w.key)}
+                            title={w.title}
+                            className="relative z-1 rounded-xs underline decoration-border-strong underline-offset-2 hover:text-strong"
+                          >
+                            {w.key}
+                          </Link>
+                        </span>
+                      ))}
+                    </span>
                   ) : (
-                    <span className="text-default">
+                    <span className="text-success">
                       <span
                         aria-hidden
-                        className="mr-1 inline-block size-1.5 rounded-full bg-default align-middle"
+                        className="mr-1 inline-block size-1.5 rounded-full bg-success align-middle"
                       />
                       ready
                     </span>
                   )}
                 </span>
-                <span className="text-right text-label text-subtle">≈ {t.estimateHours}h</span>
-              </Link>
-            </li>
-          ))}
+                <span className="text-right text-label text-subtle tabular-nums" title="Estimated hours">
+                  ≈ {t.estimateHours}h
+                </span>
+              </li>
+            );
+          })}
         </ol>
       )}
     </section>
