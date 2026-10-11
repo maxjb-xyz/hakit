@@ -52,8 +52,8 @@ function draftTask(input: NewTaskInput, existing: Task[], projectId: string): Ta
     description: input.description,
     acceptanceCriteria: [],
     status: input.status,
-    priority: 'should',
-    estimateHours: 2,
+    priority: input.priority,
+    estimateHours: input.estimateHours,
     requiredSkills: [],
     source: 'manual',
     assigneeId: input.assigneeId,
@@ -80,7 +80,26 @@ export function useTaskBoard(pid: string, wid: string, selectedKey?: string | nu
     enabled: board.isSuccess,
   });
 
+  // Critical path comes from the Mission Control snapshot; a missing/unimplemented snapshot just hides the marker.
+  const snapshot = useQuery({
+    queryKey: qk('missionControl', { pid }),
+    queryFn: () => api('missionControl', { params: { pid } }),
+    enabled: board.isSuccess,
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const live = board.isSuccess;
+  const critical = useMemo(
+    () =>
+      new Set([
+        ...(snapshot.data?.criticalPath.taskIds ?? []),
+        ...(board.data?.assignments ?? [])
+          .filter((a) => a.status === 'active' && a.reasonCodes.includes('CRITICAL_PATH'))
+          .map((a) => a.taskId),
+      ]),
+    [snapshot.data, board.data],
+  );
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const tasks = useMemo(() => (live ? board.data.tasks : []), [live, board.data]);
@@ -102,6 +121,7 @@ export function useTaskBoard(pid: string, wid: string, selectedKey?: string | nu
           id: h.id,
           ts: h.at,
           actor: who(memberList, h.actorUserId),
+          actorId: h.actorUserId,
           text: describe(h, memberList),
         })),
       }
@@ -133,8 +153,8 @@ export function useTaskBoard(pid: string, wid: string, selectedKey?: string | nu
           title: input.title,
           description: input.description,
           milestoneId: null,
-          priority: 'should',
-          estimateHours: 2,
+          priority: input.priority,
+          estimateHours: input.estimateHours,
           requiredSkills: [],
           acceptanceCriteria: [],
           labels: input.label ? [input.label] : [],
@@ -210,6 +230,9 @@ export function useTaskBoard(pid: string, wid: string, selectedKey?: string | nu
     tasks,
     dependencies: live ? board.data.dependencies : [],
     milestones: live ? board.data.milestones : [],
+    assignments: live ? board.data.assignments : [],
+    critical,
+    historyLoading: historyQ.isPending && !!selectedId,
     members: memberList,
     activity: activity.data?.items ?? [],
     labels,
