@@ -23,8 +23,8 @@ Model output is never a decision: LLMs propose candidates and prose, the determi
 | ![Mission Control](docs/screenshots/s10-mission-control-1440.png) | ![Plan review](docs/screenshots/s8-plan-review-1440.png) |
 | **Assignment with explanations** | **Team capability** |
 | ![Assign](docs/screenshots/s9-plan-assign-1440.png) | ![Team](docs/screenshots/s5-team-1440.png) |
-| **Tasks** | **Agents** |
-| ![Tasks](docs/screenshots/s11-tasks-1440.png) | ![Agents](docs/screenshots/s13-agents-1440.png) |
+| **Tasks, with assignment reasoning** | **Agents** |
+| ![Tasks](docs/screenshots/s11-task-inspector-1440.png) | ![Agents](docs/screenshots/s13-agents-1440.png) |
 
 More (including 375px mobile views) in [`docs/screenshots`](docs/screenshots).
 

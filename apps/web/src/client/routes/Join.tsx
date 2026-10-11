@@ -5,7 +5,7 @@
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_PREFIX } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Button, Logo, cn } from '@hakit/ui';
 import { api, ApiRequestError } from '../lib/api';
 import { qk } from '../lib/query';
 import { Card, PersonAvatar, isNotFound } from './people/shared';
@@ -18,13 +18,8 @@ function Frame({ children }: { children: React.ReactNode }) {
     <main className="grid min-h-dvh place-items-center bg-canvas p-6 max-sm:p-4">
       <div className="w-full max-w-md">
         <p className="mb-4 flex items-center gap-2 font-display text-title text-strong">
-          <span
-            aria-hidden
-            className="grid size-6 place-items-center rounded-xs bg-strong font-mono text-caption text-on-light"
-          >
-            hk
-          </span>
-          hakit
+          <Logo />
+          Hakit
         </p>
         {children}
       </div>

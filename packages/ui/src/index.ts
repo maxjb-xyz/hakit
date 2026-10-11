@@ -5,3 +5,4 @@ export { filterCommands, rankCommand } from './components/command-filter';
 export { Kbd } from './components/Kbd';
 export { TickNumber, type TickNumberProps } from './components/TickNumber';
 export { Avatar, avatarSrc, initialsOf, type AvatarProps } from './components/Avatar';
+export { Logo } from './components/Logo';
