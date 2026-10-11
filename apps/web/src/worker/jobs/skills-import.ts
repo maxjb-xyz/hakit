@@ -20,7 +20,7 @@ import { fetchPublicRepos } from '../services/skills/github';
 import { githubUserToken } from '../lib/github-token';
 import { embeddingService, databaseEmbeddingCache, validateVectors } from '../services/embeddings';
 import { isMock } from '../env';
-import { broadcast } from '../lib/broadcast';
+import { broadcastWorkspace } from '../lib/broadcast';
 type ImportJob = Extract<Job, { type: 'skills.import' }>;
 export async function importSkillFacts(
   db: Db,
@@ -163,20 +163,13 @@ export async function processSkillsImport(
       and(eq(schema.memberships.workspaceId, job.workspaceId), eq(schema.memberships.userId, job.userId)),
     );
   if (!member) return;
-  const projects = await db
-    .select({ id: schema.projects.id })
-    .from(schema.projects)
-    .where(eq(schema.projects.workspaceId, job.workspaceId));
+  // Progress goes to the workspace room: import usually runs during onboarding, before any project exists.
   const progress = async (p: Progress) => {
     const validated = SkillImportProgress.parse(p);
-    await Promise.allSettled(
-      projects.map((project) =>
-        broadcast(env, project.id, {
-          type: 'skills.import_progress',
-          data: { userId: job.userId, progress: validated },
-        }),
-      ),
-    );
+    await broadcastWorkspace(env, job.workspaceId, {
+      type: 'skills.import_progress',
+      data: { userId: job.userId, progress: validated },
+    }).catch(() => {});
   };
   try {
     await progress({
