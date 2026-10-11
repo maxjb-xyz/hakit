@@ -1,7 +1,8 @@
 /**
- * S14 Settings & integrations (DESIGN §8). The S2 invite panel, then integrations: GitHub (App + connected repo),
+ * S14 Settings & integrations (DESIGN §8). The event (name, template, window) and projects, the S2 invite panel,
+ * then integrations: GitHub (App + connected repo),
  * personal agent tokens (T-601: create shown once, list, revoke) and AI provider status (`aiStatus`).
- * Workspace, members, privacy and danger-zone sections need endpoints that don't exist yet.
+ * Members, privacy and danger-zone sections need endpoints that don't exist yet.
  */
 import { useId, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
@@ -14,12 +15,14 @@ import { qk } from '../lib/query';
 import { Panel, ago, useNow } from './mission-control/shared';
 import { InvitePanel } from './people/InvitePanel';
 import { CopyField, EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill } from './page-states';
+import { EventPanel, ProjectsPanel } from './workspace/EventSettings';
 
 export function Settings() {
   const { wid = '' } = useParams();
   return (
     <div className="space-y-6 p-6 max-sm:p-4">
-      <PageHeader title="Settings" subtitle="Team and integrations for this workspace" />
+      <PageHeader title="Settings" subtitle="Event, team and integrations for this workspace" />
+      <EventSection wid={wid} />
       <InvitePanel wid={wid} className="max-w-3xl" />
       <GithubSection wid={wid} />
       <AgentTokensSection wid={wid} />
@@ -40,6 +43,22 @@ function Section(props: { title: string; description: ReactNode; children: React
       </div>
       {props.children}
     </section>
+  );
+}
+
+/* ----------------------------- Event ----------------------------- */
+
+function EventSection({ wid }: { wid: string }) {
+  return (
+    <Section
+      title="Event"
+      description="The hackathon you're in and its window. The deadline drives the countdown, plan hours and the critical path."
+    >
+      <div className="max-w-3xl space-y-4">
+        <EventPanel wid={wid} />
+        <ProjectsPanel wid={wid} />
+      </div>
+    </Section>
   );
 }
 

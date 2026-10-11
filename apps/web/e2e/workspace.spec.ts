@@ -66,3 +66,40 @@ test('workspace switcher and ⌘K lead to workspace creation', async ({ page }) 
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/new$/);
 });
+
+test('Settings › Event: edit and save the event, switch and create projects', async ({ page }) => {
+  await page.goto(`/w/${ids.workspace}/settings`);
+  await expect(page.getByLabel('Team name')).toHaveValue('Team Orbit');
+  await expect(page.getByRole('radio', { name: /Knight Hacks IX/ })).toBeChecked();
+  await expect(page.getByText(/Times are in your time zone/)).toBeVisible();
+  const save = page.getByRole('button', { name: 'Save event' });
+  await expect(save).toBeDisabled();
+
+  // Validation: the deadline has to come after the start.
+  await page.getByLabel('Starts (optional)').fill('2026-10-12T12:00');
+  await page.getByLabel('Submission deadline').fill('2026-10-12T09:00');
+  await save.click();
+  await expect(page.getByText('The start has to be before the deadline.')).toBeVisible();
+  await page.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(save).toBeDisabled();
+
+  // Only changed fields are sent.
+  await page.getByLabel('Team name').fill('Team Orbit 2');
+  const patched = page.waitForRequest((r) => r.method() === 'PATCH');
+  await save.click();
+  expect((await patched).postDataJSON()).toEqual({ name: 'Team Orbit 2' });
+  await expect(page.getByText(/^Saved\./)).toBeVisible();
+
+  // Projects: the selected one is marked; create another.
+  await expect(
+    page.getByRole('list', { name: 'Projects' }).getByText('Showing on every screen'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Side quest');
+  const created = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.url().endsWith('/projects'),
+  );
+  await page.getByRole('button', { name: 'Create project' }).click();
+  expect((await created).status()).toBe(200);
+  await expect(page.getByLabel('Project name')).toBeHidden();
+});

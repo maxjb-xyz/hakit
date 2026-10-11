@@ -51,7 +51,14 @@ export const CreateWorkspace = z.object({
 });
 export type CreateWorkspace = z.infer<typeof CreateWorkspace>;
 
-export const UpdateWorkspace = CreateWorkspace.partial();
+/**
+ * Every field optional. Additive over `CreateWorkspace.partial()`: `hackathonSlug: null` detaches the template
+ * (custom event) and `startsAt: null` clears the start. Choosing a template fills any dates not sent.
+ */
+export const UpdateWorkspace = CreateWorkspace.partial().extend({
+  hackathonSlug: z.string().nullable().optional(),
+  startsAt: Timestamp.nullable().optional(),
+});
 export type UpdateWorkspace = z.infer<typeof UpdateWorkspace>;
 
 export const CreateInvite = z.object({
