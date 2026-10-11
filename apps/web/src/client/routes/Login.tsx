@@ -76,7 +76,7 @@ export function Login() {
       <div className="relative grid w-full max-w-4xl items-center gap-12 md:grid-cols-2">
         <section>
           <p className="flex animate-fade-in items-center gap-2 font-display text-display-sm text-strong">
-            <Logo className="size-7 text-body" />
+            <Logo className="size-7" />
             Hakit
           </p>
           <h1 className="mt-6 animate-slide-up font-display text-display-lg text-strong">
