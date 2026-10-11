@@ -196,3 +196,38 @@ export function unknownAuthors(events: ActivityEvent[]): UnknownAuthor[] {
   }
   return [...map.values()].sort((a, b) => b.commits + b.other - (a.commits + a.other));
 }
+
+/* ----------------------------- day groups ----------------------------- */
+
+export interface DayGroup<T> {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  key: string;
+  label: string;
+  items: T[];
+}
+
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Splits a newest-first feed into local-day buckets labelled Today / Yesterday / "Mon, Oct 6". */
+export function groupByDay<T extends { ts: string }>(items: T[], now: number): DayGroup<T>[] {
+  const today = new Date(now);
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const names: Record<string, string> = { [dayKey(today)]: 'Today', [dayKey(yesterday)]: 'Yesterday' };
+  const out: DayGroup<T>[] = [];
+  for (const item of items) {
+    const d = new Date(item.ts);
+    const key = dayKey(d);
+    let g = out[out.length - 1];
+    if (!g || g.key !== key) {
+      g = {
+        key,
+        label: names[key] ?? d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+        items: [],
+      };
+      out.push(g);
+    }
+    g.items.push(item);
+  }
+  return out;
+}
