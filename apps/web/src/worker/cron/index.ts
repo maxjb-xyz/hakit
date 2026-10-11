@@ -1,10 +1,10 @@
 /**
  * Cron every 2 minutes (ARCHITECTURE §9).
  *  1. enqueue recs.evaluate for active projects (IN, T-504)
- *  2. every 10th tick: GitHub failed-delivery redelivery sweep (GH, T-408)
+ *  2. every 10th tick (~20 min): GitHub failed-delivery redelivery sweep (GH, T-408)
  *  3. expire invites; idle/end stale agent sessions (PL T-202, GH T-602)
  */
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { createDb, schema } from '@hakit/db';
 import type { JobMessage } from '@hakit/contracts';
 import type { Env } from '../env';
@@ -12,6 +12,13 @@ import { isMock } from '../env';
 import { broadcast } from '../lib/broadcast';
 import { sweepAgentSessions } from '../jobs/agent-event';
 import { redact } from '../lib/redact';
+import { githubAppJwt } from '../lib/github-app-jwt';
+import {
+  githubRedeliveryClient,
+  pickRedeliveries,
+  REDELIVERY_WINDOW_MS,
+  type GithubRedeliveryClient,
+} from '../services/github/redelivery';
 
 /** Queue `sendBatch` accepts at most 100 messages per call. */
 const BATCH = 100;
@@ -48,7 +55,12 @@ export async function handleScheduled(controller: ScheduledController, env: Env)
   await enqueueRecommendationEvaluations(env).catch((err: unknown) =>
     console.error(JSON.stringify({ level: 'error', msg: 'recs enqueue failed', error: redact(String(err)) })),
   );
-  // TODO(T-408): if (tick % 10 === 0) redelivery sweep
+  if (tick % 10 === 0)
+    await redeliverFailedWebhooks(env, new Date(controller.scheduledTime)).catch((err: unknown) =>
+      console.error(
+        JSON.stringify({ level: 'error', msg: 'redelivery sweep failed', error: redact(String(err)) }),
+      ),
+    );
   await sweepAgentSessionsJob(env, new Date(controller.scheduledTime));
 }
 
@@ -66,4 +78,50 @@ async function sweepAgentSessionsJob(env: Env, now: Date) {
   } finally {
     await handle.close();
   }
+}
+
+/** T-408: ask GitHub to redeliver failed webhook deliveries that never reached our ledger. */
+export async function redeliverFailedWebhooks(
+  env: Env,
+  now: Date,
+  client: GithubRedeliveryClient = githubRedeliveryClient(),
+): Promise<number> {
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) return 0;
+  const jwt = await githubAppJwt(
+    env.GITHUB_APP_ID,
+    env.GITHUB_APP_PRIVATE_KEY,
+    Math.floor(now.getTime() / 1000),
+  );
+  const deliveries = await client.listDeliveries(jwt, new Date(now.getTime() - REDELIVERY_WINDOW_MS));
+  const guids = [...new Set(deliveries.map((d) => d.guid))];
+  if (guids.length === 0) return 0;
+  const handle = createDb(env.HYPERDRIVE.connectionString);
+  let ledger: Set<string>;
+  try {
+    await handle.ready;
+    ledger = new Set(
+      (
+        await handle.db
+          .select({ id: schema.webhookDeliveries.deliveryId })
+          .from(schema.webhookDeliveries)
+          .where(inArray(schema.webhookDeliveries.deliveryId, guids))
+      ).map((r) => r.id),
+    );
+  } finally {
+    await handle.close();
+  }
+  let sent = 0;
+  for (const id of pickRedeliveries(deliveries, ledger, now)) {
+    // One rejected redelivery should not stop the rest.
+    try {
+      await client.redeliver(jwt, id);
+      sent++;
+    } catch (err) {
+      console.error(
+        JSON.stringify({ level: 'error', msg: 'redelivery failed', id, error: redact(String(err)) }),
+      );
+    }
+  }
+  if (sent) console.log(JSON.stringify({ level: 'info', msg: 'webhooks redelivered', sent }));
+  return sent;
 }
