@@ -306,6 +306,7 @@ Also in the scaffold:
 
 **T-408 · Redelivery sweep** · P1 · GH · 1.5h · T-401
 - AC: cron with the app JWT lists deliveries from the last 3 days and redelivers failures missing from the ledger.
+- Status: implemented in `services/github/redelivery.ts`, run from cron every 10th tick; capped at 25 redeliveries per sweep.
 
 **T-409 · Repo creation via API** · P1 · GH · 2h · T-402, D-4
 - AC: only if the Phase 0 verification succeeded: `POST /user/repos` behind an opt-in permission upgrade.
