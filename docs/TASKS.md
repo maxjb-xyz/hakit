@@ -48,7 +48,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-206 Capability API | ✅ `teamCapability`, `memberSkills`, `upsertSkill`/`removeSkill`, `searchSkills` | – |
 | T-301 LLM providers | ✅ Gemini structured + streaming, router with retries and circuit breaker, mock provider, `aiStatus` | Live check (`check:gemini`) with a real key |
 | T-303 Ideas | ✅ `generateIdeas`/`refineIdea` (SSE), `submitIdea`, `listIdeas`; grounded schema (allowed slugs, challenges, required/excluded tech), engine team fit | – |
-| T-305 Plan pipeline | ✅ outline → per-epic tasks (≤ 3 in flight) → validate → one repair round; deliverable injection; template fallback | Prompt-hash cache (AI.md §B.4) not implemented |
+| T-305 Plan pipeline | ✅ outline → per-epic tasks (≤ 3 in flight) → validate → one repair round; deliverable injection; template fallback; project/model-scoped prompt-hash cache in existing plans rows | Live-model quality verification still subject to Gemini quota; see `docs/INTELLIGENCE-QA.md` |
 | T-306 Plan validators | ✅ `validatePlan`: DAG, skills, sizes, capacity cut line, schedule, challenges, deliverables | – |
 | T-307 Plan review | ✅ `patchPlan` (re-validated draft versions) + S8 review UI | – |
 | T-309 Solver | ✅ `solveAssignments` stores `proposed` rows; locks respected | – |
@@ -60,6 +60,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-501 Schedule & health | ✅ `computeSchedule` (CPM, velocity, health) feeds the MC snapshot | – |
 | T-503 MC UI (S11) | ✅ live lanes, status band, up next, activity feed, agents, recommendations; `?demo=1` fixture fallback | – |
 | T-504 Adaptive rules | ✅ rules v1, `recs.evaluate` job (cron every 2 min + board changes), dedupe | – |
+| T-507 Adaptive rules v2 | ✅ blocked chains, unavailable owners, agent-awaiting-input; wired to milestones/session summaries, with lock/manual/availability/capacity guards | Live cron/Queue and real agent verification on deployment |
 | T-505 Recommendations | ✅ API + UI accept/dismiss | – |
 | T-602 Agent ingestion | ✅ `/agent/events` (token auth, rate limit, minimization), `agent.event` session state machine, task linking, timeouts | – |
 | Screens S1–S4, S12–S14 | ✅ Login, Join (invite landing), S2 create-workspace (`/new`, Knight Hacks template or custom deadline) and invite panel (Team, Settings), Onboarding with skill import, member profile, Code, Agents, Settings (repos, AI status, agent tokens) on real data | Invite QR code (needs a dependency) and live join presence; no list-invites endpoint, so a link shows only in the session that made it |
@@ -69,7 +70,7 @@ What has landed so far, verified against the code on this branch. Remaining work
 | T-706 Submission | 🟡 docs/SUBMISSION.md (Devpost text, built-with, sponsor paragraphs, capture checklist) | Screenshots, video, architecture PNG, Figma link |
 | T-603 Claude Code plugin | 🟡 manifest, hooks, minimizing `emit.sh` + test | Marketplace repo; live test |
 
-**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. On the product side: project selection in place of the fixture ids, and the plan prompt-hash cache.
+**What still needs doing:** the manual setup tasks T-002 (Hyperdrive id, queues), T-003 (run migrations on Tiger, test `0002_timescale.sql`), T-006 (GitHub Apps), T-007 (migrations environment secrets) and T-008 (deep health on prod). Then live verification of GitHub sign-in, webhooks, Gemini, HF and the real-mode E2E. Then the T-603 marketplace repo. On the product side: project selection in place of the fixture ids. Intelligence code and local QA are covered in `docs/INTELLIGENCE-QA.md`; live deployment checks remain separate.
 
 Also in the scaffold:
 - **Mock mode** (`HAKIT_MOCKS=1`): every endpoint serves fixtures.
