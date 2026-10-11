@@ -72,10 +72,15 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
               <a
                 href={e.url}
                 target="_blank"
-                rel="noreferrer"
-                className="rounded-xs font-mono underline decoration-border-strong underline-offset-2 hover:text-strong"
+                rel="noopener noreferrer"
+                title="Open on GitHub"
+                className="rounded-xs font-mono underline decoration-border-strong underline-offset-2 transition-colors duration-(--duration-instant) hover:text-strong hover:decoration-current"
               >
                 {e.sourceRef}
+                <span aria-hidden className="ml-0.5 no-underline">
+                  ↗
+                </span>
+                <span className="sr-only"> (opens in a new tab)</span>
               </a>
             ) : (
               <span className="font-mono">{e.sourceRef}</span>
