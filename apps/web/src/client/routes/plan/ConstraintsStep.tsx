@@ -6,13 +6,13 @@
 import { useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Challenge, HackathonTemplate, Idea, Member, PutConstraints } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Button, TickNumber, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
 import { clock, fmtHours, memberName } from '../mission-control/shared';
 import { EmptyBox, ErrorBox, LoadingBlocks, Pill } from '../page-states';
 import { constraintFit, type FitState } from './fit';
-import { SectionHead, StatusMark, fieldClass, pct, type Mark } from './ui';
+import { SectionHead, StatusMark, fieldClass, pct, stagger, useGrow, type Mark } from './ui';
 
 /** Used when the workspace response predates `hackathonSlug` (only one template is seeded). */
 export const DEFAULT_HACKATHON_SLUG = 'knight-hacks-ix';
@@ -235,7 +235,17 @@ function ConstraintsEditor(props: {
 
       <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start" aria-label="Pinned constraints">
         <section className="space-y-3 rounded-md border border-border bg-surface p-4">
-          <SectionHead title="Constraints" meta={dirty ? 'Unsaved' : save.isSuccess ? 'Saved' : undefined} />
+          <SectionHead title="Constraints">
+            {dirty ? (
+              <span className="flex items-center gap-1 text-label text-warning">
+                <span aria-hidden>●</span> Unsaved
+              </span>
+            ) : save.isSuccess ? (
+              <span role="status" className="flex animate-pop-in items-center gap-1 text-label text-success">
+                <span aria-hidden>✓</span> Saved
+              </span>
+            ) : null}
+          </SectionHead>
           <dl className="grid grid-cols-2 gap-2 text-label">
             <div>
               <dt className="text-subtle">Deadline</dt>
@@ -254,22 +264,22 @@ function ConstraintsEditor(props: {
           ) : (
             <ul className="flex flex-wrap gap-1.5">
               {chosen.map((c) => (
-                <li key={c.id}>
+                <li key={c.id} className="animate-pop-in">
                   <Pill tone="accent">{c.sponsor}</Pill>
                 </li>
               ))}
               {state.required.map((t) => (
-                <li key={`r-${t}`}>
+                <li key={`r-${t}`} className="animate-pop-in">
                   <Pill>needs {t}</Pill>
                 </li>
               ))}
               {state.excluded.map((t) => (
-                <li key={`x-${t}`}>
+                <li key={`x-${t}`} className="animate-pop-in">
                   <Pill tone="danger">no {t}</Pill>
                 </li>
               ))}
               {state.custom.map((t) => (
-                <li key={`c-${t}`}>
+                <li key={`c-${t}`} className="animate-pop-in">
                   <Pill>{t}</Pill>
                 </li>
               ))}
@@ -295,8 +305,12 @@ function ConstraintsEditor(props: {
             <>
               <FitBar score={fit.score} />
               <ul className="space-y-1.5">
-                {fit.items.map((i) => (
-                  <li key={i.tech} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-label">
+                {fit.items.map((i, n) => (
+                  <li
+                    key={`${i.tech}-${i.state}`}
+                    style={stagger(n)}
+                    className="flex animate-list-in flex-wrap items-center gap-x-2 gap-y-0.5 text-label"
+                  >
                     <StatusMark mark={FIT_MARK[i.state]} hideWord />
                     <span className="font-mono text-default">{i.tech}</span>
                     <span className="text-subtle">
@@ -337,6 +351,7 @@ function ConstraintsEditor(props: {
 
 /** Coverage share is counted, not estimated: solid bar (DESIGN §2.5); the number is always shown beside it. */
 function FitBar({ score }: { score: number }) {
+  const w = useGrow(score);
   return (
     <div className="flex items-center gap-2">
       <div
@@ -349,13 +364,13 @@ function FitBar({ score }: { score: number }) {
       >
         <div
           className={cn(
-            'h-full rounded-full',
+            'h-full rounded-full transition-[width,background-color] duration-(--duration-slow) ease-emphasized',
             score >= 0.8 ? 'bg-success' : score >= 0.5 ? 'bg-warning' : 'bg-danger',
           )}
-          style={{ width: `${score * 100}%` }}
+          style={{ width: `${w * 100}%` }}
         />
       </div>
-      <span className="text-label text-strong">{pct(score)}</span>
+      <TickNumber value={pct(score)} className="w-10 justify-end text-label text-strong" />
     </div>
   );
 }
@@ -369,8 +384,10 @@ function ChallengeCard(props: { challenge: Challenge; selected: boolean; onToggl
         aria-pressed={props.selected}
         onClick={props.onToggle}
         className={cn(
-          'hover-light flex h-full w-full flex-col gap-2 rounded-md border bg-surface p-4 text-left',
-          props.selected ? 'border-accent-500' : 'border-border',
+          'hover-light press flex h-full w-full flex-col gap-2 rounded-md border p-4 text-left transition-[border-color,background-color,box-shadow] duration-(--duration-base) ease-standard',
+          props.selected
+            ? 'border-accent-400 bg-raised shadow-[0_0_0_3px_var(--color-accent-a12)]'
+            : 'border-border bg-surface hover:border-border-strong',
         )}
       >
         <span className="flex w-full items-start gap-2">
@@ -378,8 +395,15 @@ function ChallengeCard(props: { challenge: Challenge; selected: boolean; onToggl
             <span className="block text-caption uppercase tracking-wide text-subtle">{c.sponsor}</span>
             <span className="block text-body font-medium text-strong">{c.title}</span>
           </span>
-          <span className={cn('text-label', props.selected ? 'text-accent-400' : 'text-subtle')}>
-            <span aria-hidden>{props.selected ? '✓ ' : '+ '}</span>
+          <span
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-full border px-2 text-label transition-colors duration-(--duration-fast)',
+              props.selected ? 'border-accent-400 text-accent-400' : 'border-border text-subtle',
+            )}
+          >
+            <span aria-hidden key={String(props.selected)} className="animate-pop-in">
+              {props.selected ? '✓' : '+'}
+            </span>
             {props.selected ? 'Selected' : 'Select'}
           </span>
         </span>
@@ -446,14 +470,17 @@ function TagInput(props: {
       {props.items.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {props.items.map((t) => (
-            <li key={t}>
+            <li key={t} className="animate-pop-in">
               <button
                 type="button"
                 onClick={() => props.onChange(props.items.filter((x) => x !== t))}
                 aria-label={`Remove ${t}`}
-                className="inline-flex h-control-sm items-center gap-1 rounded-full border border-border px-2 text-label text-default hover:bg-hover"
+                className="interactive press inline-flex h-control-sm items-center gap-1.5 rounded-full border border-border bg-raised pr-1.5 pl-2.5 text-label text-default"
               >
-                {t} <span aria-hidden>×</span>
+                <span className="font-mono">{t}</span>
+                <span aria-hidden className="grid size-4 place-items-center rounded-full text-subtle">
+                  ×
+                </span>
               </button>
             </li>
           ))}

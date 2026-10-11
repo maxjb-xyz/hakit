@@ -7,14 +7,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Assignment, AssignmentProposal, Member, ProjectBoard, Task } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Button, TickNumber, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
 import { AiGlyph } from '../mission-control/RecommendationList';
 import { fmtHours, memberName } from '../mission-control/shared';
 import { MemberAvatar, Picker } from '../tasks/meta';
 import { EmptyBox, ErrorBox, LoadingBlocks, Pill } from '../page-states';
-import { EstimatedBar, SectionHead, StatusMark, pct } from './ui';
+import { EstimatedBar, SectionHead, StatusMark, pct, stagger, useGrow } from './ui';
 
 const WARNING_WORD = {
   OVERLOADED_MEMBER: 'Overloaded member',
@@ -198,18 +198,27 @@ export function AssignStep(props: { pid: string; members: Member[]; onGoToPlan: 
       <div className="grid gap-4 lg:grid-cols-(--grid-side-360)">
         <div className="min-w-0 space-y-3">
           {members.length === 0 && <EmptyBox message="No team members yet. Invite teammates first." />}
-          {members.map((m) => {
+          {members.map((m, mi) => {
             const l = load(m.user.id);
             const cards = shown.filter((a) => a.userId === m.user.id);
             return (
               <section
                 key={m.user.id}
                 aria-label={`${memberName(m)}: ${cards.length} tasks`}
-                className="rounded-md border border-border bg-surface"
+                style={stagger(mi)}
+                className={cn(
+                  'animate-list-in rounded-md border bg-surface',
+                  l.assigned > l.available ? 'border-danger' : 'border-border',
+                )}
               >
-                <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-                  <MemberAvatar member={m} />
-                  <span className="text-body font-medium text-strong">{memberName(m)}</span>
+                <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2.5">
+                  <MemberAvatar member={m} className="size-7" />
+                  <span className="min-w-0">
+                    <span className="block text-body font-medium text-strong">{memberName(m)}</span>
+                    <span className="block text-caption text-subtle">
+                      {cards.length} task{cards.length === 1 ? '' : 's'}
+                    </span>
+                  </span>
                   <span
                     className={cn(
                       'ml-auto text-label',
@@ -232,8 +241,9 @@ export function AssignStep(props: { pid: string; members: Member[]; onGoToPlan: 
                   <p className="px-4 py-3 text-body text-subtle">Nothing assigned.</p>
                 ) : (
                   <ul className="flex flex-wrap gap-2 p-3">
-                    {cards.map((a) => (
+                    {cards.map((a, i) => (
                       <AssignmentCard
+                        index={i}
                         key={a.id}
                         a={a}
                         task={taskById.get(a.taskId)}
@@ -273,7 +283,13 @@ export function AssignStep(props: { pid: string; members: Member[]; onGoToPlan: 
           </section>
         </div>
 
-        <aside className="min-w-0 lg:sticky lg:top-4 lg:self-start" aria-label="Assignment explanation">
+        <aside
+          id="assign-explain"
+          className="min-w-0 lg:sticky lg:top-4 lg:self-start"
+          aria-label="Assignment explanation"
+          aria-live="polite"
+          onKeyDown={(e) => e.key === 'Escape' && setSelectedTask(null)}
+        >
           {selected ? (
             <ExplanationCard
               key={selected.id}
@@ -285,7 +301,10 @@ export function AssignStep(props: { pid: string; members: Member[]; onGoToPlan: 
               isProposal={!!proposal}
             />
           ) : (
-            <div className="rounded-md border border-dashed border-border-strong px-4 py-8 text-center text-body text-subtle">
+            <div className="animate-fade-in space-y-2 rounded-md border border-dashed border-border-strong px-4 py-8 text-center text-body text-subtle">
+              <span aria-hidden className="block text-title text-faint">
+                ?
+              </span>
               Select a task card to see why the solver picked that person.
             </div>
           )}
@@ -296,6 +315,7 @@ export function AssignStep(props: { pid: string; members: Member[]; onGoToPlan: 
 }
 
 function AssignmentCard(props: {
+  index: number;
   a: Assignment;
   task: Task | undefined;
   selected: boolean;
@@ -303,14 +323,17 @@ function AssignmentCard(props: {
 }) {
   const { a, task } = props;
   return (
-    <li>
+    <li style={stagger(props.index)} className="max-w-full animate-list-in">
       <button
         type="button"
         aria-pressed={props.selected}
+        aria-controls="assign-explain"
         onClick={props.onSelect}
         className={cn(
-          'hover-light flex max-w-full flex-col items-start gap-1 rounded-sm border bg-raised px-2.5 py-1.5 text-left',
-          props.selected ? 'border-accent-500' : 'border-border',
+          'hover-light press flex max-w-full flex-col items-start gap-1 rounded-sm border bg-raised px-2.5 py-1.5 text-left',
+          props.selected
+            ? 'border-accent-400 shadow-[0_0_0_3px_var(--color-accent-a12)]'
+            : 'border-border hover:border-border-strong',
           a.status === 'proposed' && 'border-dashed',
         )}
       >
@@ -371,12 +394,15 @@ function ExplanationCard(props: {
   const pick = explain.data?.solverPick;
 
   return (
-    <section className="space-y-4 rounded-md border border-border bg-surface p-4">
+    <section className="animate-slide-in-right space-y-4 rounded-md border border-border-strong bg-surface p-4 shadow-e2">
       <SectionHead title={task ? `${task.key} · ${task.title}` : 'Assignment'} />
-      <div className="flex items-center gap-2">
-        <MemberAvatar member={member(a.userId)} />
-        <span className="text-body text-strong">{memberName(member(a.userId))}</span>
-        <span className="ml-auto text-label text-default">{match(a.score)} match</span>
+      <div className="flex items-center gap-3 rounded-sm bg-raised px-3 py-2">
+        <MemberAvatar member={member(a.userId)} className="size-8" />
+        <span className="text-body font-medium text-strong">{memberName(member(a.userId))}</span>
+        <span className="ml-auto text-right">
+          <TickNumber value={match(a.score)} className="block text-title text-strong" />
+          <span className="block text-caption text-subtle">match</span>
+        </span>
       </div>
       <p
         className={cn('text-body text-default', a.explanationSource === 'ai' && 'border-l-2 border-ai pl-2')}
@@ -407,7 +433,10 @@ function ExplanationCard(props: {
                 <th scope="row" className="py-1 text-left font-normal text-muted">
                   {label}
                 </th>
-                <td className="py-1 text-right font-mono text-default">{(b[k] as number).toFixed(2)}</td>
+                <td className="w-1/3 py-1 pl-3">
+                  <ScoreBar value={b[k] as number} />
+                </td>
+                <td className="w-12 py-1 text-right font-mono text-default">{(b[k] as number).toFixed(2)}</td>
               </tr>
             ))}
             {b.criticalPathPenalty !== 0 && (
@@ -415,6 +444,7 @@ function ExplanationCard(props: {
                 <th scope="row" className="py-1 text-left font-normal text-muted">
                   Critical-path penalty
                 </th>
+                <td />
                 <td className="py-1 text-right font-mono text-danger">
                   −{Math.abs(b.criticalPathPenalty).toFixed(2)}
                 </td>
@@ -424,6 +454,7 @@ function ExplanationCard(props: {
               <th scope="row" className="py-1 text-left font-medium text-strong">
                 Total
               </th>
+              <td />
               <td className="py-1 text-right font-mono text-strong">{b.total.toFixed(2)}</td>
             </tr>
           </tbody>
@@ -499,5 +530,18 @@ function ExplanationCard(props: {
         <p className="text-caption text-subtle">Accept the proposal to override or lock individual tasks.</p>
       )}
     </section>
+  );
+}
+
+/** A breakdown component's 0–1 score as a short measured bar beside its number. */
+function ScoreBar({ value }: { value: number }) {
+  const w = useGrow(Math.min(1, Math.max(0, value)));
+  return (
+    <span aria-hidden className="block h-1 overflow-hidden rounded-full bg-hover">
+      <span
+        className="block h-full rounded-full bg-muted transition-[width] duration-(--duration-slow) ease-emphasized"
+        style={{ width: `${w * 100}%` }}
+      />
+    </span>
   );
 }

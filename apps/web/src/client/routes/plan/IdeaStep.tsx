@@ -3,17 +3,16 @@
  * deterministic team fit, challenges, complexity, risks and "why this team". Pick, refine, regenerate one.
  * Generation and refinement stream over SSE (T-303 `generateIdeas` / `refineIdea`).
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Idea } from '@hakit/contracts';
-import { Button, cn } from '@hakit/ui';
+import { Button, TickNumber, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
-import { MeasuredBar } from '../mission-control/shared';
 import { AiGlyph } from '../mission-control/RecommendationList';
 import { EmptyBox, ErrorBox, LoadingBlocks, Pill } from '../page-states';
 import { useIdeaStream } from './streams';
-import { Field, SectionHead, StageProgress, pct } from './ui';
+import { Field, GrowBar, SectionHead, StageProgress, pct, stagger } from './ui';
 
 const REFINE_PRESETS = ['Make it simpler', 'More ML', 'Fit a sponsor challenge'];
 
@@ -38,6 +37,9 @@ export function IdeaStep(props: { pid: string; selectedId: string | null; onPick
   for (const s of gen.state.ideas) if (!all.some((i) => i.id === s.id)) all.push(s);
   all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const selected = props.selectedId ?? saved.find((i) => i.selected)?.id ?? null;
+  // While a generation streams, hold a skeleton slot for each idea still to come.
+  const want = busy?.kind === 'generate' ? 3 : busy?.kind === 'regenerate' ? 1 : 0;
+  const pending = gen.state.running ? Math.max(0, want - gen.state.ideas.length) : 0;
 
   const generate = (count: number, guidance?: string, kind: 'generate' | 'regenerate' = 'generate') => {
     setBusy({ kind });
@@ -91,7 +93,7 @@ export function IdeaStep(props: { pid: string; selectedId: string | null; onPick
           <ErrorBox what="ideas" error={ideas.error} onRetry={() => void ideas.refetch()} />
         ) : ideas.isPending ? (
           <LoadingBlocks label="Loading ideas" rows={2} />
-        ) : all.length === 0 ? (
+        ) : all.length === 0 && pending === 0 ? (
           <EmptyBox
             message="No ideas yet. Describe yours, or generate three that fit this team."
             action={
@@ -102,8 +104,24 @@ export function IdeaStep(props: { pid: string; selectedId: string | null; onPick
           />
         ) : (
           <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {all.map((idea) => (
+            {Array.from({ length: pending }, (_, i) => (
+              <li
+                key={`pending-${i}`}
+                aria-hidden
+                style={stagger(i)}
+                className="flex min-h-72 animate-list-in flex-col gap-3 rounded-md border border-border border-l-2 border-l-ai bg-surface p-4"
+              >
+                <div className="skeleton h-5 w-2/3 rounded-xs" />
+                <div className="skeleton h-4 rounded-xs" />
+                <div className="skeleton h-4 w-5/6 rounded-xs" />
+                <div className="skeleton mt-2 h-1.5 rounded-full" />
+                <div className="skeleton h-4 w-1/2 rounded-xs" />
+                <div className="skeleton mt-auto h-8 w-1/3 rounded-sm" />
+              </li>
+            ))}
+            {all.map((idea, i) => (
               <IdeaCard
+                index={i}
                 key={idea.id}
                 idea={idea}
                 picked={idea.id === selected}
@@ -217,6 +235,7 @@ function GenerateCard(props: { running: boolean; onGenerate: (count: number, gui
 }
 
 function IdeaCard(props: {
+  index: number;
   idea: Idea;
   picked: boolean;
   busy: boolean;
@@ -230,11 +249,32 @@ function IdeaCard(props: {
   const [refineOpen, setRefineOpen] = useState(false);
   const [text, setText] = useState('');
   const ai = idea.source === 'ai';
+  const btnId = `refine-btn-${idea.id}`;
+  const popId = `refine-${idea.id}`;
+  const popover = useRef<HTMLFormElement>(null);
+  const close = () => {
+    setRefineOpen(false);
+    document.getElementById(btnId)?.focus();
+  };
+  // Opening moves focus to the first preset; a click outside closes.
+  useEffect(() => {
+    if (!refineOpen) return;
+    popover.current?.querySelector<HTMLElement>('button')?.focus();
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!popover.current?.contains(t) && !document.getElementById(btnId)?.contains(t)) setRefineOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [refineOpen, btnId]);
   return (
     <li
+      style={stagger(props.index)}
       className={cn(
-        'flex flex-col gap-3 rounded-md border bg-surface p-4',
-        props.picked ? 'border-accent-500' : 'border-border',
+        'relative flex animate-list-in flex-col gap-3 rounded-md border p-4 transition-[border-color,background-color,box-shadow,opacity] duration-(--duration-base) ease-standard',
+        props.picked
+          ? 'border-accent-400 bg-raised shadow-[0_0_0_3px_var(--color-accent-a12)]'
+          : 'border-border bg-surface hover:border-border-strong',
         ai && 'border-l-2 border-l-ai',
         props.refining && 'opacity-60',
       )}
@@ -258,9 +298,13 @@ function IdeaCard(props: {
       <div className="space-y-1">
         <div className="flex items-baseline justify-between text-label">
           <span className="text-muted">Team fit</span>
-          <span className="text-strong">{pct(idea.teamFit)}</span>
+          <TickNumber value={pct(idea.teamFit)} className="text-strong" />
         </div>
-        <MeasuredBar value={idea.teamFit} label={`Team fit ${pct(idea.teamFit)}`} tone="accent" />
+        <GrowBar
+          value={idea.teamFit}
+          label={`Team fit ${pct(idea.teamFit)}`}
+          tone={idea.teamFit >= 0.6 ? 'accent' : 'warning'}
+        />
         <p className="text-caption text-subtle">Share of the stack's skills someone on the team has.</p>
       </div>
 
@@ -323,15 +367,26 @@ function IdeaCard(props: {
           aria-pressed={props.picked}
           onClick={props.onPick}
         >
-          {props.picked ? 'Picked' : 'Pick'}
+          {props.picked ? (
+            <>
+              <span aria-hidden className="animate-pop-in text-success">
+                ✓
+              </span>
+              Picked
+            </>
+          ) : (
+            'Pick'
+          )}
         </Button>
         <Button
+          id={btnId}
           size="sm"
           aria-expanded={refineOpen}
+          aria-controls={refineOpen ? popId : undefined}
           onClick={() => setRefineOpen((o) => !o)}
           disabled={props.busy}
         >
-          Refine
+          Refine…
         </Button>
         {ai && (
           <Button size="sm" variant="ghost" onClick={props.onRegenerate} disabled={props.busy}>
@@ -341,36 +396,52 @@ function IdeaCard(props: {
       </div>
       {refineOpen && (
         <form
-          className="space-y-2"
+          id={popId}
+          ref={popover}
+          aria-label={`Refine ${c.title}`}
+          className="absolute inset-x-3 bottom-14 z-10 origin-bottom animate-pop-in space-y-3 rounded-md border border-border-strong bg-raised p-3 shadow-e2"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              close();
+            }
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             if (!text.trim()) return;
             props.onRefine(text.trim());
-            setRefineOpen(false);
+            close();
             setText('');
           }}
         >
+          <p className="flex items-center gap-1.5 text-label text-muted">
+            <AiGlyph /> Refine with AI
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {REFINE_PRESETS.map((p) => (
-              <Button
+              <button
                 key={p}
-                size="sm"
-                variant="ghost"
                 type="button"
                 disabled={props.busy}
                 onClick={() => {
                   props.onRefine(p);
-                  setRefineOpen(false);
+                  close();
                 }}
+                className="interactive press h-control-sm rounded-full border border-border-strong px-2.5 text-label text-default disabled:opacity-50"
               >
                 {p}
-              </Button>
+              </button>
             ))}
           </div>
           <Field label="Or describe the change" value={text} onChange={setText} maxLength={1000} />
-          <Button size="sm" type="submit" disabled={!text.trim() || props.busy}>
-            Refine idea
-          </Button>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" type="button" onClick={close}>
+              Cancel
+            </Button>
+            <Button size="sm" variant="primary" type="submit" disabled={!text.trim() || props.busy}>
+              Refine idea
+            </Button>
+          </div>
         </form>
       )}
     </li>

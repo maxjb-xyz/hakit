@@ -63,9 +63,10 @@ function TemplateOption(props: {
       className={cn(
         'flex items-start gap-3 rounded-md border p-4 transition-colors duration-(--duration-instant)',
         props.disabled ? 'cursor-default' : 'cursor-pointer',
+        'press has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-accent-400',
         props.checked
-          ? 'border-accent-500 bg-accent-a12'
-          : cn('border-border', !props.disabled && 'hover:bg-raised'),
+          ? 'border-accent-400 bg-accent-a12'
+          : cn('border-border', !props.disabled && 'hover:border-border-strong hover:bg-raised'),
       )}
     >
       <input

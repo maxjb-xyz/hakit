@@ -2,10 +2,10 @@
  * S8 Plan review (T-307): generate (T-305 SSE, sections stream in), version switcher (`listPlans`), inline edits that
  * batch into one `patchPlan` on save (the server re-validates and stores a new draft version), and accept (T-308).
  */
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Idea, Member, Plan, PlanSummary, Project } from '@hakit/contracts';
-import { Button } from '@hakit/ui';
+import { Button, cn } from '@hakit/ui';
 import { api } from '../../lib/api';
 import { qk } from '../../lib/query';
 import { fmtHours } from '../mission-control/shared';
@@ -13,7 +13,7 @@ import { EmptyBox, ErrorBox, LoadingBlocks, Pill } from '../page-states';
 import { applyEdits, editCount, noEdits, toPatch, type PlanEdits } from './draft';
 import { PlanSections } from './PlanReview';
 import { usePlanStream, type PlanStage } from './streams';
-import { Field, StageProgress } from './ui';
+import { Field, StageProgress, StatusMark } from './ui';
 
 const STAGE_LABEL: Record<PlanStage, string> = {
   context: 'Reading team capability and the idea',
@@ -118,7 +118,7 @@ export function PlanStep(props: {
       </span>
       {showGuidance && (
         <form
-          className="flex basis-full flex-wrap items-end gap-2 rounded-md border border-border bg-surface p-3"
+          className="flex basis-full animate-slide-up flex-wrap items-end gap-2 rounded-md border border-border border-l-2 border-l-ai bg-surface p-3"
           onSubmit={(e) => {
             e.preventDefault();
             generate(guidance);
@@ -231,29 +231,158 @@ export function PlanStep(props: {
   );
 }
 
+/**
+ * Version switcher: a button that opens a listbox popover of every version with its status, size and feasibility.
+ * Arrow keys move, Enter/Space picks, Escape closes and returns focus to the button.
+ */
 function VersionSwitcher(props: {
   versions: PlanSummary[];
   value: string | null;
   onChange: (id: string) => void;
 }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const current = props.versions.find((v) => v.id === props.value) ?? props.versions[0]!;
+  const [active, setActive] = useState(0);
+  const btn = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    list.current?.focus();
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!list.current?.contains(t) && !btn.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
+  const show = () => {
+    setActive(Math.max(0, props.versions.indexOf(current)));
+    setOpen(true);
+  };
+  const close = () => {
+    setOpen(false);
+    btn.current?.focus();
+  };
+  const pick = (v: PlanSummary) => {
+    if (v.id !== props.value) props.onChange(v.id);
+    close();
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    const n = props.versions.length;
+    if (e.key === 'ArrowDown') setActive((i) => (i + 1) % n);
+    else if (e.key === 'ArrowUp') setActive((i) => (i - 1 + n) % n);
+    else if (e.key === 'Home') setActive(0);
+    else if (e.key === 'End') setActive(n - 1);
+    else if (e.key === 'Enter' || e.key === ' ') pick(props.versions[active]!);
+    else if (e.key === 'Escape' || e.key === 'Tab') {
+      if (e.key === 'Escape') e.stopPropagation();
+      close();
+      return;
+    } else return;
+    e.preventDefault();
+  };
   return (
-    <label className="flex min-w-0 max-w-full items-center gap-2 text-label text-muted">
-      Version
-      <select
-        value={props.value ?? ''}
-        onChange={(e) => props.onChange(e.target.value)}
-        className="h-control-md min-w-0 max-w-full truncate rounded-sm border border-border bg-raised px-2 text-body text-default hover:bg-hover"
+    <div className="relative min-w-0">
+      <button
+        ref={btn}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        aria-label={`Plan version: v${current.version}, ${STATUS_WORD[current.status]}`}
+        onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            show();
+          }
+        }}
+        className="field press flex h-control-md max-w-full min-w-0 items-center gap-2 rounded-sm px-2.5 text-body"
       >
-        {props.versions.map((v) => (
-          <option key={v.id} value={v.id}>
-            v{v.version} · {STATUS_WORD[v.status]} · {v.taskCount} tasks · ≈{fmtHours(v.requiredHours)} of ≈
-            {fmtHours(v.availableEffectiveHours)}
-            {v.cutTaskCount ? ` · ${v.cutTaskCount} cut` : ''}
-            {v.feasibilityOk ? '' : ' · needs fixes'}
-          </option>
-        ))}
-      </select>
-    </label>
+        <span className="text-label text-subtle">Version</span>
+        <span className="font-medium text-strong">v{current.version}</span>
+        <VersionStatus v={current} />
+        <span
+          aria-hidden
+          className={cn('text-subtle transition-transform duration-(--duration-fast)', open && 'rotate-180')}
+        >
+          ▾
+        </span>
+      </button>
+      {open && (
+        <ul
+          ref={list}
+          id={id}
+          role="listbox"
+          tabIndex={-1}
+          aria-label="Plan versions"
+          aria-activedescendant={`${id}-${active}`}
+          onKeyDown={onKey}
+          className="absolute top-full left-0 z-20 mt-1 max-h-80 w-max max-w-[min(26rem,calc(100vw-2rem))] origin-top-left animate-pop-in overflow-auto rounded-md border border-border-strong bg-raised p-1 shadow-e2 outline-none"
+        >
+          {props.versions.map((v, i) => {
+            const selected = v.id === current.id;
+            return (
+              <li
+                key={v.id}
+                id={`${id}-${i}`}
+                role="option"
+                aria-selected={selected}
+                onPointerMove={() => setActive(i)}
+                onClick={() => pick(v)}
+                className={cn(
+                  'flex items-start gap-3 rounded-sm px-2.5 py-2',
+                  i === active && 'bg-hover',
+                  'active:bg-pressed',
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn('w-3 pt-0.5 text-label', selected ? 'text-accent-400' : 'text-transparent')}
+                >
+                  ✓
+                </span>
+                <span className="min-w-0 flex-1 space-y-0.5">
+                  <span className="flex items-center gap-2">
+                    <span className="text-body font-medium text-strong">v{v.version}</span>
+                    <VersionStatus v={v} />
+                  </span>
+                  <span className="block text-label text-subtle">
+                    {v.taskCount} tasks · ≈{fmtHours(v.requiredHours)} of ≈
+                    {fmtHours(v.availableEffectiveHours)} <span className="text-faint">estimated</span>
+                    {v.cutTaskCount ? ` · ${v.cutTaskCount} cut` : ''}
+                  </span>
+                </span>
+                <span className="pt-0.5">
+                  <StatusMark
+                    mark={v.feasibilityOk ? 'ok' : 'warn'}
+                    word={v.feasibilityOk ? 'Feasible' : 'Needs fixes'}
+                  />
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function VersionStatus({ v }: { v: PlanSummary }) {
+  return (
+    <span
+      className={cn(
+        'rounded-full border px-1.5 text-caption',
+        v.status === 'accepted'
+          ? 'border-success text-success'
+          : v.status === 'draft'
+            ? 'border-border-strong text-muted'
+            : 'border-border text-faint',
+      )}
+    >
+      {STATUS_WORD[v.status]}
+    </span>
   );
 }
 
@@ -327,13 +456,20 @@ function SavedPlan(props: {
 
       {editable && (
         <div
-          className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-2 rounded-md border border-border-strong bg-raised px-4 py-3 shadow-e2"
+          className="sticky bottom-0 z-10 -mx-1 flex animate-slide-up flex-wrap items-center gap-2 rounded-md border border-border-strong bg-raised px-4 py-3 shadow-e2"
           role="region"
           aria-label="Plan actions"
         >
           {n > 0 ? (
-            <span className="text-body text-default" role="status">
-              {n} unsaved edit{n === 1 ? '' : 's'} · saved together as v-next and re-checked by the validator
+            <span className="flex items-center gap-2 text-body text-default" role="status">
+              <span
+                key={n}
+                aria-hidden
+                className="grid h-5 min-w-5 animate-pop-in place-items-center rounded-full bg-accent-500 px-1 text-caption text-strong tabular-nums"
+              >
+                {n}
+              </span>
+              unsaved edit{n === 1 ? '' : 's'} · saved together as v-next and re-checked by the validator
             </span>
           ) : (
             <span className="text-body text-subtle">

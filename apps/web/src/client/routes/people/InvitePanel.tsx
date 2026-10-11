@@ -20,8 +20,7 @@ const EXPIRY = [
   { hours: 24 * 14, label: '2 weeks' },
 ] as const;
 
-const field =
-  'mt-1 h-control-md w-full rounded-sm border border-border-strong bg-sunken px-3 text-body text-strong placeholder:text-subtle';
+const field = 'field mt-1 h-control-md w-full rounded-sm px-3 text-body text-strong placeholder:text-subtle';
 
 const fmtExpiry = (iso: string) =>
   new Date(iso).toLocaleString(undefined, {
@@ -143,7 +142,7 @@ export function InvitePanel(props: { wid: string; className?: string; headingLev
                   aria-describedby={!usesValid ? `${id}-max-err` : undefined}
                   value={maxUses}
                   onChange={(e) => setMaxUses(e.target.value)}
-                  className="h-control-md w-16 rounded-sm border border-border-strong bg-sunken px-2 text-body text-strong disabled:opacity-50"
+                  className="field h-control-md w-16 rounded-sm px-2 text-body text-strong disabled:opacity-50"
                 />
               </div>
               {!usesValid && (
@@ -168,21 +167,27 @@ export function InvitePanel(props: { wid: string; className?: string; headingLev
         {members.isError ? (
           <ErrorBox what="the team" error={members.error} onRetry={() => void members.refetch()} />
         ) : members.isPending ? (
-          <p className="text-label text-subtle">Loading the team…</p>
+          <div aria-busy="true" aria-label="Loading the team" className="flex gap-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="skeleton h-control-sm w-24 rounded-full" />
+            ))}
+          </div>
         ) : (
           <>
             <p className="text-label text-subtle">
               {members.data.length === 1 ? 'Only you so far.' : `${members.data.length} people on the team.`}
             </p>
             <ul className="mt-2 flex flex-wrap gap-2" aria-label="Team members">
-              {members.data.map((m) => (
+              {members.data.map((m, i) => (
                 <li
                   key={m.user.id}
-                  className="flex h-control-sm items-center gap-1.5 rounded-full border border-border py-0.5 pr-2.5 pl-0.5"
+                  style={{ '--i': i } as React.CSSProperties}
+                  className="flex h-control-sm animate-list-in items-center gap-1.5 rounded-full border border-border py-0.5 pr-2.5 pl-0.5"
                 >
                   <PersonAvatar
                     name={m.user.name ?? m.user.githubLogin}
                     avatarUrl={m.user.avatarUrl}
+                    login={m.user.githubLogin}
                     colorIndex={m.colorIndex}
                     className="size-5 text-caption"
                     decorative
