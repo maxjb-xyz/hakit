@@ -5,6 +5,7 @@
  */
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
+import { TickNumber, cn } from '@hakit/ui';
 import type { Assignment, MemberSkill, TaskStatus } from '@hakit/contracts';
 import { api } from '../lib/api';
 import { useProject } from '../lib/project';
@@ -16,10 +17,35 @@ import { EmptyBox, ErrorBox, PageHeader, Pill, TaskLinkChip } from './page-state
 import { AvailabilityEditor } from './people/AvailabilityEditor';
 import { EvidenceList, SkillReview, isInferred } from './people/SkillReview';
 import { CATEGORY_LABEL, PersonAvatar, Tabs, isNotFound, tabPanelProps } from './people/shared';
+import { STATUS_LABEL, StatusIcon } from './tasks/meta';
 
 /** Stat tile: a Card's look on a div, since <dl> may only contain dt/dd groups wrapped in divs. */
 const stat = 'min-w-0 rounded-md border border-border bg-surface px-5 py-3 max-sm:px-4';
-import { STATUS_LABEL, StatusIcon } from './tasks/meta';
+/** A list row clickable through one `row-link` (secondary controls get `relative z-1`). */
+const listRow = 'row-interactive -mx-2 animate-list-in rounded-sm px-2';
+const stagger = (i: number) => ({ '--i': i }) as React.CSSProperties;
+
+function BackToTeam({ wid, tab }: { wid: string; tab?: string }) {
+  return (
+    <Link
+      to={`/w/${wid}/team${tab ? `?tab=${tab}` : ''}`}
+      className="interactive press -ml-1.5 inline-flex h-control-sm items-center gap-1 rounded-sm px-1.5 text-body text-muted"
+    >
+      <span aria-hidden>←</span> Team
+    </Link>
+  );
+}
+
+function ExternalGlyph() {
+  return (
+    <>
+      <span aria-hidden className="ml-0.5 text-subtle">
+        ↗
+      </span>
+      <span className="sr-only"> (opens GitHub in a new tab)</span>
+    </>
+  );
+}
 
 const TABS = ['skills', 'evidence', 'availability', 'assignments', 'agents'] as const;
 type Tab = (typeof TABS)[number];
@@ -41,14 +67,20 @@ const ASSIGNMENT_LABEL: Record<Assignment['status'], string> = {
 function Skeleton() {
   return (
     <div className="space-y-6 p-6 max-sm:p-4" aria-busy="true" aria-label="Loading member profile">
+      <div className="skeleton h-6 w-16 rounded-sm" />
       <div className="flex items-center gap-4">
-        <div className="size-14 animate-pulse rounded-full bg-raised" />
+        <div className="skeleton size-14 rounded-full" />
         <div className="space-y-2">
-          <div className="h-6 w-48 animate-pulse rounded-sm bg-raised" />
-          <div className="h-4 w-32 animate-pulse rounded-sm bg-raised" />
+          <div className="skeleton h-6 w-48 rounded-sm" />
+          <div className="skeleton h-4 w-32 rounded-sm" />
         </div>
       </div>
-      <div className="h-80 animate-pulse rounded-md border border-border bg-surface" />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="skeleton h-18 rounded-md" />
+        <div className="skeleton h-18 rounded-md" />
+        <div className="skeleton h-18 rounded-md" />
+      </div>
+      <div className="skeleton h-80 rounded-md" />
     </div>
   );
 }
@@ -63,10 +95,20 @@ function EvidenceTab({ skills }: { skills: MemberSkill[] }) {
     );
   return (
     <ul className="divide-y divide-border">
-      {withEvidence.map((s) => (
-        <li key={s.skill.slug} className="py-3 first:pt-0">
+      {withEvidence.map((s, i) => (
+        <li key={s.skill.slug} className="animate-list-in py-3 first:pt-0" style={stagger(i)}>
           <p className="mb-1.5 flex flex-wrap items-baseline gap-2 text-body">
             <span className="font-medium text-strong">{s.skill.name}</span>
+            <span
+              className={cn(
+                'inline-flex h-5 items-center rounded-full border px-2 text-caption tabular-nums',
+                isInferred(s)
+                  ? 'border-dashed border-level-4 text-subtle'
+                  : 'border-border-strong text-muted',
+              )}
+            >
+              {isInferred(s) ? `≈${s.level}` : s.level} / 5
+            </span>
             <span className="text-label text-subtle">
               {CATEGORY_LABEL[s.skill.category]} · level {s.level} ·{' '}
               {isInferred(s) ? `inferred, ${Math.round(s.confidence * 100)}% confidence` : 'confirmed'}
@@ -88,7 +130,7 @@ export function MemberProfile() {
   const now = useNow();
   // A profile is workspace-wide; assignments and agent sessions come from the project in view.
   const { pid } = useProject(wid);
-  useProjectSocket(pid ?? undefined);
+  const socket = useProjectSocket(pid ?? undefined);
 
   const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me') });
   const members = useQuery({
@@ -123,9 +165,7 @@ export function MemberProfile() {
   if (error || (members.data && !member))
     return (
       <div className="space-y-4 p-6 max-sm:p-4">
-        <Link to={`/w/${wid}/team`} className="rounded-xs text-body text-muted hover:text-strong">
-          ← Team
-        </Link>
+        <BackToTeam wid={wid} />
         {error && !isNotFound(error) ? (
           <ErrorBox
             what="this profile"
@@ -158,11 +198,13 @@ export function MemberProfile() {
   const learning = p.learningGoals;
   const skillList = skills.data ?? [];
 
+  const online = socket.state === 'open' && socket.presence.includes(uid);
   const panel = (id: Tab, body: React.ReactNode) =>
     tab === id ? (
       <div
+        key={id}
         {...tabPanelProps('profile', id)}
-        className="rounded-md border border-border bg-surface p-5 max-sm:p-4"
+        className="animate-fade-in rounded-md border border-border bg-surface p-5 max-sm:p-4"
       >
         {body}
       </div>
@@ -170,18 +212,25 @@ export function MemberProfile() {
 
   return (
     <div className="space-y-6 p-6 max-sm:p-4">
-      <Link to={`/w/${wid}/team?tab=members`} className="rounded-xs text-body text-muted hover:text-strong">
-        ← Team
-      </Link>
+      <BackToTeam wid={wid} tab="members" />
 
-      <div className="flex flex-wrap items-center gap-4">
-        <PersonAvatar
-          name={name}
-          avatarUrl={member.user.avatarUrl}
-          colorIndex={member.colorIndex}
-          className="size-14 text-title"
-          decorative
-        />
+      <div className="flex animate-fade-in flex-wrap items-center gap-4">
+        <span className="relative shrink-0">
+          <PersonAvatar
+            name={name}
+            avatarUrl={member.user.avatarUrl}
+            login={member.user.githubLogin}
+            colorIndex={member.colorIndex}
+            className="size-14 text-title"
+            decorative
+          />
+          {online && (
+            <span
+              aria-hidden
+              className="absolute right-0 bottom-0 size-3 rounded-full bg-success ring-2 ring-canvas"
+            />
+          )}
+        </span>
         <div className="min-w-0 flex-1">
           <PageHeader
             title={name}
@@ -190,11 +239,14 @@ export function MemberProfile() {
                 <a
                   href={`https://github.com/${member.user.githubLogin}`}
                   target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xs font-mono hover:text-strong"
+                  rel="noopener noreferrer"
+                  title="GitHub profile"
+                  className="rounded-xs font-mono underline-offset-2 transition-colors duration-(--duration-instant) hover:text-strong hover:underline"
                 >
                   @{member.user.githubLogin}
+                  <ExternalGlyph />
                 </a>
+                {online && <span className="text-success"> · online now</span>}
                 {member.role === 'owner' && ' · workspace owner'}
                 {p.headline && ` · ${p.headline}`}
               </>
@@ -208,7 +260,9 @@ export function MemberProfile() {
       <dl className="grid gap-3 sm:grid-cols-3">
         <div className={stat}>
           <dt className="text-label text-subtle">Available (self-reported)</dt>
-          <dd className="mt-1 text-title text-strong">≈ {fmtHours(p.availableHours)}</dd>
+          <dd className="mt-1 text-title text-strong">
+            ≈ <TickNumber value={fmtHours(p.availableHours)} />
+          </dd>
         </div>
         <div className={stat}>
           <dt className="text-label text-subtle">Working on</dt>
@@ -216,7 +270,8 @@ export function MemberProfile() {
             {current ? (
               <Link
                 to={`/w/${wid}/tasks?task=${current.key}`}
-                className="flex min-w-0 items-center gap-1.5 rounded-xs hover:text-strong"
+                title="Open in the task inspector"
+                className="interactive -mx-1 flex min-w-0 items-center gap-1.5 rounded-xs px-1"
               >
                 <StatusIcon status={current.status} />
                 <span className="shrink-0 font-mono text-label text-subtle">{current.key}</span>
@@ -257,11 +312,7 @@ export function MemberProfile() {
       {panel(
         'skills',
         skills.isPending ? (
-          <div
-            className="h-48 animate-pulse rounded-sm bg-raised"
-            aria-busy="true"
-            aria-label="Loading skills"
-          />
+          <div className="skeleton h-48 rounded-sm" aria-busy="true" aria-label="Loading skills" />
         ) : skills.isError ? (
           <ErrorBox what="skills" error={skills.error} onRetry={() => void skills.refetch()} />
         ) : (
@@ -307,11 +358,7 @@ export function MemberProfile() {
       {panel(
         'evidence',
         skills.isPending ? (
-          <div
-            className="h-48 animate-pulse rounded-sm bg-raised"
-            aria-busy="true"
-            aria-label="Loading evidence"
-          />
+          <div className="skeleton h-48 rounded-sm" aria-busy="true" aria-label="Loading evidence" />
         ) : skills.isError ? (
           <ErrorBox what="evidence" error={skills.error} onRetry={() => void skills.refetch()} />
         ) : (
@@ -322,11 +369,7 @@ export function MemberProfile() {
       {panel(
         'availability',
         workspace.isPending ? (
-          <div
-            className="h-48 animate-pulse rounded-sm bg-raised"
-            aria-busy="true"
-            aria-label="Loading availability"
-          />
+          <div className="skeleton h-48 rounded-sm" aria-busy="true" aria-label="Loading availability" />
         ) : workspace.isError ? (
           <ErrorBox
             what="the event window"
@@ -352,25 +395,25 @@ export function MemberProfile() {
       {panel(
         'assignments',
         board.isPending ? (
-          <div
-            className="h-48 animate-pulse rounded-sm bg-raised"
-            aria-busy="true"
-            aria-label="Loading assignments"
-          />
+          <div className="skeleton h-48 rounded-sm" aria-busy="true" aria-label="Loading assignments" />
         ) : board.isError ? (
           <ErrorBox what="assignments" error={board.error} onRetry={() => void board.refetch()} />
         ) : assignments.length === 0 ? (
           <EmptyBox message={`No tasks assigned to ${isMe ? 'you' : name} yet.`} />
         ) : (
           <ul className="divide-y divide-border">
-            {assignments.map((a) => {
+            {assignments.map((a, i) => {
               const t = tasks.get(a.taskId);
               return (
-                <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+                <li
+                  key={a.id}
+                  className={cn(listRow, 'flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5')}
+                  style={stagger(i)}
+                >
                   {t && <StatusIcon status={t.status} />}
                   <Link
                     to={`/w/${wid}/tasks?task=${t?.key ?? ''}`}
-                    className="flex min-w-0 flex-1 items-baseline gap-1.5 rounded-xs hover:text-strong"
+                    className="row-link flex min-w-0 flex-1 items-baseline gap-1.5"
                   >
                     <span className="shrink-0 font-mono text-label text-subtle">{t?.key ?? 'Task'}</span>
                     <span className="truncate text-body text-default">{t?.title ?? 'Removed task'}</span>
@@ -391,11 +434,7 @@ export function MemberProfile() {
       {panel(
         'agents',
         sessions.isPending ? (
-          <div
-            className="h-48 animate-pulse rounded-sm bg-raised"
-            aria-busy="true"
-            aria-label="Loading agent sessions"
-          />
+          <div className="skeleton h-48 rounded-sm" aria-busy="true" aria-label="Loading agent sessions" />
         ) : sessions.isError ? (
           <ErrorBox what="agent sessions" error={sessions.error} onRetry={() => void sessions.refetch()} />
         ) : mySessions.length === 0 ? (
@@ -408,15 +447,32 @@ export function MemberProfile() {
           />
         ) : (
           <ul className="divide-y divide-border">
-            {mySessions.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
+            {mySessions.map((s, i) => (
+              <li
+                key={s.id}
+                className="flex animate-list-in flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5"
+                style={stagger(i)}
+              >
                 <span className="text-body font-medium text-strong">{AGENT_NAME[s.agent]}</span>
                 <SessionStatusPill status={s.status} />
                 <TaskLinkChip task={s.taskId ? tasks.get(s.taskId) : undefined} linkKind={s.linkKind} />
-                <span className="min-w-0 truncate font-mono text-label text-muted">
-                  {s.repoFullName ?? 'Unknown repo'}
-                  {s.branch && ` · ${s.branch}`}
-                </span>
+                {s.repoFullName ? (
+                  <a
+                    href={`https://github.com/${s.repoFullName}${s.branch ? `/tree/${s.branch.split('/').map(encodeURIComponent).join('/')}` : ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open on GitHub"
+                    className="interactive min-w-0 truncate rounded-xs px-1 font-mono text-label text-muted"
+                  >
+                    {s.repoFullName}
+                    {s.branch && ` · ${s.branch}`}
+                    <ExternalGlyph />
+                  </a>
+                ) : (
+                  <span className="min-w-0 truncate font-mono text-label text-muted">
+                    Unknown repo{s.branch && ` · ${s.branch}`}
+                  </span>
+                )}
                 <span className="ml-auto text-label text-subtle">
                   {toolSummary(s.summary.toolCounts)} · {ago(s.lastEventAt, now)}
                 </span>
@@ -427,7 +483,7 @@ export function MemberProfile() {
       )}
       {tab === 'agents' && (
         <p className="text-label text-subtle">
-          <Link to={`/w/${wid}/agents`} className="rounded-xs hover:text-strong">
+          <Link to={`/w/${wid}/agents`} className="interactive rounded-xs px-1">
             All agent sessions →
           </Link>
         </p>

@@ -44,7 +44,7 @@
   --color-warning: #d4a04a;
   --color-danger: #d45f58;
   --color-info: #8db8d8;
-  --color-ai: #8e8ac0; /* AI-originated marker: 2px rule or glyph only, never a fill/glow */
+  --color-ai: #a1a1aa; /* AI-originated marker (neutral; the dashed glyph carries meaning): 2px rule or glyph only, never a fill/glow */
 
   /* Member identity palette (index = membership.colorIndex) */
   --color-member-0: #9a98e8;
