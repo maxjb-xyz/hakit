@@ -35,7 +35,7 @@ export function LoadingBlocks({ label, rows = 4 }: { label: string; rows?: numbe
   return (
     <div className="space-y-3" aria-busy="true" aria-label={label}>
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className={cn('animate-pulse rounded-md border border-border bg-surface', 'h-16')} />
+        <div key={i} className="h-16 skeleton rounded-md border border-border" />
       ))}
     </div>
   );
@@ -121,7 +121,7 @@ export function TaskLinkChip(props: {
       to={`/w/${wid}/tasks?task=${props.task.key}`}
       title={props.task.title}
       className={cn(
-        'inline-flex h-control-sm shrink-0 items-center gap-1 rounded-full border px-2 text-label hover:bg-hover',
+        'press inline-flex h-control-sm shrink-0 cursor-pointer items-center gap-1 rounded-full border px-2 text-label hover:border-level-3 hover:bg-hover hover:text-strong',
         inferred ? 'border-dashed border-border-strong text-muted' : 'border-border text-default',
       )}
     >

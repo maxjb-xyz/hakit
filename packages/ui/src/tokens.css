@@ -4,14 +4,19 @@
  * or the CSS variables directly. Never hard-code hex/px outside these scales (DESIGN §12).
  */
 @theme static {
-  /* Neutrals (charcoal, dark-first) */
-  --color-canvas: #0d0d0f;
-  --color-sunken: #08080a;
-  --color-surface: #111114;
-  --color-raised: #151518;
-  --color-hover: #18181b;
-  --color-border: #1c1c1f;
-  --color-border-strong: #2a2a2e;
+  /*
+   * Neutrals (near-OLED black, dark-first). Elevation ladder, darkest → lightest:
+   * sunken (rail, wells) < canvas (main pane) < surface (cards) < raised (popovers, inspector) < hover.
+   * Steps are ~2–3% luminance apart; hairline borders carry most of the separation.
+   */
+  --color-sunken: #000000;
+  --color-canvas: #060607;
+  --color-surface: #0b0b0d;
+  --color-raised: #101012;
+  --color-hover: #161619;
+  --color-pressed: #1b1b1f; /* active/pressed fill, one step above hover */
+  --color-border: #1c1c20;
+  --color-border-strong: #2a2a2f;
   --color-disabled: #55555c;
   --color-subtle: #85858c; /* labels, meta; ≥4.5:1 on surface */
   --color-muted: #a2a2a8;
@@ -28,10 +33,11 @@
   --color-level-5: #a8a8ae;
 
   /* Accent (D-9: Indigo) */
-  --color-accent-400: #8b89f0;
-  --color-accent-500: #5a58e0; /* ≥4.5:1 under text-strong (T-704) */
-  --color-accent-600: #4c4ad0; /* hover/pressed fill: darker than 500 so text contrast rises (5.6:1) */
-  --color-accent-a12: rgb(94 92 230 / 0.12);
+  /* Monochrome accent: no hue, so the product reads as a tool, not a theme. */
+  --color-accent-400: #d4d4d8; /* accent text, focus rings, selected borders */
+  --color-accent-500: #3f3f46; /* primary fills; text-strong on it is 8.9:1 */
+  --color-accent-600: #52525b; /* hover/pressed fill; text-strong on it is 6.6:1 */
+  --color-accent-a12: rgb(255 255 255 / 0.06);
 
   /* Semantic */
   --color-success: #6fae8c;
@@ -80,17 +86,33 @@
   --radius-lg: 12px;
   --radius-hairline: 1px;
 
-  /* Elevation (dark UIs: luminance + border; shadow only from e2) */
-  --shadow-e2: 0 8px 24px rgb(0 0 0 / 0.45);
-  --shadow-e3: 0 16px 48px rgb(0 0 0 / 0.55);
+  /* Elevation (dark UIs: luminance + border; shadow only from e2). The inset top highlight lifts popovers off OLED black. */
+  --shadow-e2: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 8px 24px rgb(0 0 0 / 0.6);
+  --shadow-e3: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 16px 48px rgb(0 0 0 / 0.7);
+  /* Effects */
+  --color-hatch-stroke: #4a4a50; /* forecast hatch stroke */
+  --color-sheen: rgb(255 255 255 / 0.045); /* hover-light top glow, skeleton shimmer highlight */
 
-  /* Motion */
-  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
-  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /*
+   * Motion (DESIGN §5). Durations: instant = hover/press colour, fast = popovers/chips/menus,
+   * base = panels/sheets/list entries, slow = deliberate reveals (plan, reassignment).
+   * Easings: standard = most UI (decelerate in), emphasized = entering panels/popovers (springy settle, no
+   * overshoot), exit = leaving elements (accelerate out). Tailwind: `ease-standard`, `duration-(--duration-fast)`.
+   */
   --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  /* Legacy aliases (pre-polish names); prefer the names above in new code. */
+  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
   --duration-quick: 140ms;
-  --duration-standard: 220ms;
-  --duration-deliberate: 360ms;
+  --duration-standard: 200ms;
+  --duration-deliberate: 320ms;
+  /* Stagger step for list entries: style={{ '--i': index }} with animate-list-in. */
+  --spacing-stagger: 24ms;
 
   /* Layout */
   --spacing-sidebar: 224px;
@@ -145,15 +167,20 @@
 }
 /* Forecast segments: neutral hatch from the handoff, no opacity so it composes with siblings. */
 @utility bg-hatch {
-  background-image: repeating-linear-gradient(135deg, #4a4a50 0 1.5px, transparent 1.5px 4px);
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--color-hatch-stroke) 0 1.5px,
+    transparent 1.5px 4px
+  );
 }
 /* The one allowed effect: faint top-down light on interactive surfaces. */
 @utility hover-light {
   transition:
-    background 120ms ease,
-    border-color 120ms ease;
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
   &:hover {
-    background: radial-gradient(120% 120% at 50% 0%, rgb(255 255 255 / 0.045), transparent 70%), #131316;
+    background:
+      radial-gradient(120% 120% at 50% 0%, var(--color-sheen), transparent 70%), var(--color-raised);
     border-color: var(--color-border-strong);
   }
 }
@@ -193,10 +220,10 @@
   }
 }
 @utility animate-arrive {
-  animation: hk-arrive 1s var(--ease-enter) both;
+  animation: hk-arrive 1s var(--ease-standard) both;
 }
 @utility animate-reassign {
-  animation: hk-reassign 1.2s var(--ease-enter) both;
+  animation: hk-reassign 1.2s var(--ease-standard) both;
 }
 
 @layer base {
@@ -214,18 +241,201 @@
     font-variant-numeric: tabular-nums;
   }
   :focus-visible {
-    outline: 2px solid var(--color-accent-500);
+    outline: 2px solid var(--color-accent-400);
     outline-offset: 2px;
   }
+  /*
+   * Reduced motion: no movement and no loops at all (not 1ms runs). Animations with `both` fill land on
+   * their final, visible state; colour transitions are dropped too so nothing flickers.
+   */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
-      animation-duration: 1ms !important;
-      /* One run, not a 1ms infinite loop: looping skeleton pulses would otherwise flicker (T-704). */
-      animation-iteration-count: 1 !important;
-      transition-duration: 1ms !important;
+      animation: none !important;
+      transition: none !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+/*
+ * ───────────── Motion utilities (polish P1) ─────────────
+ * All are CSS-only and collapse to "no animation" under prefers-reduced-motion (base layer above).
+ *   animate-fade-in      opacity only — overlays, scrims, swapped content
+ *   animate-pop-in       popovers, menus, tooltips (fade + 2px drop + 0.98 scale from the top edge)
+ *   animate-slide-in-right  side panels / inspector
+ *   animate-slide-up     bottom sheets, toasts, mobile drawers
+ *   animate-list-in      list rows entering; stagger with style={{ '--i': index }} (cap at ~10)
+ *   animate-tick         a digit/number that just changed (re-key the element to replay)
+ *   press                subtle 0.97 scale on :active for buttons and chips
+ *   skeleton             loading placeholder with a slow shimmer (use instead of animate-pulse)
+ */
+@keyframes hk-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes hk-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+@keyframes hk-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+@keyframes hk-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes hk-list-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes hk-tick {
+  from {
+    opacity: 0.2;
+    transform: translateY(-35%);
+  }
+}
+@keyframes hk-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+@utility animate-fade-in {
+  animation: hk-fade-in var(--duration-base) var(--ease-standard) both;
+}
+@utility animate-pop-in {
+  transform-origin: top;
+  animation: hk-pop-in var(--duration-fast) var(--ease-emphasized) both;
+}
+@utility animate-slide-in-right {
+  animation: hk-slide-in-right var(--duration-base) var(--ease-emphasized) both;
+}
+@utility animate-slide-up {
+  animation: hk-slide-up var(--duration-base) var(--ease-emphasized) both;
+}
+@utility animate-list-in {
+  animation: hk-list-in var(--duration-base) var(--ease-standard) both;
+  animation-delay: calc(min(var(--i, 0), 10) * var(--spacing-stagger));
+}
+@utility animate-tick {
+  display: inline-block;
+  animation: hk-tick var(--duration-fast) var(--ease-standard) both;
+}
+@utility press {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: var(--duration-instant);
+  transition-timing-function: var(--ease-standard);
+  &:active:not(:disabled, [aria-disabled='true']) {
+    transform: scale(0.97);
+  }
+}
+@utility skeleton {
+  background-color: var(--color-surface);
+  background-image: linear-gradient(90deg, transparent 0%, var(--color-sheen) 50%, transparent 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: hk-shimmer 1.6s linear infinite;
+}
+
+/*
+ * ───────────── Interaction patterns ─────────────
+ * row-interactive + row-link: a whole row is clickable through ONE inner primary link/button
+ * (stretched with ::after), so the row has a single tab stop and secondary controls inside it still work
+ * (give them `relative z-1`). Hover tints the row; keyboard focus on the link rings the whole row.
+ *   <li className="row-interactive …"><Link className="row-link" to=…>Title</Link> … <Button className="relative z-1"/></li>
+ * field: inputs / selects / textareas — border, hover border, focus border + ring, disabled.
+ * interactive: cursor + hover/press colour for small custom clickables (chips, icon buttons).
+ */
+@utility row-interactive {
+  position: relative;
+  cursor: pointer;
+  transition: background-color var(--duration-instant) var(--ease-standard);
+  &:hover {
+    background-color: var(--color-hover);
+  }
+  &:has(.row-link:active) {
+    background-color: var(--color-pressed);
+  }
+  &:has(.row-link:focus-visible) {
+    outline: 2px solid var(--color-accent-400);
+    outline-offset: -2px;
+  }
+}
+@utility row-link {
+  outline: none;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+}
+@utility field {
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-sunken);
+  color: var(--color-default);
+  transition:
+    border-color var(--duration-instant) var(--ease-standard),
+    box-shadow var(--duration-instant) var(--ease-standard);
+  &:hover:not(:disabled) {
+    border-color: var(--color-level-3);
+  }
+  &:focus-visible {
+    outline: none;
+    border-color: var(--color-accent-400);
+    box-shadow: 0 0 0 3px var(--color-accent-a12);
+  }
+  &:disabled {
+    cursor: not-allowed;
+    color: var(--color-disabled);
+  }
+  &[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+}
+@utility interactive {
+  cursor: pointer;
+  transition-property: color, background-color, border-color, transform;
+  transition-duration: var(--duration-instant);
+  transition-timing-function: var(--ease-standard);
+  &:hover {
+    background-color: var(--color-hover);
+    color: var(--color-strong);
+  }
+  &:active {
+    background-color: var(--color-pressed);
+  }
+}
+
+@layer base {
+  /* Everything clickable shows the hand; disabled controls say so. */
+  button:not(:disabled),
+  [role='button'],
+  [role='option'],
+  [role='menuitem'],
+  [role='tab'],
+  summary,
+  select:not(:disabled),
+  label[for],
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  select:disabled {
+    cursor: not-allowed;
   }
 }

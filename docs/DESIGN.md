@@ -21,33 +21,36 @@ Wordmark: `hakit` lowercase, set in the display face, tight tracking (-2%).
 
 Dark-first. Light theme is P2 (tokens defined so it is cheap later). All values in OKLCH-ready hex; contrast checked against `bg/surface`.
 
-### 2.1 Neutrals (charcoal, slightly cool)
+### 2.1 Neutrals (near-OLED black)
+
+Code (`packages/ui/src/tokens.css`) is the source of truth; values as of the polish pass. Elevation ladder, darkest first.
 
 | Token | Hex | Use |
 |---|---|---|
-| `neutral-0` | `#0B0C0E` | App background (`bg/canvas`) |
-| `neutral-50` | `#111215` | Sidebar, rail (`bg/sunken`) |
-| `neutral-100` | `#16181C` | Cards, panels (`bg/surface`) |
-| `neutral-150` | `#1C1F24` | Raised: popovers, inspector (`bg/raised`) |
-| `neutral-200` | `#24272D` | Hover fill, input bg |
-| `neutral-300` | `#2E323A` | Borders default (`border/default`) |
-| `neutral-400` | `#3D424C` | Borders strong, dividers on hover |
-| `neutral-500` | `#5B616D` | Disabled text, icons idle |
-| `neutral-600` | `#808794` | Tertiary text (`text/subtle`) |
-| `neutral-700` | `#A4AAB5` | Secondary text (`text/muted`) |
-| `neutral-800` | `#D3D7DE` | Body text (`text/default`) |
-| `neutral-900` | `#F3F4F6` | Headings, emphasis (`text/strong`) |
+| `sunken` | `#000000` | Rail, wells, inputs (`field`) |
+| `canvas` | `#060607` | Main pane background |
+| `surface` | `#0B0B0D` | Cards, panels |
+| `raised` | `#101012` | Popovers, inspector, selected nav row |
+| `hover` | `#161619` | Hover fill |
+| `pressed` | `#1B1B1F` | Active/pressed fill |
+| `border` | `#1C1C20` | Hairline borders |
+| `border-strong` | `#2A2A2F` | Control borders, popover edges |
+| `disabled` | `#55555C` | Disabled text (not for content) |
+| `faint` / `subtle` | `#808086` / `#85858C` | Quietest text / labels (≥4.5:1 on sunken→hover) |
+| `muted` | `#A2A2A8` | Secondary text |
+| `default` | `#C4C4C9` | Body text |
+| `strong` | `#EDEDEF` | Headings, emphasis |
 
-### 2.2 Accent (single brand accent — "signal lime" vs. "electric indigo", decision D-9)
+### 2.2 Accent (monochrome, decision D-9 revised)
 
-Default proposal **Indigo** (reads well on charcoal, distinct from GitHub green which we reserve for VCS activity):
+No brand hue: a coloured accent reads as decoration. Emphasis comes from contrast, weight and the semantic colours below, never from a theme colour.
 
-| Token | Hex |
-|---|---|
-| `accent-400` | `#8B93FF` (text/links on dark) |
-| `accent-500` | `#6E78FF` (primary buttons, focus ring) |
-| `accent-600` | `#5560E8` (pressed) |
-| `accent-a12` | `rgba(110,120,255,0.12)` (selected row, subtle fill) |
+| Token | Hex | Use |
+|---|---|---|
+| `accent-400` | `#D4D4D8` | Accent text, focus rings, selected borders |
+| `accent-500` | `#3F3F46` | Primary button fill (`text-strong` on it: 8.9:1) |
+| `accent-600` | `#52525B` | Hover / pressed fill |
+| `accent-a12` | `rgba(255,255,255,0.06)` | Selected row, arrival tint |
 
 ### 2.3 Semantic
 
@@ -98,16 +101,17 @@ Base UI size is **13px** (IDE density). Minimum 11px; never below.
 
 ## 5. Motion
 
-- **Durations:** `instant 80ms` (hover, press), `quick 140ms` (popovers, chips), `standard 220ms` (panels, inspector slide), `deliberate 360ms` (plan reveal, reassignment animation).
-- **Easing:** `cubic-bezier(0.2, 0, 0, 1)` (enter), `cubic-bezier(0.4, 0, 1, 1)` (exit).
-- **Purposeful motion only:** (a) new activity slides into feed with a 1s accent tint fade; (b) reassignment animates the task card from one member lane to another (this is a demo moment); (c) plan generation streams sections in as they validate; (d) countdown ticks without animation (no flashing).
-- Respect `prefers-reduced-motion`: replace movement with opacity crossfades.
+- **Durations:** `--duration-instant 80ms` (hover, press), `--duration-fast 140ms` (popovers, menus, chips), `--duration-base 200ms` (panels, sheets, list entries), `--duration-slow 320ms` (plan reveal, reassignment). Legacy aliases `quick/standard/deliberate` remain.
+- **Easing:** `ease-standard` `cubic-bezier(0.2,0,0,1)` (most UI), `ease-emphasized` `cubic-bezier(0.16,1,0.3,1)` (entering panels/popovers), `ease-exit` `cubic-bezier(0.4,0,1,1)` (leaving).
+- **Utilities (tokens.css):** `animate-fade-in`, `animate-pop-in`, `animate-slide-in-right`, `animate-slide-up`, `animate-list-in` (stagger via `style={{'--i': n}}`), `animate-tick` / `<TickNumber>`, `press`, `skeleton`; patterns `row-interactive` + `row-link`, `field`, `interactive`.
+- **Purposeful motion only:** (a) new activity slides into feed with a 1s accent tint fade; (b) reassignment animates the task card between lanes; (c) plan generation streams sections in; (d) countdown digits drop in subtly as they change (no flashing).
+- `prefers-reduced-motion`: all animations and transitions are removed (`animation: none`), elements render in their final state.
 
 ## 6. Application shell & information architecture
 
 ```
 ┌────────┬────────────────────────────────────────────────┬──────────────┐
-│ Rail   │ Top bar: Workspace ▸ Project  · countdown · ⌘K │              │
+│ Rail   │ Top bar: Project / Page · status · ⌘K          │              │
 │        ├────────────────────────────────────────────────┤  Inspector   │
 │ ◉ MC   │                                                │  (contextual │
 │ ▦ Plan │        Main view                               │   task/member│

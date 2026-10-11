@@ -6,10 +6,12 @@ import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../cn';
 
 const variants = {
-  primary: 'bg-accent-500 text-strong hover:bg-accent-600 active:bg-accent-600',
-  secondary: 'bg-raised text-default border border-border hover:bg-hover',
-  ghost: 'bg-transparent text-muted hover:bg-hover hover:text-default',
-  danger: 'bg-danger text-strong hover:opacity-90',
+  primary:
+    'bg-accent-500 text-strong shadow-[inset_0_1px_0_var(--color-sheen)] hover:bg-accent-600 active:bg-accent-600',
+  secondary:
+    'bg-raised text-default border border-border-strong hover:bg-hover hover:text-strong hover:border-level-3 active:bg-pressed',
+  ghost: 'bg-transparent text-muted hover:bg-hover hover:text-strong active:bg-pressed',
+  danger: 'bg-danger text-strong hover:opacity-90 active:opacity-80',
 } as const;
 
 const sizes = {
@@ -40,7 +42,7 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(
-        'relative inline-flex items-center justify-center gap-1.5 font-medium transition-colors duration-(--duration-instant) disabled:cursor-not-allowed disabled:opacity-50',
+        'press relative inline-flex cursor-pointer items-center justify-center gap-1.5 font-medium select-none disabled:cursor-not-allowed disabled:opacity-50',
         variants[variant],
         sizes[size],
         className,
@@ -49,7 +51,7 @@ export function Button({
       <span className={cn(loading && 'invisible')}>{children}</span>
       {loading && (
         <span className="absolute inset-0 grid place-items-center" aria-hidden>
-          …
+          <span className="size-3 animate-spin rounded-full border-(length:--border-width-emphasis) border-current border-t-transparent" />
         </span>
       )}
     </button>

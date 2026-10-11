@@ -104,6 +104,7 @@ export function Login() {
                 <PersonAvatar
                   name={me.data.user.name ?? me.data.user.githubLogin}
                   avatarUrl={me.data.user.avatarUrl}
+                  login={me.data.user.githubLogin}
                   className="size-9 text-label"
                   decorative
                 />

@@ -64,3 +64,42 @@ export const IconSettings = () => (
     <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
   </Icon>
 );
+
+/* Small glyphs for the rail countdown, switchers and menus. */
+export const IconChevronsUpDown = () => (
+  <Icon className="size-3.5 shrink-0">
+    <path d="M5 6l3-3 3 3M5 10l3 3 3-3" />
+  </Icon>
+);
+export const IconCheck = () => (
+  <Icon className="size-3.5 shrink-0">
+    <path d="M3.5 8.5l3 3 6-7" />
+  </Icon>
+);
+export const IconPlus = () => (
+  <Icon className="size-3.5 shrink-0">
+    <path d="M8 3v10M3 8h10" />
+  </Icon>
+);
+export const IconClock = () => (
+  <Icon className="size-3.5 shrink-0">
+    <circle cx="8" cy="8" r="6" />
+    <path d="M8 4.5V8l2.5 1.5" />
+  </Icon>
+);
+export const IconAlert = () => (
+  <Icon className="size-3.5 shrink-0">
+    <path d="M8 2l6.5 11.5h-13z" />
+    <path d="M8 6.5v3M8 11.5h.01" />
+  </Icon>
+);
+export const IconFlag = () => (
+  <Icon className="size-3.5 shrink-0">
+    <path d="M3.5 14V2.5M3.5 3h8l-1.5 3 1.5 3h-8" />
+  </Icon>
+);
+export const IconMenu = () => (
+  <Icon>
+    <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+  </Icon>
+);
