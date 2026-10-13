@@ -67,6 +67,9 @@ export async function planPromptHash(input: PipelineInput, projectId: string, mo
   );
 }
 
+/** Plans a model wrote; template plans are never cached so a recovered provider replaces them. */
+const MODEL_PROVIDERS = new Set(['workers_ai', 'gemini']);
+
 export async function generateCachedPlan(
   input: PipelineInput,
   llm: LlmProvider,
@@ -80,7 +83,8 @@ export async function generateCachedPlan(
   const feasibility = Feasibility.safeParse(stored?.feasibility);
   // Templates, edited/invalid results and cut drafts must not mask recovery or lose cut-line history.
   const cached =
-    stored?.model === 'gemini' &&
+    !!stored &&
+    MODEL_PROVIDERS.has(stored.model) &&
     payload.success &&
     feasibility.success &&
     feasibility.data.ok &&
@@ -92,7 +96,7 @@ export async function generateCachedPlan(
   return {
     ...result,
     promptHash:
-      result.model === 'gemini' && result.feasibility.ok && !result.feasibility.cutTaskKeys.length
+      MODEL_PROVIDERS.has(result.model) && result.feasibility.ok && !result.feasibility.cutTaskKeys.length
         ? hash
         : null,
   };

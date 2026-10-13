@@ -25,6 +25,20 @@ describe('aiProviderStatus', () => {
     ]);
   });
 
+  it('reports Workers AI ahead of the optional fallbacks when the AI binding is present', () => {
+    const withAi = {
+      ...configured,
+      AI: {} as Ai,
+      AI_MODEL_PLAN: '@cf/plan',
+      AI_MODEL_FAST: '@cf/fast',
+    } as Env;
+    expect(aiProviderStatus(withAi, services).map((s) => [s.provider, s.role, s.model])).toEqual([
+      ['workers_ai', 'plan', '@cf/plan'],
+      ['workers_ai', 'fast', '@cf/fast'],
+      ['workers_ai', 'embeddings', 'Qwen/Qwen3-Embedding-0.6B'],
+    ]);
+  });
+
   it('reports configured providers and the breaker state of this isolate', async () => {
     expect(aiProviderStatus(configured, services).map((s) => [s.provider, s.role, s.model])).toEqual([
       ['gemini', 'plan', 'gemini-plan'],

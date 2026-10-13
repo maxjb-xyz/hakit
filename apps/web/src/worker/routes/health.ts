@@ -3,7 +3,8 @@ import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import type { AppEnv } from '../lib/context';
 import { githubAppJwt } from '../lib/github-app-jwt';
-import { hfEmbeddings } from '../services/embeddings';
+import { bindingRun, GEMINI_DEFAULT_FAST } from '../services/ai';
+import { hfEmbeddings, workersAiEmbeddings } from '../services/embeddings';
 
 const TIMEOUT_MS = 5000;
 
@@ -66,24 +67,37 @@ health.get('/health/deep', async (c) => {
       });
       return `slug ${((await res.json()) as { slug?: string }).slug}`;
     });
-    await run('gemini', async () => {
-      if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
-      // Metadata lookup: proves key + model without spending tokens. Key goes in a header, never the URL.
-      await probe(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL_FAST}`, {
-        headers: { 'x-goog-api-key': env.GEMINI_API_KEY },
-      });
-      return env.GEMINI_MODEL_FAST;
-    });
-    await run('hf_embed', async () => {
-      if (!env.HF_TOKEN) throw new Error('HF_TOKEN not set');
-      const [vec] = await hfEmbeddings({
-        token: env.HF_TOKEN,
+    await run('workers_ai', async () => {
+      if (!env.AI) throw new Error('AI binding not configured');
+      // One short embedding proves the binding and account allowance; generation would spend far more.
+      const [vec] = await workersAiEmbeddings({
+        run: bindingRun(env.AI),
         model: env.EMBED_MODEL,
         dim: Number(env.EMBED_DIM),
         timeoutMs: TIMEOUT_MS,
       }).embed(['Health check'], 'document');
-      return `dim ${vec!.length}`;
+      return `${env.AI_MODEL_PLAN}, embeddings dim ${vec!.length}`;
     });
+    // Optional fallbacks: checked only when configured, so a Workers-AI-only deployment is healthy.
+    if (env.GEMINI_API_KEY)
+      await run('gemini', async () => {
+        const model = env.GEMINI_MODEL_FAST ?? GEMINI_DEFAULT_FAST;
+        // Metadata lookup: proves key + model without spending tokens. Key goes in a header, never the URL.
+        await probe(`https://generativelanguage.googleapis.com/v1beta/models/${model}`, {
+          headers: { 'x-goog-api-key': env.GEMINI_API_KEY! },
+        });
+        return model;
+      });
+    if (env.HF_TOKEN)
+      await run('hf_embed', async () => {
+        const [vec] = await hfEmbeddings({
+          token: env.HF_TOKEN!,
+          model: env.EMBED_MODEL,
+          dim: Number(env.EMBED_DIM),
+          timeoutMs: TIMEOUT_MS,
+        }).embed(['Health check'], 'document');
+        return `dim ${vec!.length}`;
+      });
   }
   const ok = Object.values(checks).every((x) => x.ok);
   return c.json({ ok, mocks: c.var.mocks, checks }, ok ? 200 : 503);

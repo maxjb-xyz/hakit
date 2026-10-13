@@ -95,10 +95,16 @@ curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application
 
 ## 5. AI providers
 
+Hakit uses **Workers AI** through the `AI` binding in `wrangler.jsonc`: `AI_MODEL_PLAN` / `AI_MODEL_FAST` for plans, ideas and explanations, and `@cf/qwen/qwen3-embedding-0.6b` for embeddings. No key or secret is needed; usage is billed to the Cloudflare account (the free plan includes a daily allowance). In local real mode the binding calls your account, so run `npx wrangler login` first. Mock mode never calls it.
+
+Optional fallbacks, used only when set. The router tries Workers AI first.
+
 | Provider | Steps | Secret |
 |---|---|---|
-| Gemini | https://aistudio.google.com → API key. Enable billing with a spend cap (D-6). Confirm the model IDs behind `gemini-flash-latest` / Flash-Lite | `GEMINI_API_KEY` |
-| Hugging Face | Token with "Inference Providers" permission. PRO or prepaid credits needed (D-5). Check `Qwen/Qwen3-Embedding-0.6B` availability on the router | `HF_TOKEN` |
+| Gemini | https://aistudio.google.com → API key. Model IDs default to `gemini-flash-latest` / `gemini-flash-lite-latest` (override with `GEMINI_MODEL_PLAN` / `GEMINI_MODEL_FAST`) | `GEMINI_API_KEY` |
+| Hugging Face | Token with "Inference Providers" permission. Serves the same `Qwen/Qwen3-Embedding-0.6B` model, so vectors stay compatible | `HF_TOKEN` |
+
+Live checks outside the worker (`pnpm --filter @hakit/web check:llm`, `eval:planning`, `check:embeddings`) call Workers AI over REST when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token with Workers AI read and edit) are in `apps/web/.dev.vars`, and otherwise fall back to the Gemini or Hugging Face keys.
 
 ## 6. Branch protection
 

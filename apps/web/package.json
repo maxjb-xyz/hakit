@@ -19,7 +19,7 @@
     "test:skills": "vitest run src/worker/services/skills/github.test.ts src/worker/jobs/skills-import.test.ts src/worker/routes/capability-import.test.ts --reporter=verbose",
     "test:capability": "vitest run src/worker/routes/capability.test.ts --reporter=verbose",
     "test:ai": "vitest run src/worker/services/ai --reporter=verbose",
-    "check:gemini": "vitest run --config scripts/gemini.live.config.ts",
+    "check:llm": "vitest run --config scripts/llm.live.config.ts",
     "test:evals": "vitest run src/worker/services/ai/evals --reporter=verbose",
     "eval:planning:offline": "vitest run --config scripts/planning.offline.config.ts && node scripts/planning-report.mjs",
     "eval:planning": "vitest run --config scripts/planning.live.config.ts",

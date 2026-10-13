@@ -131,6 +131,45 @@ function httpProvider(opts: {
     },
   };
 }
+/** Workers AI serves the same Qwen3-Embedding-0.6B weights, so its vectors share the database's space. */
+export const WORKERS_AI_QWEN_MODEL = '@cf/qwen/qwen3-embedding-0.6b';
+const workersAiOutput = z.object({ data: z.array(z.array(z.number().finite())) });
+export function workersAiEmbeddings(opts: {
+  run: (
+    model: string,
+    inputs: Record<string, unknown>,
+    options: { signal?: AbortSignal },
+  ) => Promise<unknown>;
+  model: string;
+  dim: number;
+  timeoutMs?: number;
+}): EmbeddingProvider {
+  if (opts.model !== QWEN_MODEL)
+    throw new EmbeddingError('configuration', 'Workers AI embeddings support only Qwen3-Embedding-0.6B');
+  return {
+    name: 'workers_ai',
+    model: opts.model,
+    dim: opts.dim,
+    async embed(texts, kind) {
+      // The query instruction is prepended here, exactly as for Hugging Face, so both providers agree.
+      const input = prepareTexts(texts, kind);
+      if (!input.length) return [];
+      try {
+        return await withTimeout(async (signal) => {
+          const parsed = workersAiOutput.safeParse(
+            await opts.run(WORKERS_AI_QWEN_MODEL, { text: input }, { signal }),
+          );
+          if (!parsed.success) throw new EmbeddingError('invalid_output', 'Invalid embedding response');
+          return validateVectors(parsed.data.data, input.length, opts.dim);
+        }, opts.timeoutMs);
+      } catch (error) {
+        if (error instanceof EmbeddingError) throw error;
+        // Never propagate provider messages or request text.
+        throw new EmbeddingError('provider_failed', 'workers_ai embedding request failed');
+      }
+    },
+  };
+}
 /** HF's official DeepInfra adapter uses this routed OpenAI-compatible endpoint. */
 export function hfEmbeddings(opts: {
   token: string;

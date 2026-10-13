@@ -1,26 +1,50 @@
 import { readFileSync } from 'node:fs';
-import { hfEmbeddings, QWEN_MODEL, QWEN_DIM } from '../src/worker/services/embeddings/providers.ts';
+import {
+  hfEmbeddings,
+  QWEN_MODEL,
+  QWEN_DIM,
+  workersAiEmbeddings,
+} from '../src/worker/services/embeddings/providers.ts';
 
-let token = process.env.HF_TOKEN;
-if (!token) {
+function variable(name) {
+  if (process.env[name]) return process.env[name];
   try {
     const line = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8')
       .split('\n')
-      .find((line) => /^\s*HF_TOKEN\s*=/.test(line));
-    token = line
+      .find((line) => new RegExp(`^\\s*${name}\\s*=`).test(line));
+    return line
       ?.slice(line.indexOf('=') + 1)
       .trim()
       .replace(/^(['"])(.*)\1$/, '$2');
   } catch {
-    /* Report missing configuration without displaying contents. */
+    return undefined; // Report missing configuration without displaying contents.
   }
 }
-if (!token) {
-  console.error('HF_TOKEN is missing; set it in apps/web/.dev.vars.');
+const accountId = variable('CLOUDFLARE_ACCOUNT_ID'),
+  apiToken = variable('CLOUDFLARE_API_TOKEN'),
+  token = variable('HF_TOKEN');
+/** Workers AI over REST (the worker uses the AI binding); same model and instruction as the worker. */
+const restRun = async (model, inputs, { signal }) => {
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`, {
+    method: 'POST',
+    signal,
+    headers: { authorization: `Bearer ${apiToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify(inputs),
+  });
+  if (!response.ok) throw new Error(`Workers AI HTTP ${response.status}`);
+  return (await response.json()).result;
+};
+if (!(accountId && apiToken) && !token) {
+  console.error(
+    'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI) or HF_TOKEN in apps/web/.dev.vars.',
+  );
   process.exit(1);
 }
 try {
-  const provider = hfEmbeddings({ token, model: QWEN_MODEL, dim: QWEN_DIM });
+  const provider =
+    accountId && apiToken
+      ? workersAiEmbeddings({ run: restRun, model: QWEN_MODEL, dim: QWEN_DIM })
+      : hfEmbeddings({ token, model: QWEN_MODEL, dim: QWEN_DIM });
   const [vector] = await provider.embed(['Build a React user interface'], 'query');
   const labels = ['React frontend developer', 'Embedded hardware developer'];
   const documents = await provider.embed(

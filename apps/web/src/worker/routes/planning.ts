@@ -26,6 +26,7 @@ import * as ideas from '../services/ideas';
 import { planningInput, planValidationInput } from '../services/planning/context';
 import { applyPlanPatch } from '../services/planning/patch';
 import { generateCachedPlan } from '../services/planning/cache';
+import { planModelId } from '../services/ai';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
@@ -336,7 +337,7 @@ sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
       const input = await planningInput(db, params.pid, body.ideaId, new Date(), body.guidance);
       const result = await generateCachedPlan(input, c.var.services.llm, emit, {
         projectId: params.pid,
-        model: c.env.GEMINI_MODEL_PLAN,
+        model: planModelId(c.env),
         find: async (hash) => {
           const [cached] = await db
             .select()

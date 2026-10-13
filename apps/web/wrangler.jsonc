@@ -19,6 +19,8 @@
       "localConnectionString": "postgres://hakit:hakit@127.0.0.1:5432/hakit",
     },
   ],
+  // Workers AI: plans, ideas and explanations (AI_MODEL_*) and Qwen3 embeddings. No API key needed.
+  "ai": { "binding": "AI", "remote": true },
   "durable_objects": { "bindings": [{ "name": "PROJECT_ROOM", "class_name": "ProjectRoom" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectRoom"] }],
   "queues": {
@@ -35,8 +37,8 @@
   "vars": {
     "APP_URL": "https://hakit.work",
     "HAKIT_MOCKS": "0",
-    "GEMINI_MODEL_PLAN": "gemini-flash-latest",
-    "GEMINI_MODEL_FAST": "gemini-flash-lite-latest",
+    "AI_MODEL_PLAN": "@cf/meta/llama-4-scout-17b-16e-instruct",
+    "AI_MODEL_FAST": "@cf/meta/llama-4-scout-17b-16e-instruct",
     "EMBED_MODEL": "Qwen/Qwen3-Embedding-0.6B",
     "EMBED_DIM": "1024",
   },
