@@ -1,8 +1,9 @@
 /**
  * S14 Settings & integrations (DESIGN §8). The event (name, template, window) and projects, the S2 invite panel,
  * then integrations: GitHub (App + connected repo),
- * personal agent tokens (T-601: create shown once, list, revoke) and AI provider status (`aiStatus`).
- * Last, "Your data" (export, delete account) and, for owners, the danger zone (delete workspace).
+ * personal agent tokens (T-601: create shown once, list, revoke), AI provider status (`aiStatus`) and today's
+ * AI usage against the workspace limit (`aiUsage`). Last, "Your data" (export, delete account) and, for owners,
+ * the danger zone (delete workspace).
  */
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
@@ -39,7 +40,7 @@ export function Settings() {
           </Section>
           <GithubSection wid={wid} />
           <AgentTokensSection wid={wid} />
-          <AiSection />
+          <AiSection wid={wid} />
           <Section
             id="your-data"
             title="Your data"
@@ -464,7 +465,7 @@ const PROVIDER_LABEL: Record<AiProviderStatus['provider'], string> = {
   keyword: 'Keyword match (no AI)',
 };
 
-function AiSection() {
+function AiSection({ wid }: { wid: string }) {
   const now = useNow();
   const status = useQuery({
     queryKey: qk('aiStatus'),
@@ -475,7 +476,7 @@ function AiSection() {
     <Section
       id="ai"
       title="AI providers"
-      description="AI drafts ideas, plans and explanations. Scores, hours and assignments are always computed by Hakit's engine. When a provider is down, Hakit falls back to templates."
+      description="AI drafts ideas, plans and explanations. Scores, hours and assignments are always computed by Hakit's engine. When a provider is down or the workspace has used its daily AI allowance, Hakit falls back to templates and keyword matching."
     >
       <Panel
         title="Status"
@@ -535,6 +536,53 @@ function AiSection() {
           )}
         </div>
       </Panel>
+      <AiUsageLine wid={wid} />
     </Section>
+  );
+}
+
+/**
+ * "AI usage today": the workspace's weighted AI calls (units) against AI_DAILY_LIMIT_PER_WORKSPACE. The state
+ * is spelled out in words, never by colour alone.
+ */
+function AiUsageLine({ wid }: { wid: string }) {
+  const usage = useQuery({
+    queryKey: qk('aiUsage', { wid }),
+    queryFn: () => api('aiUsage', { params: { wid } }),
+    refetchInterval: 60_000,
+  });
+  if (usage.isPending)
+    return (
+      <div aria-busy="true" aria-label="Loading AI usage" className="mt-3 h-5 w-64 skeleton rounded-sm" />
+    );
+  if (usage.isError)
+    return (
+      <div className="mt-3">
+        <ErrorBox what="AI usage" error={usage.error} onRetry={() => void usage.refetch()} />
+      </div>
+    );
+  const { used, limit, resetsAt } = usage.data;
+  const resets = new Date(resetsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const reached = limit !== null && used >= limit;
+  const near = limit !== null && !reached && used >= limit * 0.8;
+  return (
+    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-muted">
+      <span className="text-default">AI usage today:</span>
+      {used === 0 ? (
+        <span>none yet{limit !== null && ` (limit ${limit} units)`}</span>
+      ) : limit === null ? (
+        <span>{used} units, no daily limit</span>
+      ) : (
+        <span>
+          {used} of {limit} units ({Math.min(100, Math.round((used / limit) * 100))}%)
+        </span>
+      )}
+      {reached ? (
+        <Pill tone="warning">Limit reached: using templates and keyword matching</Pill>
+      ) : near ? (
+        <Pill tone="warning">Nearly used up</Pill>
+      ) : null}
+      {limit !== null && <span className="text-label text-subtle">Resets {resets} (00:00 UTC)</span>}
+    </p>
   );
 }

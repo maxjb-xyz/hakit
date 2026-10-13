@@ -39,5 +39,11 @@
     "AI_MODEL_FAST": "@cf/meta/llama-4-scout-17b-16e-instruct",
     "EMBED_MODEL": "Qwen/Qwen3-Embedding-0.6B",
     "EMBED_DIM": "1024",
+    // Daily AI units per workspace, reset at 00:00 UTC; "0" = unlimited. Units are weighted calls: plan-tier
+    // generation 10, fast-tier 2, embedding request 1 (1 unit ≈ 15 neurons, so the free plan's 10,000
+    // neurons/day ≈ 650 units). 300 units (≈ 4,500 neurons) is about six plan generations plus ideas,
+    // explanations and embeddings for one team, while no single workspace can take more than half the
+    // account's free allowance. On Workers Paid raise it, or set "0".
+    "AI_DAILY_LIMIT_PER_WORKSPACE": "300",
   },
 }

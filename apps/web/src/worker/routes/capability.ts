@@ -60,6 +60,8 @@ route(capability, 'removeSkill', async ({ c, params }) => {
   await refreshEmbeddings(c, c.var.user.id);
   return { ok: true as const };
 });
+// Not workspace-scoped, so exempt from AI_DAILY_LIMIT_PER_WORKSPACE: a semantic query embedding runs only
+// when keyword search finds nothing, and repeated queries are served from the embedding cache.
 route(capability, 'searchSkills', async ({ c, query }) =>
   c.var.mocks
     ? fx.priyaSkills.map((s) => s.skill).filter((s) => s.slug.includes(query.q.toLowerCase()))

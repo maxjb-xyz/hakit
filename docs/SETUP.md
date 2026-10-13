@@ -111,6 +111,16 @@ Hakit runs on the Workers Free plan for a small team. The limits that matter:
 | Workers AI | 10,000 neurons/day | Ideas, plans, explanations, embeddings. Roughly 15 plan generations a day plus the small calls (estimated from Llama 4 Scout pricing). |
 | Durable Objects | SQLite-backed, 100,000 requests/day | Live project rooms. |
 
+The Workers AI allowance belongs to the whole Cloudflare account, so one busy workspace could use it up for
+everyone. `AI_DAILY_LIMIT_PER_WORKSPACE` (a `vars` entry in `wrangler.jsonc`, default `300`) caps each workspace
+per UTC day, in AI units: a plan-tier call (ideas, plan outline, epic tasks, repair) is 10, a fast-tier call
+(assignment explanations) 2, and an embedding request that misses the cache 1. One unit is roughly 15 neurons,
+so 300 is under half the free allowance, about six plan generations plus the small calls. Over the limit,
+Hakit behaves as if the provider were rate limited until 00:00 UTC: template plans and explanations, keyword
+skill matching, and "enter your own idea" for ideas. Settings → AI providers shows today's usage. Set it to
+`"0"` (or remove it) for no limit, for example on Workers Paid. Skill taxonomy embeddings, skill search and the
+deep health check are not tied to a workspace and are not counted.
+
 Workers Paid ($5/month) lifts all of these well past what a hackathon needs; switch if `/api/v1/health/deep` or the dashboard shows errors from limits.
 
 ## 8. Branch protection

@@ -47,7 +47,7 @@ import {
 import { MissionControlSnapshot } from './mission-control';
 import { AcceptRecommendation, DismissRecommendation, Recommendation } from './recommendations';
 import { AgentSession, AgentTokenCreated, AgentTokenSummary, CreateAgentToken, LinkSession } from './agents';
-import { AiProviderStatus } from './ai';
+import { AiProviderStatus, AiUsage } from './ai';
 import { AccountExport, DeleteWorkspace } from './privacy';
 import { GithubManifestForm, SetupStatus, StartGithubSetup } from './setup';
 
@@ -382,6 +382,8 @@ export const endpoints = {
 
   // Ops
   aiStatus: { method: 'GET', path: '/ai/status', response: z.array(AiProviderStatus), owner: 'IN' },
+  /** Today's weighted AI calls for the workspace against AI_DAILY_LIMIT_PER_WORKSPACE (members). */
+  aiUsage: { method: 'GET', path: '/w/:wid/ai/usage', response: AiUsage, owner: 'IN' },
 } as const satisfies Record<string, EndpointDef>;
 
 export type Endpoints = typeof endpoints;

@@ -28,6 +28,7 @@ import type { EmbeddingProvider } from '../services/ai/types';
 import { fetchPublicRepos } from '../services/skills/github';
 import { githubUserToken } from '../lib/github-token';
 import { embeddingService, databaseEmbeddingCache, validateVectors } from '../services/embeddings';
+import { workspaceMeter } from '../services/ai/usage';
 import { isMock } from '../env';
 import { broadcastWorkspace } from '../lib/broadcast';
 type ImportJob = Extract<Job, { type: 'skills.import' }>;
@@ -239,7 +240,8 @@ export async function processSkillsImport(
       db,
       job.userId,
       repos,
-      embeddingService(env, databaseEmbeddingCache(db)),
+      // README matching is charged to the importing workspace; over its limit, repository evidence only.
+      embeddingService(env, databaseEmbeddingCache(db), workspaceMeter(db, env, job.workspaceId)),
       new Date(),
       progress,
       job.workspaceId,

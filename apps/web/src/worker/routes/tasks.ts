@@ -19,6 +19,7 @@ import { route } from '../lib/route';
 import { solveAssignments, explainAssignment, scorePair } from '@hakit/engine';
 import { loadProjectState } from '../lib/project-state';
 import { polishExplanations } from '../services/ai/explanations';
+import { workspaceLlm } from '../services/ai/usage';
 import { conflict, HttpError, notFound } from '../lib/errors';
 import { loadBoard, toAssignment, toTask } from '../lib/board';
 import {
@@ -254,7 +255,7 @@ route(tasks, 'solveAssignments', async ({ c, params, body }) => {
         availableHours: l.availableHours,
       })),
     };
-  await assertProjectMember(c, params.pid);
+  const { workspaceId } = await assertProjectMember(c, params.pid);
   const db = c.var.db();
   // Two concurrent solves each replace the other's proposals; the later batch wins, which is the same
   // outcome the old row locks produced in sequence.
@@ -324,7 +325,11 @@ route(tasks, 'solveAssignments', async ({ c, params, body }) => {
   if (assignments.length)
     c.executionCtx.waitUntil(
       (async () => {
-        const polished = await polishExplanations(proposals, ctx, c.var.services.llm);
+        const polished = await polishExplanations(
+          proposals,
+          ctx,
+          workspaceLlm(c.env, db, c.var.services, workspaceId),
+        );
         for (let i = 0; i < assignments.length; i++) {
           const text = polished[proposals.findIndex((a) => a.taskId === assignments[i]!.taskId)]!;
           if (text.explanationSource === 'ai')

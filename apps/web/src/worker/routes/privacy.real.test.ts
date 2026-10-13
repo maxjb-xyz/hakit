@@ -162,14 +162,12 @@ async function seedTeam() {
     repositorySelection: 'all',
     createdByUserId: a.id,
   });
-  await db
-    .insert(schema.repos)
-    .values({
-      id: 99,
-      installationId: 77,
-      fullName: 'alice/hakit',
-      htmlUrl: 'https://github.com/alice/hakit',
-    });
+  await db.insert(schema.repos).values({
+    id: 99,
+    installationId: 77,
+    fullName: 'alice/hakit',
+    htmlUrl: 'https://github.com/alice/hakit',
+  });
   await db.insert(schema.projectRepos).values({ projectId: pid, repoId: 99, connectedBy: a.id });
   await db
     .insert(schema.agentTokens)

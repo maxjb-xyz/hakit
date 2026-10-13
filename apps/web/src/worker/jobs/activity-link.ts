@@ -18,6 +18,7 @@ import {
   validateVectors,
 } from '../services/embeddings';
 import type { EmbeddingProvider } from '../services/ai/types';
+import { EmbeddingQuotaError, workspaceMeter } from '../services/ai/usage';
 import { activityFromRow, activityLinkText, linkCandidates } from '../services/github/linking';
 
 type LinkJob = Extract<JobMessage, { type: 'activity.link' }>;
@@ -95,8 +96,23 @@ export async function activityLinkJob(job: LinkJob, { env }: { env: Env }): Prom
   const handle = createDb(env.DB);
   try {
     await handle.ready;
-    const provider = embeddingService(env, databaseEmbeddingCache(handle.db));
-    await processActivityLink(job, databaseLinkDependencies(handle.db, env, provider));
+    const db = handle.db;
+    // Charged to the project's workspace, looked up only if an embedding request is actually made.
+    const meter = workspaceMeter(db, env, async () => {
+      const [project] = await db
+        .select({ workspaceId: schema.projects.workspaceId })
+        .from(schema.projects)
+        .where(eq(schema.projects.id, job.projectId));
+      return project?.workspaceId ?? null;
+    });
+    const provider = embeddingService(env, databaseEmbeddingCache(db), meter);
+    try {
+      await processActivityLink(job, databaseLinkDependencies(db, env, provider));
+    } catch (error) {
+      // Over the daily AI limit the event stays unlinked (confirmed links still apply); a retry before the
+      // reset can't succeed.
+      if (!(error instanceof EmbeddingQuotaError)) throw error;
+    }
   } finally {
     await handle.close();
   }
