@@ -28,6 +28,12 @@ Model output is never a decision: LLMs propose candidates and prose, the determi
 
 More (including 375px mobile views) in [`docs/screenshots`](docs/screenshots).
 
+## Deploy your own
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maxjb-xyz/hakit)
+
+Hakit runs entirely on your Cloudflare account: Workers, D1, Queues, Durable Objects and Workers AI, all within the free plan for a small team. The button asks for two random secrets; then open your new URL, sign in, and Hakit walks you through creating its GitHub App in a couple of clicks. Details and limits: [`docs/SETUP.md`](docs/SETUP.md#2-deploy-your-own).
+
 ## Stack
 
 Cloudflare Workers (Hono, Durable Objects for real-time rooms, Queues, Cron), React + Vite, Cloudflare D1 with Drizzle, Workers AI for generation and embeddings, a GitHub App for activity, and a Claude Code plugin for agent telemetry. Monorepo with pnpm: `packages/contracts` (Zod API contract), `packages/engine` (pure planning/solver/CPM/adaptive logic), `packages/db`, `packages/ui`, `packages/agent-plugin`, `apps/web`.
@@ -36,12 +42,11 @@ Cloudflare Workers (Hono, Durable Objects for real-time rooms, Queues, Cron), Re
 
 ```bash
 pnpm install
-cp apps/web/.dev.vars.example apps/web/.dev.vars   # HAKIT_MOCKS=1: fixtures, fake user, mock AI/GitHub
-pnpm dev                                           # http://localhost:5173
+pnpm dev        # http://localhost:5173 in mock mode: fixtures, fake user, mock AI and GitHub
 pnpm typecheck && pnpm lint && pnpm test
 ```
 
-Mock mode needs no accounts. For real GitHub, Workers AI and database setup see [`docs/SETUP.md`](docs/SETUP.md).
+Mock mode needs no accounts. For real mode locally see [`docs/SETUP.md`](docs/SETUP.md).
 
 ## Docs
 

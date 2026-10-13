@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { githubAppJwt } from './github-app-jwt';
 
@@ -33,9 +34,29 @@ describe('githubAppJwt', () => {
     expect(ok).toBe(true);
   });
 
-  it('rejects PKCS#1 keys with a clear message', async () => {
-    await expect(
-      githubAppJwt('1', '-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----', 0),
-    ).rejects.toThrow(/PKCS#8/);
+  it('accepts the PKCS#1 key GitHub issues, as-is', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'der' },
+    });
+    expect(privateKey).toContain('BEGIN RSA PRIVATE KEY');
+    const jwt = await githubAppJwt('7', privateKey, 1_000_000);
+    const [h, p, s] = jwt.split('.');
+    const verifyKey = await crypto.subtle.importKey(
+      'spki',
+      new Uint8Array(publicKey),
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    const sig = Uint8Array.from(atob(s!.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const ok = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5',
+      verifyKey,
+      sig,
+      new TextEncoder().encode(`${h}.${p}`),
+    );
+    expect(ok).toBe(true);
   });
 });

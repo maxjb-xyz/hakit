@@ -3,6 +3,7 @@ import { Button } from '@hakit/ui';
 
 export { Home } from './Home';
 export { Login } from './Login';
+export { Setup } from './Setup';
 export { Join } from './Join';
 export { CreateWorkspace } from './CreateWorkspace';
 export { Onboarding } from './Onboarding';

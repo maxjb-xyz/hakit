@@ -33,6 +33,7 @@ export async function createHarness(services: Partial<Services> = {}) {
     listInstallationRepos: vi.fn(),
     userHasInstallation: vi.fn(),
     verifyWebhook: vi.fn(),
+    convertManifest: vi.fn(),
   };
   const jobs = { send: vi.fn(async () => {}) };
   const broadcasts: unknown[] = [];
@@ -40,6 +41,7 @@ export async function createHarness(services: Partial<Services> = {}) {
     HAKIT_MOCKS: '0',
     APP_URL: 'https://hakit.test',
     TOKEN_ENC_KEY,
+    GITHUB_CLIENT_ID: 'Iv1.test',
     EMBED_DIM: '1024',
     EMBED_MODEL: 'x',
     AI_MODEL_PLAN: 'x',

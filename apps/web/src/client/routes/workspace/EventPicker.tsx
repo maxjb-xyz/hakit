@@ -110,7 +110,7 @@ function TemplateSummary({
   );
 }
 
-/** Radio group: the hackathon template (with its window) or a custom event. */
+/** Radio group: a custom event (listed first, the usual choice) or the seeded hackathon template. */
 export function EventPicker(props: {
   name: string;
   value: EventKind;
@@ -124,24 +124,23 @@ export function EventPicker(props: {
       <legend className="mb-2 text-label text-subtle">Event</legend>
       <TemplateOption
         name={props.name}
-        checked={props.value === 'hackathon'}
-        disabled={props.disabled}
-        onChange={() => props.onChange('hackathon')}
-        title={props.template.data?.name ?? 'Knight Hacks IX'}
-      >
-        <TemplateSummary query={props.template} />
-      </TemplateOption>
-      <TemplateOption
-        name={props.name}
         checked={props.value === 'custom'}
         disabled={props.disabled}
         onChange={() => props.onChange('custom')}
         title="Custom event"
       >
         <span className="block text-label text-muted">
-          {props.customHint ??
-            'Another hackathon or a side project. You set the deadline; add challenges later.'}
+          {props.customHint ?? 'Your hackathon or project. You set the deadline; add challenges later.'}
         </span>
+      </TemplateOption>
+      <TemplateOption
+        name={props.name}
+        checked={props.value === 'hackathon'}
+        disabled={props.disabled}
+        onChange={() => props.onChange('hackathon')}
+        title={props.template.data?.name ?? 'Knight Hacks IX'}
+      >
+        <TemplateSummary query={props.template} />
       </TemplateOption>
     </fieldset>
   );

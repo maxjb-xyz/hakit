@@ -1,4 +1,4 @@
-/** E2E test login (T-701): off unless a long secret is configured, never in mock mode or on the prod origin. */
+/** E2E test login (T-701): off unless explicitly enabled with a long secret, never in mock mode. */
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Env } from '../env';
 import { createHarness } from '../test/harness';
@@ -25,28 +25,28 @@ describe('POST /auth/test-login', () => {
     expect((await login(SECRET)).status).toBe(404);
   });
 
-  it('404s when the secret is too short, in mock mode, or on the production origin', async () => {
-    setEnv({ E2E_LOGIN_SECRET: 'short' });
-    expect((await login('short')).status).toBe(404);
-    setEnv({ E2E_LOGIN_SECRET: SECRET, APP_URL: 'https://hakit.work' });
+  it('404s without E2E_LOGIN_ENABLED, with a short secret, or in mock mode', async () => {
+    setEnv({ E2E_LOGIN_SECRET: SECRET });
     expect((await login(SECRET)).status).toBe(404);
-    setEnv({ APP_URL: 'https://hakit.test', HAKIT_MOCKS: '1' });
+    setEnv({ E2E_LOGIN_ENABLED: '1', E2E_LOGIN_SECRET: 'short' });
+    expect((await login('short')).status).toBe(404);
+    setEnv({ E2E_LOGIN_SECRET: SECRET, HAKIT_MOCKS: '1' });
     expect((await login(SECRET)).status).toBe(404);
   });
 
   it('rejects a wrong or missing secret', async () => {
-    setEnv({ E2E_LOGIN_SECRET: SECRET });
+    setEnv({ E2E_LOGIN_ENABLED: '1', E2E_LOGIN_SECRET: SECRET });
     expect((await login('x'.repeat(40))).status).toBe(401);
     expect((await login(undefined)).status).toBe(401);
   });
 
   it('rejects an invalid body', async () => {
-    setEnv({ E2E_LOGIN_SECRET: SECRET });
+    setEnv({ E2E_LOGIN_ENABLED: '1', E2E_LOGIN_SECRET: SECRET });
     expect((await login(SECRET, { githubUserId: -1, login: '' })).status).toBe(400);
   });
 
   it('creates a session that authenticates later calls, reusing the user on repeat logins', async () => {
-    setEnv({ E2E_LOGIN_SECRET: SECRET });
+    setEnv({ E2E_LOGIN_ENABLED: '1', E2E_LOGIN_SECRET: SECRET });
     const res = await login(SECRET);
     expect(res.status).toBe(200);
     const { userId } = (await res.json()) as { userId: string };

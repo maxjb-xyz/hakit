@@ -33,6 +33,8 @@ const cookieOpts = (c: Context<AppEnv>) => ({
 authFlow.get('/auth/github/login', (c) => {
   const next = safeNext(c.req.query('next'));
   if (c.var.mocks) return c.redirect(next);
+  // A fresh self-hosted instance has no GitHub App yet: send the first visitor to create one.
+  if (!c.env.GITHUB_CLIENT_ID) return c.redirect('/setup');
   const state = randomToken(16);
   setCookie(c, STATE_COOKIE, state, { ...cookieOpts(c), maxAge: 600 });
   setCookie(c, NEXT_COOKIE, next, { ...cookieOpts(c), maxAge: 600 });
@@ -82,8 +84,6 @@ authFlow.get('/auth/github/callback', async (c) => {
 
 authFlow.get('/auth/github/setup', installationSetup);
 
-/** Production origin (wrangler.jsonc vars). Test login refuses to run there even if the secret leaks into config. */
-const PROD_APP_URL = 'https://hakit.work';
 const testLoginBody = z.object({
   githubUserId: z.number().int().positive(),
   login: z.string().min(1).max(39),
@@ -91,13 +91,14 @@ const testLoginBody = z.object({
 });
 
 /**
- * E2E sign-in (T-701): skips GitHub OAuth. Enabled only when E2E_LOGIN_SECRET (≥32 chars) is set, outside mock
- * mode and off the production origin; the caller must send the secret in `x-e2e-secret`. Otherwise it 404s like
+ * E2E sign-in (T-701): skips GitHub OAuth. Enabled only when E2E_LOGIN_ENABLED is "1" and E2E_LOGIN_SECRET
+ * (≥32 chars) is set, outside mock mode; the caller must send the secret in `x-e2e-secret`. Two settings, so a
+ * secret copied into production config by mistake doesn't switch it on. Otherwise it 404s like
  * any unknown route, so its existence isn't advertised. Not in the contract: it's test infrastructure, not API.
  */
 authFlow.post('/auth/test-login', async (c) => {
   const secret = c.env.E2E_LOGIN_SECRET;
-  if (!secret || secret.length < 32 || c.var.mocks || c.env.APP_URL === PROD_APP_URL) {
+  if (c.env.E2E_LOGIN_ENABLED !== '1' || !secret || secret.length < 32 || c.var.mocks) {
     throw new HttpError(404, 'not_found', `No route POST ${c.req.path}`);
   }
   const given = c.req.header('x-e2e-secret') ?? '';

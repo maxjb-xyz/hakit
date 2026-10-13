@@ -6,6 +6,7 @@ import * as S from './routes/screens';
 export const router = createBrowserRouter([
   { path: '/', element: <S.Home /> },
   { path: '/login', element: <S.Login /> },
+  { path: '/setup', element: <S.Setup /> },
   { path: '/j/:code', element: <S.Join /> },
   { path: '/new', element: <S.CreateWorkspace /> },
   { path: '/onboarding/*', element: <S.Onboarding /> },

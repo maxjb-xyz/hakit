@@ -23,6 +23,19 @@ export interface GithubService {
   /** HMAC-SHA256 over the raw body (T-401). */
   verifyWebhook(rawBody: string, signature256: string | null): Promise<boolean>;
   installUrl(state: string): string;
+  /** First-run setup: exchange a manifest-flow code for the new App's credentials (within an hour). */
+  convertManifest(code: string): Promise<ManifestConversion>;
+}
+
+export interface ManifestConversion {
+  id: number;
+  slug: string;
+  clientId: string;
+  clientSecret: string;
+  webhookSecret: string;
+  /** PKCS#1 PEM, as GitHub issues it. */
+  pem: string;
+  ownerLogin: string | null;
 }
 
 export interface GithubTokenSet {

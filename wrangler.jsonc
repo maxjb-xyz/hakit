@@ -1,7 +1,7 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "apps/web/node_modules/wrangler/config-schema.json",
   "name": "hakit",
-  "main": "./src/worker/index.ts",
+  "main": "./apps/web/src/worker/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
@@ -9,15 +9,13 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/webhooks/*"],
   },
-  // D1 (SQLite). The Deploy button creates the database and fills in its ID; for a manual setup run
-  //   npx wrangler d1 create hakit
-  // and paste the ID here. Migrations: packages/db/migrations, applied by `pnpm deploy`.
+  // D1 (SQLite). The Deploy button creates the database and fills in its ID. Manual setup: `npx wrangler d1 create
+  // hakit`; Wrangler finds it by name. Migrations: packages/db/migrations, applied by `pnpm run deploy`.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "hakit",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "../../packages/db/migrations",
+      "migrations_dir": "packages/db/migrations",
     },
   ],
   // Workers AI: plans, ideas and explanations (AI_MODEL_*) and Qwen3 embeddings. No API key needed.
@@ -36,7 +34,6 @@
     { "name": "AGENT_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
   ],
   "vars": {
-    "APP_URL": "https://hakit.work",
     "HAKIT_MOCKS": "0",
     "AI_MODEL_PLAN": "@cf/meta/llama-4-scout-17b-16e-instruct",
     "AI_MODEL_FAST": "@cf/meta/llama-4-scout-17b-16e-instruct",

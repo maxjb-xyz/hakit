@@ -12,4 +12,5 @@ export * from './mission-control';
 export * from './ws';
 export * from './jobs';
 export * from './ai';
+export * from './setup';
 export * from './api';

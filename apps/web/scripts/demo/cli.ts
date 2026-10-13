@@ -19,7 +19,7 @@ if (!command || !['seed', 'reset', 'swap', 'stall'].includes(command)) throw new
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const proxy = await getPlatformProxy<{ DB: D1Database }>({
-  configPath: `${root}wrangler.jsonc`,
+  configPath: `${root}../../wrangler.jsonc`,
   persist: { path: `${root}.wrangler/state/v3` },
 });
 const { db } = createDb(proxy.env.DB);

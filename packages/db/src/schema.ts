@@ -133,6 +133,16 @@ export const githubTokens = sqliteTable('github_tokens', {
   updatedAt: ts('updated_at').notNull().default(NOW),
 });
 
+/**
+ * Settings the app writes about itself, keyed by name: today only `github_app`, the GitHub App created
+ * through the manifest flow at /setup. Values are AES-GCM encrypted with TOKEN_ENC_KEY.
+ */
+export const instanceSettings = sqliteTable('instance_settings', {
+  key: text('key').primaryKey(),
+  valueEnc: bytes('value_enc').notNull(),
+  updatedAt: ts('updated_at').notNull().default(NOW),
+});
+
 export const sessions = sqliteTable('sessions', {
   /** SHA-256 of the cookie token, hex. */
   id: text('id').primaryKey(),

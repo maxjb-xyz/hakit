@@ -1,7 +1,7 @@
 /**
  * Provider for opt-in live checks and evals. Workers AI over REST when CLOUDFLARE_ACCOUNT_ID and
  * CLOUDFLARE_API_TOKEN (Workers AI read + edit) are set, otherwise Gemini with GEMINI_API_KEY.
- * Reads the environment first, then apps/web/.dev.vars.
+ * Reads the environment first, then the repo-root .dev.vars.
  */
 import { readFileSync } from 'node:fs';
 import { geminiProvider } from '../src/worker/services/ai/gemini';
@@ -12,7 +12,7 @@ import { workersAiProvider, workersAiRest } from '../src/worker/services/ai/work
 export function variable(name: string): string | undefined {
   if (process.env[name]) return process.env[name];
   try {
-    const line = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8')
+    const line = readFileSync(new URL('../../../.dev.vars', import.meta.url), 'utf8')
       .split('\n')
       .find((l) => l.trimStart().startsWith(`${name}=`));
     return line
@@ -39,7 +39,7 @@ export function liveLlm(opts: Omit<TransportOptions, 'fetch'> = {}): {
   const apiKey = variable('GEMINI_API_KEY');
   if (!apiKey)
     throw new Error(
-      'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI) or GEMINI_API_KEY in apps/web/.dev.vars.',
+      'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI) or GEMINI_API_KEY in .dev.vars.',
     );
   const model = variable('GEMINI_MODEL_PLAN') ?? 'gemini-flash-latest';
   return { provider: geminiProvider({ apiKey, planModel: model, fastModel: model, ...opts }), model };

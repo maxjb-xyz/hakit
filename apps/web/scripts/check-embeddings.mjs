@@ -9,7 +9,7 @@ import {
 function variable(name) {
   if (process.env[name]) return process.env[name];
   try {
-    const line = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8')
+    const line = readFileSync(new URL('../../../.dev.vars', import.meta.url), 'utf8')
       .split('\n')
       .find((line) => new RegExp(`^\\s*${name}\\s*=`).test(line));
     return line
@@ -35,9 +35,7 @@ const restRun = async (model, inputs, { signal }) => {
   return (await response.json()).result;
 };
 if (!(accountId && apiToken) && !token) {
-  console.error(
-    'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI) or HF_TOKEN in apps/web/.dev.vars.',
-  );
+  console.error('Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI) or HF_TOKEN in .dev.vars.');
   process.exit(1);
 }
 try {
