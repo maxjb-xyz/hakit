@@ -76,6 +76,16 @@ curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application
   --data-binary @push.json
 ```
 
+### Your data
+
+Everything lives in your own D1 database. Per user Hakit stores: the GitHub profile (id, login, name, avatar, email), the GitHub user token (AES-GCM encrypted with `TOKEN_ENC_KEY`), sessions (only a SHA-256 of the cookie), workspace memberships and profiles, inferred and confirmed skills with their evidence (repo languages, dependencies, topics), assignments and task changes, GitHub activity attributed to them (commit, branch and PR metadata, never code), and, only if they install the Claude Code plugin, agent token hashes and session telemetry (status, repo and branch if shared, prompts only when turned on per token).
+
+Anyone can manage this in **Settings → Your data**:
+- **Export my data** (`GET /api/v1/me/export`) downloads it all as JSON. Token hashes, encrypted tokens and session ids are left out.
+- **Delete my account** (`DELETE /api/v1/me`) removes the user and their personal data (sessions, GitHub token, agent tokens and sessions, profiles, skills and evidence, memberships, their Claude Code telemetry). Team data stays on the board without their name: tasks, task history, plans and GitHub activity keep existing with the reference cleared. Workspaces where they were the only member are deleted; a sole owner of a team must transfer ownership or delete the workspace first.
+
+Owners also get **Settings → Danger zone → Delete workspace** (`DELETE /api/v1/w/:wid`, typing the workspace name to confirm), which deletes its projects, plans, tasks, activity, recommendations, repo connections, invites and agent sessions. GitHub installations and repo metadata are instance-wide and stay; uninstall the App on GitHub to remove them from GitHub's side.
+
 ## 6. AI providers
 
 Hakit uses **Workers AI** through the `AI` binding in `wrangler.jsonc`: `AI_MODEL_PLAN` / `AI_MODEL_FAST` for plans, ideas and explanations, and `@cf/qwen/qwen3-embedding-0.6b` for embeddings. No key or secret is needed; usage is billed to the Cloudflare account (the free plan includes a daily allowance). In local real mode the binding calls your account, so run `npx wrangler login` first. Mock mode never calls it.
@@ -100,6 +110,16 @@ Hakit runs on the Workers Free plan for a small team. The limits that matter:
 | D1 | 5M rows read and 100,000 written per day, 5 GB | Everything. |
 | Workers AI | 10,000 neurons/day | Ideas, plans, explanations, embeddings. Roughly 15 plan generations a day plus the small calls (estimated from Llama 4 Scout pricing). |
 | Durable Objects | SQLite-backed, 100,000 requests/day | Live project rooms. |
+
+The Workers AI allowance belongs to the whole Cloudflare account, so one busy workspace could use it up for
+everyone. `AI_DAILY_LIMIT_PER_WORKSPACE` (a `vars` entry in `wrangler.jsonc`, default `300`) caps each workspace
+per UTC day, in AI units: a plan-tier call (ideas, plan outline, epic tasks, repair) is 10, a fast-tier call
+(assignment explanations) 2, and an embedding request that misses the cache 1. One unit is roughly 15 neurons,
+so 300 is under half the free allowance, about six plan generations plus the small calls. Over the limit,
+Hakit behaves as if the provider were rate limited until 00:00 UTC: template plans and explanations, keyword
+skill matching, and "enter your own idea" for ideas. Settings → AI providers shows today's usage. Set it to
+`"0"` (or remove it) for no limit, for example on Workers Paid. Skill taxonomy embeddings, skill search and the
+deep health check are not tied to a workspace and are not counted.
 
 Workers Paid ($5/month) lifts all of these well past what a hackathon needs; switch if `/api/v1/health/deep` or the dashboard shows errors from limits.
 

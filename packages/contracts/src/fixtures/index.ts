@@ -6,6 +6,7 @@
  */
 import type {
   ActivityEvent,
+  AiUsage,
   AgentSession,
   AgentTokenSummary,
   Assignment,
@@ -1204,6 +1205,15 @@ export const missionControl: MissionControlSnapshot = {
   ],
   recentActivity: [...activity].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, 20),
   openRecommendations: recommendations,
+};
+
+/* --------------------------------- AI usage ---------------------------------- */
+/** Today's AI usage for the demo workspace: 46 of 300 units (four plan-tier calls and a few embeddings). */
+export const aiUsage: AiUsage = {
+  day: '2026-10-10',
+  used: 46,
+  limit: 300,
+  resetsAt: '2026-10-11T00:00:00Z',
 };
 
 /** `activity` newest first, as listActivity and the snapshot order it. */

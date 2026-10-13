@@ -78,4 +78,5 @@ You can build any screen or engine function without accounts. Real handlers sit 
 ## Workflow
 
 - **PRs:** small and focused. Use the PR template. Merge into `main` only when CI is green.
+- Note user-visible changes under **Unreleased** in `CHANGELOG.md`. Releases: move them into a `## [x.y.z]` section, bump `version` in the root `package.json`, then push tag `vx.y.z`; the release workflow publishes the notes.
 - Hakit is licensed under AGPL-3.0 (`LICENSE`).

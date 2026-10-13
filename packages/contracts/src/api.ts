@@ -47,7 +47,8 @@ import {
 import { MissionControlSnapshot } from './mission-control';
 import { AcceptRecommendation, DismissRecommendation, Recommendation } from './recommendations';
 import { AgentSession, AgentTokenCreated, AgentTokenSummary, CreateAgentToken, LinkSession } from './agents';
-import { AiProviderStatus } from './ai';
+import { AiProviderStatus, AiUsage } from './ai';
+import { AccountExport, DeleteWorkspace } from './privacy';
 import { GithubManifestForm, SetupStatus, StartGithubSetup } from './setup';
 
 /**
@@ -77,6 +78,10 @@ export const endpoints = {
   // Auth & identity (PL)
   me: { method: 'GET', path: '/me', response: Me, owner: 'PL' },
   logout: { method: 'POST', path: '/auth/logout', body: Empty, response: ok, owner: 'PL' },
+  /** Everything stored about the signed-in user, as a JSON download (additive; no secrets). */
+  exportMe: { method: 'GET', path: '/me/export', response: AccountExport, owner: 'PL' },
+  /** Delete the signed-in user and their personal data; 409 while they are a sole owner with teammates (additive). */
+  deleteMe: { method: 'DELETE', path: '/me', response: ok, owner: 'PL' },
 
   // Workspaces & members (PL)
   createWorkspace: {
@@ -92,6 +97,14 @@ export const endpoints = {
     path: '/w/:wid',
     body: UpdateWorkspace,
     response: Workspace,
+    owner: 'PL',
+  },
+  /** Owner only; `confirmName` must equal the workspace name. Deletes everything in it (additive). */
+  deleteWorkspace: {
+    method: 'DELETE',
+    path: '/w/:wid',
+    body: DeleteWorkspace,
+    response: ok,
     owner: 'PL',
   },
   createInvite: {
@@ -369,6 +382,8 @@ export const endpoints = {
 
   // Ops
   aiStatus: { method: 'GET', path: '/ai/status', response: z.array(AiProviderStatus), owner: 'IN' },
+  /** Today's weighted AI calls for the workspace against AI_DAILY_LIMIT_PER_WORKSPACE (members). */
+  aiUsage: { method: 'GET', path: '/w/:wid/ai/usage', response: AiUsage, owner: 'IN' },
 } as const satisfies Record<string, EndpointDef>;
 
 export type Endpoints = typeof endpoints;

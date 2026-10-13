@@ -50,7 +50,7 @@ Mock mode needs no accounts. For real mode locally see [`docs/SETUP.md`](docs/SE
 
 ## Docs
 
-Contributors start with [`CLAUDE.md`](./CLAUDE.md) (conventions and code rules) and [`docs/SETUP.md`](./docs/SETUP.md) (accounts and secrets).
+Contributors start with [`CONTRIBUTING.md`](./CONTRIBUTING.md), [`CLAUDE.md`](./CLAUDE.md) (conventions and code rules) and [`docs/SETUP.md`](./docs/SETUP.md) (accounts and secrets). Report security issues privately as described in [`SECURITY.md`](./SECURITY.md). Release notes: [`CHANGELOG.md`](./CHANGELOG.md).
 
 | Doc                                  | Contents                                                            |
 | ------------------------------------ | ------------------------------------------------------------------- |

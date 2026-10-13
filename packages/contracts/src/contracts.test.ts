@@ -3,6 +3,7 @@ import {
   ActivityEvent,
   AgentSession,
   AgentTokenSummary,
+  AiUsage,
   HackathonTemplate,
   IdeaCandidate,
   Member,
@@ -38,6 +39,7 @@ describe('fixtures match their schemas', () => {
     ['agentTokens', AgentTokenSummary.array(), fx.agentTokens],
     ['constraints', PutConstraints, fx.constraints],
     ['missionControl', MissionControlSnapshot, fx.missionControl],
+    ['aiUsage', AiUsage, fx.aiUsage],
   ];
   it.each(cases)('%s', (_name, schema, value) => {
     expect(() => schema.parse(value)).not.toThrow();

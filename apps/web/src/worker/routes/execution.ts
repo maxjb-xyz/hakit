@@ -13,6 +13,7 @@ import { buildSnapshot, toRecommendation } from '../lib/mission-control';
 import { applyActions, mergeActions } from '../lib/apply-recommendation';
 import { assertProjectMember } from '../middleware/auth';
 import { aiProviderStatus } from '../services/ai/status';
+import { readUsage } from '../services/ai/usage';
 
 export const execution = new Hono<AppEnv>();
 
@@ -162,4 +163,10 @@ route(execution, 'aiStatus', ({ c }) => {
       },
     ];
   return aiProviderStatus(c.env, c.var.services);
+});
+/** Today's AI units for the workspace (members; requireMember guards /w/:wid/*). */
+route(execution, 'aiUsage', async ({ c, params }) => {
+  if (c.var.mocks) return fx.aiUsage;
+  c.header('Cache-Control', 'no-store');
+  return readUsage(c.var.db(), c.env, params.wid, new Date());
 });

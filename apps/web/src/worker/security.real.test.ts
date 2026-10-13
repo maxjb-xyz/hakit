@@ -41,11 +41,19 @@ const GLOBAL: EndpointName[] = [
   'searchSkills',
   'listRepos',
   'createRepo',
+  // "Your data": the caller's own account.
+  'exportMe',
+  'deleteMe',
 ];
 /** No session needed (app.ts PUBLIC). Logout without a session is a harmless no-op; setup has its own key. */
 const PUBLIC: EndpointName[] = ['previewInvite', 'logout', 'setupStatus', 'startGithubSetup'];
-/** Owner-only routes (assertOwner). */
-const OWNER_ONLY: EndpointName[] = ['updateWorkspace'];
+/** Owner-only routes (assertOwner), with a body that passes validation and the status an owner gets. */
+const OWNER_ONLY: EndpointName[] = ['updateWorkspace', 'deleteWorkspace'];
+const OWNER_BODY: Partial<Record<EndpointName, { body: unknown; status: number }>> = {
+  updateWorkspace: { body: { name: 'Renamed' }, status: 200 },
+  // Past the owner check, a wrong confirmation is refused, so the matrix never deletes its workspace.
+  deleteWorkspace: { body: { confirmName: 'not the name' }, status: 400 },
+};
 
 beforeAll(async () => {
   h = await createHarness();
@@ -163,9 +171,10 @@ describe('authZ matrix (S-4)', () => {
   });
 
   it.each(OWNER_ONLY)('member → 403, owner → allowed: %s', async (name) => {
-    const body = { name: 'Renamed' };
-    expect((await send(name, who.member.token, { body: JSON.stringify(body) })).status).toBe(403);
-    expect((await send(name, who.owner.token, { body: JSON.stringify(body) })).status).toBe(200);
+    const { body, status } = OWNER_BODY[name]!;
+    const init = { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } };
+    expect((await send(name, who.member.token, init)).status).toBe(403);
+    expect((await send(name, who.owner.token, init)).status).toBe(status);
   });
 
   it('members can read their workspace, project and board', async () => {

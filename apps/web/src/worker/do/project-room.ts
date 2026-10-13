@@ -55,6 +55,21 @@ export class ProjectRoom extends DurableObject<Env> {
     return envelope.seq;
   }
 
+  /**
+   * RPC after the room's project or workspace was deleted: drop the replay buffer (it holds board data) and
+   * close every socket with 4404 so dashboards stop listening. Reconnects then 404 at the Worker.
+   */
+  async close(reason = 'Deleted'): Promise<void> {
+    this.ctx.storage.sql.exec(`DELETE FROM events`);
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(4404, reason.slice(0, 120));
+      } catch {
+        /* already closed */
+      }
+    }
+  }
+
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     if (typeof message !== 'string') return;
     const parsed = WsClientMessage.safeParse(safeJson(message));

@@ -6,6 +6,7 @@ import { Id, JobMessage, TaskRequiredSkill } from '@hakit/contracts';
 import type { Env } from '../env';
 import { isMock } from '../env';
 import type { EmbeddingProvider } from '../services/ai/types';
+import { EmbeddingQuotaError, workspaceMeter } from '../services/ai/usage';
 import {
   databaseEmbeddingCache,
   embeddingService,
@@ -44,10 +45,17 @@ async function recordsChunk(
   ids: string[],
 ): Promise<RecordToEmbed[]> {
   if (target === 'task') {
-    const rows = await db.select().from(schema.tasks).where(inArray(schema.tasks.id, ids));
+    const rows = (
+      await db
+        .select({ task: schema.tasks, workspaceId: schema.projects.workspaceId })
+        .from(schema.tasks)
+        .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
+        .where(inArray(schema.tasks.id, ids))
+    ).map(({ task, workspaceId }) => ({ ...task, workspaceId }));
     return rows.map((row) => ({
       key: row.id,
       id: row.id,
+      workspaceId: row.workspaceId,
       kind: 'query',
       updatedAt: row.updatedAt,
       text: [
@@ -116,10 +124,15 @@ async function recordsChunk(
       ];
     });
 }
+/**
+ * `providerFor` picks the provider for a workspace's records (metered against its daily AI limit);
+ * taxonomy skills have no workspace and use `provider`, unmetered.
+ */
 export async function processEmbeddingBatch(
   job: EmbedJob,
   db: Db,
   provider: EmbeddingProvider,
+  providerFor: (workspaceId: string) => EmbeddingProvider = () => provider,
 ): Promise<void> {
   const parsed = JobMessage.parse(job);
   if (parsed.type !== 'embed.batch')
@@ -129,19 +142,34 @@ export async function processEmbeddingBatch(
     throw new EmbeddingError('configuration', 'Batch embedding model/dimension must match the database');
   const original = await records(db, job.target, ids);
   const computed = new Map<string, number[]>();
-  for (const kind of ['query', 'document'] as const) {
-    const selected = original.filter((record) => record.kind === kind);
-    for (let offset = 0; offset < selected.length; offset += MAX_BATCH) {
-      const batch = selected.slice(offset, offset + MAX_BATCH);
-      const vectors = validateVectors(
-        await provider.embed(
-          batch.map((record) => record.text),
-          kind,
-        ),
-        batch.length,
-        provider.dim,
-      );
-      for (const [i, record] of batch.entries()) computed.set(record.key, vectors[i]!);
+  // Batches never mix workspaces, so each request is charged to the workspace it serves.
+  const groups = new Map<string, RecordToEmbed[]>();
+  for (const record of original) {
+    const key = JSON.stringify([record.kind, record.workspaceId ?? null]);
+    groups.set(key, [...(groups.get(key) ?? []), record]);
+  }
+  for (const selected of groups.values()) {
+    const { workspaceId } = selected[0]!;
+    const groupProvider = workspaceId ? providerFor(workspaceId) : provider;
+    const kind = selected[0]!.kind;
+    try {
+      for (let offset = 0; offset < selected.length; offset += MAX_BATCH) {
+        const batch = selected.slice(offset, offset + MAX_BATCH);
+        const vectors = validateVectors(
+          await groupProvider.embed(
+            batch.map((record) => record.text),
+            kind,
+          ),
+          batch.length,
+          provider.dim,
+        );
+        for (const [i, record] of batch.entries()) computed.set(record.key, vectors[i]!);
+      }
+    } catch (error) {
+      // Over its daily AI limit, a workspace keeps its current vectors (matching falls back to keywords);
+      // retrying can't succeed before the reset, and other workspaces' records still get written.
+      if (!(error instanceof EmbeddingQuotaError)) throw error;
+      console.warn(JSON.stringify({ level: 'warn', msg: 'embed_batch_quota', target: job.target }));
     }
   }
   if (!original.length) return;
@@ -155,6 +183,7 @@ export async function processEmbeddingBatch(
   for (const record of original) {
     const latest = current.get(record.key);
     if (!latest) continue; // Deleted tasks or departed members must not be recreated.
+    if (!computed.has(record.key)) continue; // Skipped: its workspace is over the daily AI limit.
     if (latest.text !== record.text)
       throw new EmbeddingError(
         'provider_failed',
@@ -202,7 +231,17 @@ export async function embedBatchJob(job: EmbedJob, { env }: { env: Env }): Promi
   const handle = createDb(env.DB);
   try {
     await handle.ready;
-    await processEmbeddingBatch(job, handle.db, embeddingService(env, databaseEmbeddingCache(handle.db)));
+    const cache = databaseEmbeddingCache(handle.db);
+    const metered = new Map<string, EmbeddingProvider>();
+    await processEmbeddingBatch(job, handle.db, embeddingService(env, cache), (workspaceId) => {
+      let provider = metered.get(workspaceId);
+      if (!provider)
+        metered.set(
+          workspaceId,
+          (provider = embeddingService(env, cache, workspaceMeter(handle.db, env, workspaceId))),
+        );
+      return provider;
+    });
   } finally {
     await handle.close();
   }

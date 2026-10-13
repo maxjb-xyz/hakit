@@ -66,6 +66,7 @@ health.get('/health/deep', async (c) => {
     await run('workers_ai', async () => {
       if (!env.AI) throw new Error('AI binding not configured');
       // One short embedding proves the binding and account allowance; generation would spend far more.
+      // An operator probe, not workspace work: exempt from AI_DAILY_LIMIT_PER_WORKSPACE.
       const [vec] = await workersAiEmbeddings({
         run: bindingRun(env.AI),
         model: env.EMBED_MODEL,

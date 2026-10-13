@@ -49,3 +49,17 @@ export const AiProviderStatus = z.object({
   lastErrorAt: z.string().nullable(),
 });
 export type AiProviderStatus = z.infer<typeof AiProviderStatus>;
+
+/**
+ * Today's AI usage for one workspace (GET /w/:wid/ai/usage). `used` and `limit` are AI units: weighted
+ * provider calls (plan-tier generation 10, fast-tier 2, one embedding request 1). `limit` null = unlimited
+ * (AI_DAILY_LIMIT_PER_WORKSPACE unset or "0"). Over the limit, AI features use their deterministic
+ * fallbacks until `resetsAt` (next 00:00 UTC).
+ */
+export const AiUsage = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  used: z.number().int().nonnegative(),
+  limit: z.number().int().positive().nullable(),
+  resetsAt: z.iso.datetime({ offset: true }),
+});
+export type AiUsage = z.infer<typeof AiUsage>;

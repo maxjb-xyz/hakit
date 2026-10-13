@@ -1,10 +1,11 @@
 /**
  * S14 Settings & integrations (DESIGN §8). The event (name, template, window) and projects, the S2 invite panel,
  * then integrations: GitHub (App + connected repo),
- * personal agent tokens (T-601: create shown once, list, revoke) and AI provider status (`aiStatus`).
- * Members, privacy and danger-zone sections need endpoints that don't exist yet.
+ * personal agent tokens (T-601: create shown once, list, revoke), AI provider status (`aiStatus`) and today's
+ * AI usage against the workspace limit (`aiUsage`). Last, "Your data" (export, delete account) and, for owners,
+ * the danger zone (delete workspace).
  */
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTokenCreated, AgentTokenSummary, AiProviderStatus } from '@hakit/contracts';
@@ -16,14 +17,18 @@ import { Panel, ago, useNow } from './mission-control/shared';
 import { InvitePanel } from './people/InvitePanel';
 import { CopyField, EmptyBox, ErrorBox, LoadingBlocks, PageHeader, Pill } from './page-states';
 import { EventPanel, ProjectsPanel } from './workspace/EventSettings';
+import { DangerZonePanel, YourDataPanel } from './workspace/DataSettings';
 
 export function Settings() {
   const { wid = '' } = useParams();
+  const me = useQuery({ queryKey: qk('me'), queryFn: () => api('me'), retry: false });
+  const isOwner = me.data?.memberships.some((m) => m.workspaceId === wid && m.role === 'owner') ?? false;
+  const sections = useMemo(() => (isOwner ? SECTIONS : SECTIONS.filter((s) => s.id !== 'danger')), [isOwner]);
   return (
     <div className="space-y-6 p-6 max-sm:p-4">
       <PageHeader title="Settings" subtitle="Event, team and integrations for this workspace" />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
-        <SectionNav />
+        <SectionNav sections={sections} />
         <div className="min-w-0 max-w-3xl space-y-10">
           <EventSection wid={wid} />
           <Section
@@ -35,7 +40,23 @@ export function Settings() {
           </Section>
           <GithubSection wid={wid} />
           <AgentTokensSection wid={wid} />
-          <AiSection />
+          <AiSection wid={wid} />
+          <Section
+            id="your-data"
+            title="Your data"
+            description="Everything Hakit stores about you on this instance: download it, or delete your account."
+          >
+            <YourDataPanel />
+          </Section>
+          {isOwner && (
+            <Section
+              id="danger"
+              title="Danger zone"
+              description="Irreversible actions for this workspace. Only owners see this."
+            >
+              <DangerZonePanel wid={wid} />
+            </Section>
+          )}
         </div>
       </div>
     </div>
@@ -48,10 +69,13 @@ const SECTIONS = [
   { id: 'github', label: 'GitHub' },
   { id: 'agent-tokens', label: 'Agent tokens' },
   { id: 'ai', label: 'AI status' },
+  { id: 'your-data', label: 'Your data' },
+  { id: 'danger', label: 'Danger zone' },
 ] as const;
+type SectionLink = (typeof SECTIONS)[number];
 
 /** In-page section nav: anchors to each section; the one in view is marked current. */
-function SectionNav() {
+function SectionNav({ sections }: { sections: readonly SectionLink[] }) {
   const [current, setCurrent] = useState<string>(SECTIONS[0].id);
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return;
@@ -64,16 +88,16 @@ function SectionNav() {
       },
       { rootMargin: '0px 0px -60% 0px' },
     );
-    for (const s of SECTIONS) {
+    for (const s of sections) {
       const el = document.getElementById(s.id);
       if (el) io.observe(el);
     }
     return () => io.disconnect();
-  }, []);
+  }, [sections]);
   return (
     <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-4 lg:self-start">
       <ul className="flex gap-1 overflow-x-auto max-lg:-mx-1 max-lg:pb-1 lg:flex-col">
-        {SECTIONS.map((s) => {
+        {sections.map((s) => {
           const active = current === s.id;
           return (
             <li key={s.id} className="shrink-0">
@@ -441,7 +465,7 @@ const PROVIDER_LABEL: Record<AiProviderStatus['provider'], string> = {
   keyword: 'Keyword match (no AI)',
 };
 
-function AiSection() {
+function AiSection({ wid }: { wid: string }) {
   const now = useNow();
   const status = useQuery({
     queryKey: qk('aiStatus'),
@@ -452,7 +476,7 @@ function AiSection() {
     <Section
       id="ai"
       title="AI providers"
-      description="AI drafts ideas, plans and explanations. Scores, hours and assignments are always computed by Hakit's engine. When a provider is down, Hakit falls back to templates."
+      description="AI drafts ideas, plans and explanations. Scores, hours and assignments are always computed by Hakit's engine. When a provider is down or the workspace has used its daily AI allowance, Hakit falls back to templates and keyword matching."
     >
       <Panel
         title="Status"
@@ -512,6 +536,53 @@ function AiSection() {
           )}
         </div>
       </Panel>
+      <AiUsageLine wid={wid} />
     </Section>
+  );
+}
+
+/**
+ * "AI usage today": the workspace's weighted AI calls (units) against AI_DAILY_LIMIT_PER_WORKSPACE. The state
+ * is spelled out in words, never by colour alone.
+ */
+function AiUsageLine({ wid }: { wid: string }) {
+  const usage = useQuery({
+    queryKey: qk('aiUsage', { wid }),
+    queryFn: () => api('aiUsage', { params: { wid } }),
+    refetchInterval: 60_000,
+  });
+  if (usage.isPending)
+    return (
+      <div aria-busy="true" aria-label="Loading AI usage" className="mt-3 h-5 w-64 skeleton rounded-sm" />
+    );
+  if (usage.isError)
+    return (
+      <div className="mt-3">
+        <ErrorBox what="AI usage" error={usage.error} onRetry={() => void usage.refetch()} />
+      </div>
+    );
+  const { used, limit, resetsAt } = usage.data;
+  const resets = new Date(resetsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const reached = limit !== null && used >= limit;
+  const near = limit !== null && !reached && used >= limit * 0.8;
+  return (
+    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-muted">
+      <span className="text-default">AI usage today:</span>
+      {used === 0 ? (
+        <span>none yet{limit !== null && ` (limit ${limit} units)`}</span>
+      ) : limit === null ? (
+        <span>{used} units, no daily limit</span>
+      ) : (
+        <span>
+          {used} of {limit} units ({Math.min(100, Math.round((used / limit) * 100))}%)
+        </span>
+      )}
+      {reached ? (
+        <Pill tone="warning">Limit reached: using templates and keyword matching</Pill>
+      ) : near ? (
+        <Pill tone="warning">Nearly used up</Pill>
+      ) : null}
+      {limit !== null && <span className="text-label text-subtle">Resets {resets} (00:00 UTC)</span>}
+    </p>
   );
 }

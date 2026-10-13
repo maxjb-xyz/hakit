@@ -1,5 +1,5 @@
 /** Hackathons, projects, constraints, ideas, plans. Owners: PL (projects), IN (ideas/plans). */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import * as fx from '@hakit/contracts/fixtures';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
@@ -36,6 +36,7 @@ import { planningInput, planValidationInput } from '../services/planning/context
 import { applyPlanPatch } from '../services/planning/patch';
 import { generateCachedPlan } from '../services/planning/cache';
 import { planModelId } from '../services/ai';
+import { workspaceLlm } from '../services/ai/usage';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
 
@@ -44,6 +45,10 @@ const nextPlanVersion = (projectId: string) =>
   sql<number>`(select coalesce(max(${schema.plans.version}), 0) + 1 from ${schema.plans} where ${schema.plans.projectId} = ${projectId})`;
 
 export const planning = new Hono<AppEnv>();
+
+/** The LLM metered against the project's workspace daily AI limit (services/ai/usage.ts). */
+const projectLlm = async (c: Context<AppEnv>, projectId: string) =>
+  workspaceLlm(c.env, c.var.db(), c.var.services, (await assertProjectMember(c, projectId)).workspaceId);
 
 const mockFeasibility: Feasibility = {
   ok: true,
@@ -292,7 +297,7 @@ sseRoute(planning, 'generateIdeas', async ({ c, params, body, send }) => {
     try {
       await ideas.generateIdeas(
         c.var.db(),
-        c.var.services.llm,
+        await projectLlm(c, params.pid),
         params.pid,
         c.var.user!.id,
         body,
@@ -324,7 +329,7 @@ sseRoute(planning, 'refineIdea', async ({ c, params, body, send }) => {
     try {
       await ideas.refineIdea(
         c.var.db(),
-        c.var.services.llm,
+        await projectLlm(c, params.pid),
         params.pid,
         params.iid,
         c.var.user!.id,
@@ -348,7 +353,7 @@ sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
       await emit({ type: 'stage', stage: 'context', message: 'Reading team capability and selected idea' });
       const db = c.var.db();
       const input = await planningInput(db, params.pid, body.ideaId, new Date(), body.guidance);
-      const result = await generateCachedPlan(input, c.var.services.llm, emit, {
+      const result = await generateCachedPlan(input, await projectLlm(c, params.pid), emit, {
         projectId: params.pid,
         model: planModelId(c.env),
         find: async (hash) => {

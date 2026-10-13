@@ -44,7 +44,7 @@ const toWorkspace = (w: WorkspaceRow): Workspace => ({
   createdAt: iso(w.createdAt),
 });
 
-const toProfile = (p: ProfileRow): MemberProfile => ({
+export const toProfile = (p: ProfileRow): MemberProfile => ({
   userId: p.userId,
   workspaceId: p.workspaceId,
   headline: p.headline,

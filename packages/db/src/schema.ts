@@ -691,3 +691,24 @@ export const agentSessions = sqliteTable(
   },
   (t) => [uniqueIndex('agent_sessions_user_external').on(t.userId, t.externalSessionId)],
 );
+
+/* ---------------------------------- AI usage ---------------------------------- */
+/**
+ * Per-workspace AI usage per UTC day (`day` = 'YYYY-MM-DD'), checked against AI_DAILY_LIMIT_PER_WORKSPACE.
+ * `units` are weighted calls (apps/web/src/worker/services/ai/usage.ts: plan tier 10, fast tier 2,
+ * embedding request 1); `calls` counts the provider calls behind them. Each day is a new row, so the
+ * counter resets at 00:00 UTC.
+ */
+export const aiUsage = sqliteTable(
+  'ai_usage',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    day: text('day').notNull(),
+    units: integer('units').notNull().default(0),
+    calls: integer('calls').notNull().default(0),
+    updatedAt: ts('updated_at').notNull().default(NOW),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.day] })],
+);

@@ -5,13 +5,18 @@ import { bindingRun } from '../ai';
 import { EmbeddingError, hfEmbeddings, QWEN_MODEL, workersAiEmbeddings } from './providers';
 import { cachedEmbeddings, d1EmbeddingCache, type EmbeddingCache } from './cache';
 import { embeddingRouter } from './router';
+import { meteredEmbeddings, type AiMeter } from '../ai/usage';
 export * from './providers';
 export * from './cache';
 export * from './router';
 
 const routers = new WeakMap<Env, EmbeddingProvider>();
-/** Initialize lazily: unavailable AI configuration must not break unrelated API routes. */
-export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingProvider {
+/**
+ * Initialize lazily: unavailable AI configuration must not break unrelated API routes.
+ * `meter` (services/ai/usage.ts) charges a workspace for each request that misses the cache. Callers that
+ * embed on behalf of no workspace (taxonomy, skill search, health checks) pass none and are exempt.
+ */
+export function embeddingService(env: Env, cache?: EmbeddingCache, meter?: AiMeter): EmbeddingProvider {
   let cached: EmbeddingProvider | undefined;
   return {
     get name() {
@@ -46,7 +51,10 @@ export function embeddingService(env: Env, cache?: EmbeddingCache): EmbeddingPro
           router = embeddingRouter(providers);
           routers.set(env, router);
         }
-        cached = cachedEmbeddings(router, cache ?? d1EmbeddingCache(env.DB));
+        cached = cachedEmbeddings(
+          meter ? meteredEmbeddings(router, meter) : router,
+          cache ?? d1EmbeddingCache(env.DB),
+        );
       }
       return cached.embed(texts, kind);
     },

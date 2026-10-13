@@ -28,6 +28,11 @@ export interface Env {
   GEMINI_MODEL_FAST?: string;
   EMBED_MODEL: string;
   EMBED_DIM: string;
+  /**
+   * Daily AI units per workspace (services/ai/usage.ts: plan-tier call 10, fast-tier 2, embedding request 1),
+   * reset at 00:00 UTC. Unset or "0" = unlimited. Over the limit, AI paths use their deterministic fallbacks.
+   */
+  AI_DAILY_LIMIT_PER_WORKSPACE?: string;
 
   SESSION_SECRET?: string;
   TOKEN_ENC_KEY?: string;
