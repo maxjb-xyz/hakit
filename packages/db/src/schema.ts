@@ -1,51 +1,58 @@
 /**
- * Hakit Postgres schema (docs/ARCHITECTURE.md §5). Tiger Cloud: TimescaleDB + pgvector.
- * TimescaleDB-specific objects (hypertable, continuous aggregate, HNSW indexes) live in the
- * custom SQL migration drizzle/0002_timescale.sql because Drizzle can't express them.
- *
- * Ownership: PL owns this file. Other workstreams request changes via PR to PL (CLAUDE.md).
+ * Hakit schema for Cloudflare D1 (SQLite), docs/ARCHITECTURE.md §5.
+ * SQLite has no enums, arrays, jsonb, uuid or vector types, so the helpers below map them: enums are
+ * checked text, arrays and JSON are JSON text, timestamps are integer milliseconds, embeddings are JSON
+ * number arrays (similarity is computed in the engine, not the database). The 15-minute activity rollup
+ * `activity_hourly` is a plain view created in the migrations.
  */
 import { sql } from 'drizzle-orm';
 import {
-  bigint,
-  boolean,
   customType,
   index,
   integer,
-  jsonb,
-  numeric,
-  pgEnum,
-  pgTable,
   primaryKey,
   real,
-  smallint,
+  sqliteTable,
   text,
-  timestamp,
   uniqueIndex,
-  uuid,
-  vector,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/sqlite-core';
 
 export const EMBED_DIM = 1024;
 
-const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
-  dataType: () => 'bytea',
-  toDriver: (v) => Buffer.from(v),
-  fromDriver: (v) => new Uint8Array(v),
+/** Current time in ms, evaluated by SQLite so raw inserts get it too. */
+const NOW = sql`(cast(unixepoch('subsecond') * 1000 as integer))`;
+
+/** Encrypted bytes (GitHub tokens) as base64 text: D1 blob round-tripping differs across runtimes. */
+const bytes = customType<{ data: Uint8Array; driverData: string }>({
+  dataType: () => 'text',
+  toDriver: (v) => btoa(String.fromCharCode(...v)),
+  fromDriver: (v) => Uint8Array.from(atob(v), (c) => c.charCodeAt(0)),
 });
 
+const enumOf = <const T extends readonly [string, ...string[]]>(values: T) =>
+  Object.assign((name: string) => text(name, { enum: values as unknown as [T[number], ...T[number][]] }), {
+    enumValues: values,
+  });
+const uuid = (name: string) => text(name);
 const id = () =>
-  uuid('id')
+  text('id')
     .primaryKey()
-    .default(sql`gen_random_uuid()`);
-const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
-const ts = (name: string) => timestamp(name, { withTimezone: true });
-const ghId = (name: string) => bigint(name, { mode: 'number' });
-const embedding = () => vector('embedding', { dimensions: EMBED_DIM });
+    .$defaultFn(() => crypto.randomUUID());
+const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
+const createdAt = () => ts('created_at').notNull().default(NOW);
+const bool = (name: string) => integer(name, { mode: 'boolean' });
+const json = (name: string) => text(name, { mode: 'json' }).$type<unknown>();
+const textArray = (name: string) =>
+  text(name, { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`);
+const ghId = (name: string) => integer(name);
+const embedding = () => text('embedding', { mode: 'json' }).$type<number[]>();
 
 /* ---------------------------------- enums ---------------------------------- */
-export const roleEnum = pgEnum('role', ['owner', 'member']);
-export const skillCategoryEnum = pgEnum('skill_category', [
+export const roleEnum = enumOf(['owner', 'member']);
+export const skillCategoryEnum = enumOf([
   'frontend',
   'backend',
   'data',
@@ -58,14 +65,8 @@ export const skillCategoryEnum = pgEnum('skill_category', [
   'security',
   'product_pitch',
 ]);
-export const skillSourceEnum = pgEnum('skill_source', [
-  'inferred',
-  'confirmed',
-  'self_added',
-  'task_history',
-  'removed',
-]);
-export const evidenceKindEnum = pgEnum('evidence_kind', [
+export const skillSourceEnum = enumOf(['inferred', 'confirmed', 'self_added', 'task_history', 'removed']);
+export const evidenceKindEnum = enumOf([
   'repo_language',
   'manifest_dependency',
   'repo_topic',
@@ -74,35 +75,23 @@ export const evidenceKindEnum = pgEnum('evidence_kind', [
   'self_report',
   'completed_task',
 ]);
-export const projectStatusEnum = pgEnum('project_status', ['ideating', 'planning', 'active', 'submitted']);
-export const constraintKindEnum = pgEnum('constraint_kind', [
+export const projectStatusEnum = enumOf(['ideating', 'planning', 'active', 'submitted']);
+export const constraintKindEnum = enumOf([
   'challenge',
   'required_tech',
   'excluded_tech',
   'judging',
   'custom',
 ]);
-export const ideaSourceEnum = pgEnum('idea_source', ['user', 'ai']);
-export const planStatusEnum = pgEnum('plan_status', ['draft', 'accepted', 'superseded']);
-export const taskStatusEnum = pgEnum('task_status', [
-  'todo',
-  'in_progress',
-  'in_review',
-  'blocked',
-  'done',
-  'cut',
-]);
-export const priorityEnum = pgEnum('priority', ['must', 'should', 'could']);
-export const taskSourceEnum = pgEnum('task_source', ['plan', 'manual', 'recommendation']);
-export const depKindEnum = pgEnum('dependency_kind', ['blocks', 'soft']);
-export const assignmentStatusEnum = pgEnum('assignment_status', [
-  'proposed',
-  'active',
-  'replaced',
-  'rejected',
-]);
-export const assignmentSourceEnum = pgEnum('assignment_source', ['solver', 'manual', 'recommendation']);
-export const recKindEnum = pgEnum('recommendation_kind', [
+export const ideaSourceEnum = enumOf(['user', 'ai']);
+export const planStatusEnum = enumOf(['draft', 'accepted', 'superseded']);
+export const taskStatusEnum = enumOf(['todo', 'in_progress', 'in_review', 'blocked', 'done', 'cut']);
+export const priorityEnum = enumOf(['must', 'should', 'could']);
+export const taskSourceEnum = enumOf(['plan', 'manual', 'recommendation']);
+export const depKindEnum = enumOf(['blocks', 'soft']);
+export const assignmentStatusEnum = enumOf(['proposed', 'active', 'replaced', 'rejected']);
+export const assignmentSourceEnum = enumOf(['solver', 'manual', 'recommendation']);
+export const recKindEnum = enumOf([
   'reassign',
   'split_task',
   'cut_scope',
@@ -111,18 +100,18 @@ export const recKindEnum = pgEnum('recommendation_kind', [
   'add_dependency',
   'check_in',
 ]);
-export const recStatusEnum = pgEnum('recommendation_status', ['open', 'accepted', 'dismissed', 'expired']);
-export const severityEnum = pgEnum('severity', ['info', 'warn', 'critical']);
-export const repoSelectionEnum = pgEnum('repository_selection', ['all', 'selected']);
-export const aliasKindEnum = pgEnum('alias_kind', ['email', 'login', 'noreply']);
-export const activitySourceEnum = pgEnum('activity_source', ['github', 'agent', 'hakit']);
-export const linkKindEnum = pgEnum('link_kind', ['confirmed', 'inferred', 'none']);
-export const agentKindEnum = pgEnum('agent_kind', ['claude_code', 'codex', 'other']);
-export const agentStatusEnum = pgEnum('agent_status', ['active', 'idle', 'awaiting_input', 'ended', 'error']);
-export const embedKindEnum = pgEnum('member_embedding_kind', ['profile', 'interests']);
+export const recStatusEnum = enumOf(['open', 'accepted', 'dismissed', 'expired']);
+export const severityEnum = enumOf(['info', 'warn', 'critical']);
+export const repoSelectionEnum = enumOf(['all', 'selected']);
+export const aliasKindEnum = enumOf(['email', 'login', 'noreply']);
+export const activitySourceEnum = enumOf(['github', 'agent', 'hakit']);
+export const linkKindEnum = enumOf(['confirmed', 'inferred', 'none']);
+export const agentKindEnum = enumOf(['claude_code', 'codex', 'other']);
+export const agentStatusEnum = enumOf(['active', 'idle', 'awaiting_input', 'ended', 'error']);
+export const embedKindEnum = enumOf(['profile', 'interests']);
 
 /* --------------------------- identity & teams (§5.1) --------------------------- */
-export const users = pgTable('users', {
+export const users = sqliteTable('users', {
   id: id(),
   githubUserId: ghId('github_user_id').notNull().unique(),
   githubLogin: text('github_login').notNull(),
@@ -133,18 +122,18 @@ export const users = pgTable('users', {
   lastSeenAt: ts('last_seen_at'),
 });
 
-export const githubTokens = pgTable('github_tokens', {
+export const githubTokens = sqliteTable('github_tokens', {
   userId: uuid('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
-  accessTokenEnc: bytea('access_token_enc').notNull(),
-  refreshTokenEnc: bytea('refresh_token_enc'),
+  accessTokenEnc: bytes('access_token_enc').notNull(),
+  refreshTokenEnc: bytes('refresh_token_enc'),
   accessExpiresAt: ts('access_expires_at'),
   refreshExpiresAt: ts('refresh_expires_at'),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().default(NOW),
 });
 
-export const sessions = pgTable('sessions', {
+export const sessions = sqliteTable('sessions', {
   /** SHA-256 of the cookie token, hex. */
   id: text('id').primaryKey(),
   userId: uuid('user_id')
@@ -155,20 +144,24 @@ export const sessions = pgTable('sessions', {
   userAgent: text('user_agent'),
 });
 
-export const hackathonTemplates = pgTable('hackathon_templates', {
+export const hackathonTemplates = sqliteTable('hackathon_templates', {
   id: id(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   startsAt: ts('starts_at').notNull(),
   endsAt: ts('ends_at').notNull(),
   timezone: text('timezone').notNull(),
-  tracks: jsonb('tracks').notNull().default([]),
-  judgingCriteria: jsonb('judging_criteria').notNull().default([]),
+  tracks: json('tracks')
+    .notNull()
+    .default(sql`'[]'`),
+  judgingCriteria: json('judging_criteria')
+    .notNull()
+    .default(sql`'[]'`),
   sourceUrl: text('source_url'),
   verifiedAt: ts('verified_at'),
 });
 
-export const challenges = pgTable(
+export const challenges = sqliteTable(
   'challenges',
   {
     id: id(),
@@ -179,22 +172,16 @@ export const challenges = pgTable(
     sponsor: text('sponsor').notNull(),
     title: text('title').notNull(),
     description: text('description').notNull().default(''),
-    requirements: text('requirements')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
-    requiredTech: text('required_tech')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
+    requirements: textArray('requirements'),
+    requiredTech: textArray('required_tech'),
     prize: text('prize'),
     url: text('url'),
-    verified: boolean('verified').notNull().default(false),
+    verified: bool('verified').notNull().default(false),
   },
   (t) => [uniqueIndex('challenges_template_key').on(t.hackathonTemplateId, t.key)],
 );
 
-export const workspaces = pgTable('workspaces', {
+export const workspaces = sqliteTable('workspaces', {
   id: id(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
@@ -207,7 +194,7 @@ export const workspaces = pgTable('workspaces', {
   createdAt: createdAt(),
 });
 
-export const memberships = pgTable(
+export const memberships = sqliteTable(
   'memberships',
   {
     workspaceId: uuid('workspace_id')
@@ -217,13 +204,13 @@ export const memberships = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: roleEnum('role').notNull().default('member'),
-    colorIndex: smallint('color_index').notNull().default(0),
-    joinedAt: ts('joined_at').notNull().defaultNow(),
+    colorIndex: integer('color_index').notNull().default(0),
+    joinedAt: ts('joined_at').notNull().default(NOW),
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.userId] })],
 );
 
-export const invites = pgTable('invites', {
+export const invites = sqliteTable('invites', {
   id: id(),
   workspaceId: uuid('workspace_id')
     .notNull()
@@ -240,25 +227,19 @@ export const invites = pgTable('invites', {
 });
 
 /* -------------------------- capability intelligence (§5.2) -------------------------- */
-export const skills = pgTable('skills', {
+export const skills = sqliteTable('skills', {
   id: id(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   category: skillCategoryEnum('category').notNull(),
-  aliases: text('aliases')
-    .array()
-    .notNull()
-    .default(sql`'{}'`),
-  related: text('related')
-    .array()
-    .notNull()
-    .default(sql`'{}'`),
+  aliases: textArray('aliases'),
+  related: textArray('related'),
   /** Unknown skills proposed by inference/self-entry await normalization. */
-  pendingReview: boolean('pending_review').notNull().default(false),
+  pendingReview: bool('pending_review').notNull().default(false),
   embedding: embedding(),
 });
 
-export const memberProfiles = pgTable(
+export const memberProfiles = sqliteTable(
   'member_profiles',
   {
     workspaceId: uuid('workspace_id')
@@ -269,27 +250,20 @@ export const memberProfiles = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     headline: text('headline'),
     timezone: text('timezone').notNull().default('America/New_York'),
-    interests: text('interests')
-      .array()
+    interests: textArray('interests'),
+    learningGoals: textArray('learning_goals'),
+    avoid: textArray('avoid'),
+    availability: json('availability')
       .notNull()
-      .default(sql`'{}'`),
-    learningGoals: text('learning_goals')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
-    avoid: text('avoid')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
-    availability: jsonb('availability').notNull().default([]),
-    availableHours: numeric('available_hours', { mode: 'number' }).notNull().default(0),
+      .default(sql`'[]'`),
+    availableHours: real('available_hours').notNull().default(0),
     onboardingCompletedAt: ts('onboarding_completed_at'),
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.userId] })],
 );
 
 /** User-level (portable across workspaces). Inference never overwrites confirmed/self_added/removed rows. */
-export const memberSkills = pgTable(
+export const memberSkills = sqliteTable(
   'member_skills',
   {
     id: id(),
@@ -299,16 +273,16 @@ export const memberSkills = pgTable(
     skillId: uuid('skill_id')
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
-    level: smallint('level').notNull(),
+    level: integer('level').notNull(),
     confidence: real('confidence').notNull(),
     source: skillSourceEnum('source').notNull(),
     confirmedAt: ts('confirmed_at'),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().default(NOW),
   },
   (t) => [uniqueIndex('member_skills_user_skill').on(t.userId, t.skillId)],
 );
 
-export const skillEvidence = pgTable(
+export const skillEvidence = sqliteTable(
   'skill_evidence',
   {
     id: id(),
@@ -323,14 +297,14 @@ export const skillEvidence = pgTable(
     url: text('url'),
     weight: real('weight').notNull(),
     summary: text('summary').notNull(),
-    detail: jsonb('detail'),
+    detail: json('detail'),
     observedAt: ts('observed_at').notNull(),
     createdAt: createdAt(),
   },
   (t) => [index('skill_evidence_user').on(t.userId)],
 );
 
-export const memberEmbeddings = pgTable(
+export const memberEmbeddings = sqliteTable(
   'member_embeddings',
   {
     userId: uuid('user_id')
@@ -342,13 +316,13 @@ export const memberEmbeddings = pgTable(
     kind: embedKindEnum('kind').notNull(),
     embedding: embedding().notNull(),
     model: text('model').notNull(),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().default(NOW),
   },
   (t) => [primaryKey({ columns: [t.userId, t.workspaceId, t.kind] })],
 );
 
 /** Content-hash cache so identical texts are embedded once per model. */
-export const embeddingCache = pgTable(
+export const embeddingCache = sqliteTable(
   'embedding_cache',
   {
     hash: text('hash').notNull(),
@@ -360,7 +334,7 @@ export const embeddingCache = pgTable(
 );
 
 /* ----------------------------- catalog & projects (§5.3) ----------------------------- */
-export const projects = pgTable('projects', {
+export const projects = sqliteTable('projects', {
   id: id(),
   workspaceId: uuid('workspace_id')
     .notNull()
@@ -375,7 +349,7 @@ export const projects = pgTable('projects', {
   createdAt: createdAt(),
 });
 
-export const projectConstraints = pgTable('project_constraints', {
+export const projectConstraints = sqliteTable('project_constraints', {
   id: id(),
   projectId: uuid('project_id')
     .notNull()
@@ -386,21 +360,21 @@ export const projectConstraints = pgTable('project_constraints', {
   weight: real('weight').notNull().default(1),
 });
 
-export const ideas = pgTable('ideas', {
+export const ideas = sqliteTable('ideas', {
   id: id(),
   projectId: uuid('project_id')
     .notNull()
     .references(() => projects.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   pitch: text('pitch').notNull(),
-  payload: jsonb('payload').notNull(),
+  payload: json('payload').notNull(),
   teamFit: real('team_fit').notNull().default(0),
   source: ideaSourceEnum('source').notNull(),
-  selected: boolean('selected').notNull().default(false),
+  selected: bool('selected').notNull().default(false),
   createdAt: createdAt(),
 });
 
-export const plans = pgTable(
+export const plans = sqliteTable(
   'plans',
   {
     id: id(),
@@ -409,8 +383,8 @@ export const plans = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     status: planStatusEnum('status').notNull().default('draft'),
-    payload: jsonb('payload').notNull(),
-    feasibility: jsonb('feasibility').notNull(),
+    payload: json('payload').notNull(),
+    feasibility: json('feasibility').notNull(),
     model: text('model').notNull(),
     promptHash: text('prompt_hash'),
     createdBy: uuid('created_by').references(() => users.id),
@@ -423,7 +397,7 @@ export const plans = pgTable(
 );
 
 /* ---------------------------------- execution (§5.4) ---------------------------------- */
-export const milestones = pgTable('milestones', {
+export const milestones = sqliteTable('milestones', {
   id: id(),
   projectId: uuid('project_id')
     .notNull()
@@ -435,7 +409,7 @@ export const milestones = pgTable('milestones', {
   description: text('description'),
 });
 
-export const tasks = pgTable(
+export const tasks = sqliteTable(
   'tasks',
   {
     id: id(),
@@ -446,24 +420,20 @@ export const tasks = pgTable(
     milestoneId: uuid('milestone_id').references(() => milestones.id, { onDelete: 'set null' }),
     title: text('title').notNull(),
     description: text('description').notNull().default(''),
-    acceptanceCriteria: text('acceptance_criteria')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
-    labels: text('labels')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
+    acceptanceCriteria: textArray('acceptance_criteria'),
+    labels: textArray('labels'),
     status: taskStatusEnum('status').notNull().default('todo'),
     priority: priorityEnum('priority').notNull().default('should'),
-    estimateHours: numeric('estimate_hours', { mode: 'number' }).notNull().default(2),
+    estimateHours: real('estimate_hours').notNull().default(2),
     /** [{skillSlug, level, weight}] — contracts TaskRequiredSkill[] */
-    requiredSkills: jsonb('required_skills').notNull().default([]),
+    requiredSkills: json('required_skills')
+      .notNull()
+      .default(sql`'[]'`),
     embedding: embedding(),
     source: taskSourceEnum('source').notNull().default('manual'),
     startedAt: ts('started_at'),
     completedAt: ts('completed_at'),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().default(NOW),
     createdAt: createdAt(),
   },
   (t) => [
@@ -472,7 +442,7 @@ export const tasks = pgTable(
   ],
 );
 
-export const taskDependencies = pgTable(
+export const taskDependencies = sqliteTable(
   'task_dependencies',
   {
     taskId: uuid('task_id')
@@ -486,7 +456,7 @@ export const taskDependencies = pgTable(
   (t) => [primaryKey({ columns: [t.taskId, t.dependsOnTaskId] })],
 );
 
-export const assignments = pgTable(
+export const assignments = sqliteTable(
   'assignments',
   {
     id: id(),
@@ -498,16 +468,15 @@ export const assignments = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     status: assignmentStatusEnum('status').notNull().default('proposed'),
     source: assignmentSourceEnum('source').notNull(),
-    locked: boolean('locked').notNull().default(false),
+    locked: bool('locked').notNull().default(false),
     score: real('score').notNull(),
-    breakdown: jsonb('breakdown').notNull(),
-    reasonCodes: text('reason_codes')
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
+    breakdown: json('breakdown').notNull(),
+    reasonCodes: textArray('reason_codes'),
     explanation: text('explanation').notNull(),
     explanationSource: text('explanation_source').notNull().default('template'),
-    alternatives: jsonb('alternatives').notNull().default([]),
+    alternatives: json('alternatives')
+      .notNull()
+      .default(sql`'[]'`),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: createdAt(),
   },
@@ -519,7 +488,7 @@ export const assignments = pgTable(
   ],
 );
 
-export const recommendations = pgTable(
+export const recommendations = sqliteTable(
   'recommendations',
   {
     id: id(),
@@ -531,9 +500,13 @@ export const recommendations = pgTable(
     severity: severityEnum('severity').notNull(),
     headline: text('headline').notNull(),
     rationale: text('rationale').notNull(),
-    impact: jsonb('impact').notNull().default({}),
-    actions: jsonb('actions').notNull(),
-    signals: jsonb('signals').notNull().default([]),
+    impact: json('impact')
+      .notNull()
+      .default(sql`'{}'`),
+    actions: json('actions').notNull(),
+    signals: json('signals')
+      .notNull()
+      .default(sql`'[]'`),
     dedupeKey: text('dedupe_key').notNull(),
     createdAt: createdAt(),
     resolvedAt: ts('resolved_at'),
@@ -548,7 +521,7 @@ export const recommendations = pgTable(
   ],
 );
 
-export const taskEvents = pgTable(
+export const taskEvents = sqliteTable(
   'task_events',
   {
     id: id(),
@@ -559,35 +532,35 @@ export const taskEvents = pgTable(
     kind: text('kind').notNull(),
     fromValue: text('from_value'),
     toValue: text('to_value'),
-    at: ts('at').notNull().defaultNow(),
+    at: ts('at').notNull().default(NOW),
   },
   (t) => [index('task_events_task').on(t.taskId, t.at)],
 );
 
 /* ----------------------------- github & activity (§5.5) ----------------------------- */
-export const githubInstallations = pgTable('github_installations', {
+export const githubInstallations = sqliteTable('github_installations', {
   id: ghId('id').primaryKey(),
   accountLogin: text('account_login').notNull(),
   accountType: text('account_type').notNull(),
   repositorySelection: repoSelectionEnum('repository_selection').notNull(),
   suspendedAt: ts('suspended_at'),
   createdByUserId: uuid('created_by_user_id').references(() => users.id),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().default(NOW),
 });
 
-export const repos = pgTable('repos', {
+export const repos = sqliteTable('repos', {
   id: ghId('id').primaryKey(),
   installationId: ghId('installation_id').references(() => githubInstallations.id, { onDelete: 'set null' }),
   fullName: text('full_name').notNull(),
   defaultBranch: text('default_branch').notNull().default('main'),
-  private: boolean('private').notNull().default(false),
+  private: bool('private').notNull().default(false),
   htmlUrl: text('html_url').notNull(),
-  archived: boolean('archived').notNull().default(false),
+  archived: bool('archived').notNull().default(false),
   pushedAt: ts('pushed_at'),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().default(NOW),
 });
 
-export const projectRepos = pgTable(
+export const projectRepos = sqliteTable(
   'project_repos',
   {
     projectId: uuid('project_id')
@@ -597,41 +570,41 @@ export const projectRepos = pgTable(
       .notNull()
       .references(() => repos.id, { onDelete: 'cascade' }),
     connectedBy: uuid('connected_by').references(() => users.id),
-    connectedAt: ts('connected_at').notNull().defaultNow(),
+    connectedAt: ts('connected_at').notNull().default(NOW),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.repoId] }), index('project_repos_repo').on(t.repoId)],
 );
 
 /** Idempotency ledger for GitHub deliveries (X-GitHub-Delivery). */
-export const webhookDeliveries = pgTable('webhook_deliveries', {
+export const webhookDeliveries = sqliteTable('webhook_deliveries', {
   deliveryId: text('delivery_id').primaryKey(),
   event: text('event').notNull(),
   action: text('action'),
   installationId: ghId('installation_id'),
-  receivedAt: ts('received_at').notNull().defaultNow(),
+  receivedAt: ts('received_at').notNull().default(NOW),
   processedAt: ts('processed_at'),
   error: text('error'),
 });
 
-export const authorAliases = pgTable('author_aliases', {
+export const authorAliases = sqliteTable('author_aliases', {
   emailOrLogin: text('email_or_login').primaryKey(),
   userId: uuid('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   kind: aliasKindEnum('kind').notNull(),
-  confirmed: boolean('confirmed').notNull().default(false),
+  confirmed: bool('confirmed').notNull().default(false),
 });
 
 /**
- * HYPERTABLE on `ts` (see drizzle/0002_timescale.sql). Composite PK must include the time column.
+ * Activity timeline. The composite PK (id, ts) is kept from the Postgres hypertable layout.
  * Dedupe of commits across push + PR webhooks is enforced by activity_events_commit_dedupe.
  */
-export const activityEvents = pgTable(
+export const activityEvents = sqliteTable(
   'activity_events',
   {
     id: uuid('id')
       .notNull()
-      .default(sql`gen_random_uuid()`),
+      .$defaultFn(() => crypto.randomUUID()),
     ts: ts('ts').notNull(),
     projectId: uuid('project_id').notNull(),
     source: activitySourceEnum('source').notNull(),
@@ -651,19 +624,19 @@ export const activityEvents = pgTable(
     deletions: integer('deletions'),
     filesChanged: integer('files_changed'),
     agentSessionId: uuid('agent_session_id'),
-    payload: jsonb('payload'),
+    payload: json('payload'),
   },
   (t) => [
     primaryKey({ columns: [t.id, t.ts] }),
-    index('activity_project_ts').on(t.projectId, t.ts.desc()),
-    index('activity_task_ts').on(t.taskId, t.ts.desc()),
-    index('activity_actor_ts').on(t.actorUserId, t.ts.desc()),
+    index('activity_project_ts').on(t.projectId, t.ts),
+    index('activity_task_ts').on(t.taskId, t.ts),
+    index('activity_actor_ts').on(t.actorUserId, t.ts),
     uniqueIndex('activity_events_commit_dedupe').on(t.projectId, t.sha, t.kind, t.ts),
   ],
 );
 
 /* ---------------------------------- agents (§5.6) ---------------------------------- */
-export const agentTokens = pgTable('agent_tokens', {
+export const agentTokens = sqliteTable('agent_tokens', {
   id: id(),
   userId: uuid('user_id')
     .notNull()
@@ -673,14 +646,14 @@ export const agentTokens = pgTable('agent_tokens', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   tokenHash: text('token_hash').notNull().unique(),
-  sharePrompts: boolean('share_prompts').notNull().default(false),
-  sharePaths: boolean('share_paths').notNull().default(true),
+  sharePrompts: bool('share_prompts').notNull().default(false),
+  sharePaths: bool('share_paths').notNull().default(true),
   lastUsedAt: ts('last_used_at'),
   revokedAt: ts('revoked_at'),
   createdAt: createdAt(),
 });
 
-export const agentSessions = pgTable(
+export const agentSessions = sqliteTable(
   'agent_sessions',
   {
     id: id(),
@@ -699,10 +672,12 @@ export const agentSessions = pgTable(
     status: agentStatusEnum('status').notNull().default('active'),
     taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
     linkKind: linkKindEnum('link_kind').notNull().default('none'),
-    startedAt: ts('started_at').notNull().defaultNow(),
-    lastEventAt: ts('last_event_at').notNull().defaultNow(),
+    startedAt: ts('started_at').notNull().default(NOW),
+    lastEventAt: ts('last_event_at').notNull().default(NOW),
     endedAt: ts('ended_at'),
-    summary: jsonb('summary').notNull().default({}),
+    summary: json('summary')
+      .notNull()
+      .default(sql`'{}'`),
   },
   (t) => [uniqueIndex('agent_sessions_user_external').on(t.userId, t.externalSessionId)],
 );

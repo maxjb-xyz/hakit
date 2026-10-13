@@ -59,7 +59,7 @@ describe('GitHub installation and repository synchronization', () => {
     );
     const removal = s.writes.mock.calls.find((c) => c[0] === 'update')!;
     expect(removal[2]).toMatchObject({ installationId: null });
-    expect(new PgDialect().sqlToQuery(removal[3]).params).toEqual([55501, at, 99]);
+    expect(new PgDialect().sqlToQuery(removal[3]).params).toEqual([55501, Date.parse(at), 99]);
     expect(s.writes.mock.calls.some((c) => c[1] === 'repos' && c[0] === 'upsert')).toBe(true);
   });
   it('keeps a tombstone and detaches repos after uninstall', async () => {

@@ -1,13 +1,13 @@
-import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { schema } from '@hakit/db';
 import { eq } from 'drizzle-orm';
-import { createTestDb } from '../test/pglite';
+import { createTestDb } from '@hakit/db/testing';
 import { importSkillFacts, processSkillsImport, skillsImportJob } from './skills-import';
 import { getServices } from '../services';
 import type { Env } from '../env';
 import { handlers, handleQueue } from './index';
 import type { RepoFacts } from '@hakit/engine';
-let testDb: Awaited<ReturnType<typeof createTestDb>>;
+let testDb: ReturnType<typeof createTestDb>;
 let userId: string, skillId: string;
 const now = new Date('2026-10-10');
 const repo: RepoFacts = {
@@ -29,14 +29,8 @@ const provider = {
     texts.map(() => Array.from({ length: 1024 }, (_, i) => (i === 0 ? 1 : 0))),
   ),
 };
-beforeAll(async () => {
-  testDb = await createTestDb();
-}, 30000);
-afterAll(async () => {
-  await testDb.pg.close();
-});
 beforeEach(async () => {
-  await testDb.pg.exec('TRUNCATE users, skills CASCADE');
+  testDb = createTestDb();
   vi.clearAllMocks();
   const [user] = await testDb.db
     .insert(schema.users)

@@ -35,12 +35,8 @@ health.get('/health/deep', async (c) => {
   });
   if (!c.var.mocks) {
     await run('database', async () => {
-      const r = await c.var
-        .db()
-        .execute(
-          sql`select time_bucket('15 minutes', now()) as b, extversion from pg_extension where extname = 'timescaledb'`,
-        );
-      return JSON.stringify(r.rows[0]);
+      const r = await c.var.db().get<{ version: string }>(sql`select sqlite_version() as version`);
+      return `sqlite ${r?.version}`;
     });
     await run('queue', () =>
       c.env.JOBS.send({

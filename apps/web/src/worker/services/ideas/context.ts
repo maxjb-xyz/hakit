@@ -8,7 +8,7 @@ import {
   type IdeaCandidate,
 } from '@hakit/contracts';
 import { DEFAULT_CONFIG } from '@hakit/engine';
-import { schema, type Db } from '@hakit/db';
+import { chunkIds, schema, type Db } from '@hakit/db';
 import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { HttpError, notFound } from '../../lib/errors';
 
@@ -41,17 +41,33 @@ export async function ideaContext(
       'The skill catalog needs to be set up before generating ideas',
     );
   const ids = members.map((m) => m.userId);
-  const reports = await db
-    .select({ member: schema.memberSkills, skill: schema.skills })
-    .from(schema.memberSkills)
-    .innerJoin(schema.skills, eq(schema.memberSkills.skillId, schema.skills.id))
-    .where(and(inArray(schema.memberSkills.userId, ids), ne(schema.memberSkills.source, 'removed')));
-  const profiles = await db
-    .select()
-    .from(schema.memberProfiles)
-    .where(
-      and(eq(schema.memberProfiles.workspaceId, workspace.id), inArray(schema.memberProfiles.userId, ids)),
-    );
+  const chunks = chunkIds(ids);
+  const reports = (
+    await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .select({ member: schema.memberSkills, skill: schema.skills })
+          .from(schema.memberSkills)
+          .innerJoin(schema.skills, eq(schema.memberSkills.skillId, schema.skills.id))
+          .where(and(inArray(schema.memberSkills.userId, chunk), ne(schema.memberSkills.source, 'removed'))),
+      ),
+    )
+  ).flat();
+  const profiles = (
+    await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .select()
+          .from(schema.memberProfiles)
+          .where(
+            and(
+              eq(schema.memberProfiles.workspaceId, workspace.id),
+              inArray(schema.memberProfiles.userId, chunk),
+            ),
+          ),
+      ),
+    )
+  ).flat();
   const constraints = await db
     .select()
     .from(schema.projectConstraints)

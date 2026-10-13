@@ -195,6 +195,27 @@ describe('plan materialization (T-308)', () => {
     expect(await h.db.select().from(schema.tasks)).toHaveLength(3);
   });
 
+  it('lets exactly one of two concurrent accepts materialize', async () => {
+    const ids = [await draftPlan(1), await draftPlan(2)];
+    const statuses = await Promise.all(
+      ids.map(
+        async (planId) =>
+          (
+            await h.call(`/projects/${pid}/plans/${planId}/accept`, {
+              method: 'POST',
+              token: owner.token,
+              json: {},
+            })
+          ).status,
+      ),
+    );
+    expect(statuses.sort()).toEqual([200, 409]);
+    expect(await h.db.select().from(schema.tasks)).toHaveLength(3);
+    expect(await h.db.select().from(schema.milestones)).toHaveLength(3);
+    const plans = await h.db.select().from(schema.plans);
+    expect(plans.map((p) => p.status).sort()).toEqual(['accepted', 'superseded']);
+  });
+
   it('a failed embedding enqueue does not fail the committed accept', async () => {
     h.jobs.send.mockRejectedValueOnce(new Error('queue down'));
     const board = await acceptedBoard();

@@ -9,14 +9,15 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/webhooks/*"],
   },
-  // Hyperdrive → Tiger Cloud DIRECT service URL. Create with:
-  //   npx wrangler hyperdrive create hakit-db --connection-string="postgres://…"
-  // Locally, set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE to the Tiger dev URL (see docs/SETUP.md).
-  "hyperdrive": [
+  // D1 (SQLite). The Deploy button creates the database and fills in its ID; for a manual setup run
+  //   npx wrangler d1 create hakit
+  // and paste the ID here. Migrations: packages/db/migrations, applied by `pnpm deploy`.
+  "d1_databases": [
     {
-      "binding": "HYPERDRIVE",
-      "id": "b6b5b8d17744423ebb81e50206d48a68",
-      "localConnectionString": "postgres://hakit:hakit@127.0.0.1:5432/hakit",
+      "binding": "DB",
+      "database_name": "hakit",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/db/migrations",
     },
   ],
   // Workers AI: plans, ideas and explanations (AI_MODEL_*) and Qwen3 embeddings. No API key needed.

@@ -17,7 +17,7 @@ it('keeps the request DB client open until a streamed response has finished', as
     c.set('streamDone', new Promise<void>((resolve) => (finish = resolve)));
     return c.text('streaming');
   });
-  const env = { HAKIT_MOCKS: '0', HYPERDRIVE: { connectionString: 'postgres://x' } } as unknown as Env;
+  const env = { HAKIT_MOCKS: '0', DB: {} } as unknown as Env;
   const ctx = { waitUntil: (p: Promise<unknown>) => void pending.push(p), passThroughOnException: () => {} };
   await app.request('/stream', {}, env, ctx as unknown as ExecutionContext);
   await new Promise((r) => setTimeout(r, 0));

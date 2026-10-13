@@ -4,22 +4,28 @@
  * derived from the project and a natural key, commits dedupe by sha (shared webhook store), and branch / PR
  * rows dedupe against anything already recorded for the same branch or PR — including webhook rows.
  */
-import { createDb, schema, type Db } from '@hakit/db';
+import { commit, createDb, schema, type Db } from '@hakit/db';
 import { ActivityEvent, JobMessage, WsPayload, type ActivityEvent as Activity } from '@hakit/contracts';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Env } from '../env';
 import { isMock } from '../env';
 import { broadcast } from '../lib/broadcast';
 import { githubAppJwt } from '../lib/github-app-jwt';
-import { resolveAuthor, type AuthorLookup, type NormalizedActivity } from '../services/github/normalize';
-import { referencedTaskNumbers } from '../services/github/linking';
+import { resolveAuthor, type NormalizedActivity } from '../services/github/normalize';
+import { activityFromRow, referencedTaskNumbers } from '../services/github/linking';
 import {
   GithubBackfillError,
   githubBackfillClient,
   normalizeBackfill,
   type BackfillSnapshot,
 } from '../services/github/backfill';
-import { activityStore, eventId, type ActivityTransaction } from './github-webhook';
+import {
+  activityReads,
+  equivalentActivity,
+  eventId,
+  insertActivity,
+  type ActivityReads,
+} from './github-webhook';
 
 type BackfillJob = Extract<JobMessage, { type: 'github.backfill' }>;
 
@@ -30,18 +36,15 @@ export interface ConnectedRepo {
   installationId: number;
 }
 
-export interface BackfillTransaction extends AuthorLookup {
-  taskByNumber: ActivityTransaction['taskByNumber'];
-  /** True when the project already has this commit (sha), branch or PR event, from a webhook or an earlier run. */
-  hasEquivalent(event: Activity): Promise<boolean>;
-  save: ActivityTransaction['save'];
-}
-
-export interface BackfillDependencies {
+export interface BackfillDependencies extends ActivityReads {
   /** The repo, only while it is still connected to the project through an unsuspended installation. */
   connectedRepo(projectId: string, repoId: number): Promise<ConnectedRepo | null>;
   snapshot(repo: ConnectedRepo, since: string): Promise<BackfillSnapshot>;
-  transaction<T>(run: (tx: BackfillTransaction) => Promise<T>): Promise<T>;
+  /**
+   * Stores, in one atomic batch, each event for which the project has no equivalent yet (same commit sha,
+   * branch or PR, from a webhook or an earlier run). Returns only the rows this call inserted.
+   */
+  save(events: Activity[]): Promise<Activity[]>;
   publish(event: Activity): Promise<void>;
   requestLink(event: Activity): Promise<void>;
   now(): number;
@@ -67,7 +70,7 @@ function skipped(reason: string, job: BackfillJob) {
   );
 }
 
-/** Fetch outside the transaction, store transactionally, then notify and queue inferred linking. */
+/** Fetch first, store in one batch, then notify and queue inferred linking. */
 export async function processGithubBackfill(input: BackfillJob, deps: BackfillDependencies): Promise<number> {
   const job = JobMessage.parse(input) as BackfillJob;
   const repo = await deps.connectedRepo(job.projectId, job.repoId);
@@ -88,28 +91,25 @@ export async function processGithubBackfill(input: BackfillJob, deps: BackfillDe
     throw err;
   }
   const normalized = normalizeBackfill(snapshot, since);
-  const saved = await deps.transaction(async (tx) => {
-    const stored: Activity[] = [];
-    for (const item of normalized) {
-      const author = await resolveAuthor(item.actor, tx);
-      const taskId = await tx.taskByNumber(
-        job.projectId,
-        referencedTaskNumbers(item.activity.ref, item.linkText),
-      );
-      const activity = ActivityEvent.parse({
+  const pending: Activity[] = [];
+  for (const item of normalized) {
+    const author = await resolveAuthor(item.actor, deps);
+    const taskId = await deps.taskByNumber(
+      job.projectId,
+      referencedTaskNumbers(item.activity.ref, item.linkText),
+    );
+    pending.push(
+      ActivityEvent.parse({
         ...item.activity,
         ...author,
         ...(taskId ? { taskId, linkKind: 'confirmed', linkConfidence: null } : {}),
         projectId: job.projectId,
         id: await eventId(`backfill:${backfillKey(item.activity)}`, job.projectId, 0),
-      });
-      // Anything already recorded (by a webhook or an earlier run) is neither rewritten nor re-announced.
-      if (await tx.hasEquivalent(activity)) continue;
-      const row = await tx.save(activity);
-      if (row) stored.push(row);
-    }
-    return stored;
-  });
+      }),
+    );
+  }
+  // Anything already recorded (by a webhook or an earlier run) is neither rewritten nor re-announced.
+  const saved = await deps.save(pending);
   for (const event of saved) {
     await deps.publish(event);
     if (event.linkKind === 'none') await deps.requestLink(event);
@@ -155,32 +155,14 @@ export function databaseBackfillDependencies(
       const token = await client.installationToken(jwt, repo.installationId);
       return client.snapshot(token, repo, since);
     },
-    transaction: (run) =>
-      db.transaction(async (tx) => {
-        const store = activityStore(tx);
-        return run({
-          ...store,
-          hasEquivalent: async (event) => {
-            const [row] = await tx
-              .select({ id: schema.activityEvents.id })
-              .from(schema.activityEvents)
-              .where(
-                and(
-                  eq(schema.activityEvents.projectId, event.projectId),
-                  eq(schema.activityEvents.source, 'github'),
-                  eq(schema.activityEvents.kind, event.kind),
-                  event.kind === 'commit'
-                    ? eq(schema.activityEvents.sha, event.sha ?? '')
-                    : event.prNumber !== null
-                      ? eq(schema.activityEvents.prNumber, event.prNumber)
-                      : eq(schema.activityEvents.ref, event.ref ?? ''),
-                ),
-              )
-              .limit(1);
-            return !!row;
-          },
-        });
-      }),
+    ...activityReads(db),
+    save: async (events) => {
+      const results = await commit(
+        db,
+        events.map((e) => insertActivity(db, e, equivalentActivity(e))),
+      );
+      return (results as (typeof schema.activityEvents.$inferSelect)[][]).flat().map(activityFromRow);
+    },
     publish: async (event) => {
       await broadcast(env, event.projectId, WsPayload.parse({ type: 'activity.created', data: { event } }));
     },
@@ -196,7 +178,7 @@ export function databaseBackfillDependencies(
 export async function githubBackfillJob(job: BackfillJob, { env }: { env: Env }): Promise<void> {
   // Mock mode has no GitHub App or database; fixture activity already stands in for the backfill.
   if (isMock(env)) return;
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   try {
     await handle.ready;
     const count = await processGithubBackfill(job, databaseBackfillDependencies(handle.db, env));

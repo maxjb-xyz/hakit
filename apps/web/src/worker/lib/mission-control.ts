@@ -2,7 +2,7 @@
  * Mission Control snapshot (T-502): board + activity_hourly + agent sessions + open recommendations, with the
  * schedule from the engine (T-501). Measured numbers are computed here; estimated ones come only from the engine.
  */
-import { and, desc, eq, inArray, max, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, max, ne, sql } from 'drizzle-orm';
 import {
   ActivityEvent,
   type AvailabilityWindow,
@@ -95,10 +95,11 @@ export async function buildSnapshot(db: Db, projectId: string, now: Date): Promi
       })
       .from(schema.agentSessions)
       .where(and(eq(schema.agentSessions.projectId, projectId), ne(schema.agentSessions.status, 'ended'))),
-    // Continuous aggregate (0002_timescale.sql). Raw SQL: Drizzle has no model for the view.
-    db.execute<{ bucket: Date | string; user_id: string | null; n: number | string }>(
+    // 15-minute rollup view (0001_activity_hourly_view.sql); `bucket` is epoch ms.
+    // Raw SQL: Drizzle has no model for the view.
+    db.all<{ bucket: number; user_id: string | null; n: number }>(
       sql`select bucket, actor_user_id as user_id, sum(n) as n from activity_hourly
-          where project_id = ${projectId} and bucket >= ${sparkFrom.toISOString()}
+          where project_id = ${projectId} and bucket >= ${sparkFrom.getTime()}
           group by bucket, actor_user_id`,
     ),
     db
@@ -116,12 +117,12 @@ export async function buildSnapshot(db: Db, projectId: string, now: Date): Promi
       ? db
           .select({ taskId: schema.taskEvents.taskId, at: max(schema.taskEvents.at) })
           .from(schema.taskEvents)
+          // Join instead of an id list: D1 caps bound parameters per statement.
+          .innerJoin(schema.tasks, eq(schema.tasks.id, schema.taskEvents.taskId))
           .where(
             and(
-              inArray(
-                schema.taskEvents.taskId,
-                board.tasks.filter((t) => t.status === 'blocked').map((t) => t.id),
-              ),
+              eq(schema.tasks.projectId, projectId),
+              eq(schema.tasks.status, 'blocked'),
               eq(schema.taskEvents.kind, 'status'),
               eq(schema.taskEvents.toValue, 'blocked'),
             ),
@@ -161,9 +162,9 @@ export async function buildSnapshot(db: Db, projectId: string, now: Date): Promi
       .filter((t) => t.status === 'in_progress')
       .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))[0];
     const spark = new Array<number>(SPARK_BUCKETS).fill(0);
-    for (const b of buckets.rows) {
+    for (const b of buckets) {
       if (b.user_id !== userId) continue;
-      const i = Math.floor((new Date(b.bucket).getTime() - sparkFrom.getTime()) / BUCKET_MS);
+      const i = Math.floor((Number(b.bucket) - sparkFrom.getTime()) / BUCKET_MS);
       if (i >= 0 && i < SPARK_BUCKETS) spark[i]! += Number(b.n);
     }
     return {

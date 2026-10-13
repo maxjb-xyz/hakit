@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ActivityEvent, type ActivityEvent as Activity, type JobMessage } from '@hakit/contracts';
-import { processGithubWebhook, type WebhookDependencies, type ActivityTransaction } from './github-webhook';
+import { processGithubWebhook, type WebhookDependencies } from './github-webhook';
 import { pushFixture, receivedAt, prFixture } from '../services/github/fixtures.test-data';
 
 const project = '10000000-0000-4000-8000-000000000001';
@@ -18,18 +18,29 @@ function setup(projectIds = [project], tasks: Record<number, string> = {}) {
     expect(events.some((e) => e.id === event.id)).toBe(true);
     trace.push('publish');
   });
-  const save = vi.fn(async (event: Activity) => {
-    const existing = events.find((e) => e.id === event.id);
-    if (existing) return existing;
-    if (
-      event.kind === 'commit' &&
-      events.some((e) => e.kind === 'commit' && e.sha === event.sha && e.projectId === event.projectId)
-    )
-      return null;
-    events.push(event);
-    return event;
+  // Models the atomic batch: every event is stored, or none are.
+  const save = vi.fn(async (batch: Activity[]) => {
+    const next = [...events];
+    const stored: Activity[] = [];
+    for (const event of batch) {
+      const existing = next.find((e) => e.id === event.id);
+      if (existing) {
+        stored.push(existing);
+        continue;
+      }
+      if (
+        event.kind === 'commit' &&
+        next.some((e) => e.kind === 'commit' && e.sha === event.sha && e.projectId === event.projectId)
+      )
+        continue;
+      next.push(event);
+      stored.push(event);
+    }
+    events = next;
+    trace.push('commit');
+    return stored;
   });
-  const tx: ActivityTransaction = {
+  const deps: WebhookDependencies = {
     delivery: async (id) => ({ receivedAt, processed: processed.has(id) }),
     projects: async () => projectIds,
     byGithubId: async (id) => (id === 200 ? user : null),
@@ -39,19 +50,6 @@ function setup(projectIds = [project], tasks: Record<number, string> = {}) {
       return n === undefined ? null : tasks[n]!;
     }),
     save,
-  };
-  const deps: WebhookDependencies = {
-    transaction: async (run) => {
-      const previous = [...events];
-      try {
-        const result = await run(tx);
-        trace.push('commit');
-        return result;
-      } catch (err) {
-        events = previous;
-        throw err;
-      }
-    },
     publish,
     requestLink: vi.fn(async () => {
       trace.push('link');
@@ -61,7 +59,7 @@ function setup(projectIds = [project], tasks: Record<number, string> = {}) {
       trace.push('processed');
     }),
   };
-  return { deps, tx, publish, save, processed, trace, rows: () => events };
+  return { deps, publish, save, processed, trace, rows: () => events };
 }
 
 describe('GitHub webhook processing', () => {
@@ -153,7 +151,7 @@ describe('GitHub webhook processing', () => {
     const s = setup([project], { 12: task });
     await processGithubWebhook(job, s.deps);
     expect(s.rows()[0]).toMatchObject({ taskId: task, linkKind: 'confirmed', linkConfidence: null });
-    expect(s.tx.taskByNumber).toHaveBeenCalledWith(project, [12]);
+    expect(s.deps.taskByNumber).toHaveBeenCalledWith(project, [12]);
     expect(s.deps.requestLink).not.toHaveBeenCalled();
   });
   it('reads references from the full commit message and PR text', async () => {

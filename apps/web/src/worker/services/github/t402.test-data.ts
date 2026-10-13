@@ -45,11 +45,13 @@ export function fakeDb(responses: unknown[][], returned: unknown[][] = []) {
     },
     insert: (table: Parameters<typeof getTableName>[0]) => ({
       values: (values: unknown) => ({
-        onConflictDoNothing: async () => {
+        onConflictDoNothing: () => {
           writes('insert', getTableName(table), values);
+          return Object.assign(Promise.resolve(), { returning: async () => [values] });
         },
-        onConflictDoUpdate: async (conflict: unknown) => {
+        onConflictDoUpdate: (conflict: unknown) => {
           writes('upsert', getTableName(table), values, conflict);
+          return Object.assign(Promise.resolve(), { returning: async () => [values] });
         },
       }),
     }),
@@ -62,6 +64,13 @@ export function fakeDb(responses: unknown[][], returned: unknown[][] = []) {
       }),
     }),
     execute,
+    /** Writes are recorded when built; the batch settles them in order like D1's atomic batch. */
+    batch: async (items: unknown[]) => {
+      const results = [];
+      for (const item of items) results.push(await item);
+      trace.push('commit');
+      return results;
+    },
     transaction: async (run: (tx: unknown) => Promise<unknown>) => {
       try {
         const result = await run(db);

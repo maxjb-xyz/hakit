@@ -16,8 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @hakit/db generate",
-    "db:migrate": "pnpm --filter @hakit/db migrate",
-    "db:seed": "pnpm --filter @hakit/db seed",
+    "db:migrate": "pnpm --filter @hakit/web exec wrangler d1 migrations apply DB --local --config wrangler.jsonc",
     "deploy": "pnpm --filter @hakit/web deploy"
   },
   "devDependencies": {

@@ -1,11 +1,12 @@
 /**
  * GitHub user tokens at rest (ARCHITECTURE §11, INTEGRATIONS §1): AES-GCM envelopes (iv ‖ ciphertext), refreshed
- * lazily when under 5 minutes from expiry. A refresh invalidates the old pair, so rotation happens under
- * `SELECT … FOR UPDATE`: a concurrent caller waits, then sees the fresh token instead of spending the dead refresh
- * token. Owners: PL (T-201 refresh), GH (T-402 envelope helpers).
+ * lazily when under 5 minutes from expiry. A refresh invalidates the old pair, so a rotation is written only
+ * while the stored refresh token is still the one spent (conditional UPDATE): when two callers race, the loser
+ * re-reads and uses the winner's fresh token instead of discarding it. Owners: PL (T-201 refresh), GH (T-402
+ * envelope helpers).
  */
-import { schema, type Db } from '@hakit/db';
-import { eq } from 'drizzle-orm';
+import { commit, isGuardFailure, requireChanged, schema, type Db } from '@hakit/db';
+import { and, eq } from 'drizzle-orm';
 import { GithubAuthError, type GithubService, type GithubTokenSet } from '../services/github';
 import { decrypt, encrypt, importEncKey } from './crypto';
 import { HttpError } from './errors';
@@ -71,7 +72,6 @@ export async function githubUserToken(
   if (!row) throw reauthRequired();
   const now = new Date();
   if (row.accessExpiresAt && row.accessExpiresAt.getTime() - now.getTime() <= REFRESH_MARGIN_MS) {
-    // Due for refresh: only now take the row lock.
     if (github && row.refreshTokenEnc)
       return getGithubAccessToken(db, await importEncKey(secret), github, userId, now);
     if (row.accessExpiresAt.getTime() <= now.getTime()) throw reauthRequired();
@@ -122,41 +122,49 @@ export async function getGithubAccessToken(
   userId: string,
   now: Date,
 ): Promise<string> {
-  const outcome = await db.transaction(
-    async (tx): Promise<{ token: string } | { reauth: 'missing' | 'revoked' }> => {
-      const [row] = await tx
-        .select()
-        .from(schema.githubTokens)
-        .where(eq(schema.githubTokens.userId, userId))
-        .for('update');
-      if (!row) return { reauth: 'missing' };
-      if (!row.accessExpiresAt || row.accessExpiresAt.getTime() - now.getTime() > REFRESH_MARGIN_MS)
-        return { token: await decrypt(key, row.accessTokenEnc) };
-
-      const refreshUsable =
-        row.refreshTokenEnc && (!row.refreshExpiresAt || row.refreshExpiresAt.getTime() > now.getTime());
-      if (refreshUsable) {
-        try {
-          const fresh = await github.refreshToken(await decrypt(key, row.refreshTokenEnc!));
-          await tx
-            .update(schema.githubTokens)
-            .set(await encryptedRow(key, fresh, now))
-            .where(eq(schema.githubTokens.userId, userId));
-          return { token: fresh.accessToken };
-        } catch (e) {
-          if (!(e instanceof GithubAuthError)) throw e;
-          return { reauth: 'revoked' };
-        }
-      }
-      return { reauth: 'missing' };
-    },
+  const read = async () =>
+    (await db.select().from(schema.githubTokens).where(eq(schema.githubTokens.userId, userId)))[0];
+  const usable = async (r: Awaited<ReturnType<typeof read>>) =>
+    r?.accessExpiresAt && r.accessExpiresAt.getTime() - now.getTime() > REFRESH_MARGIN_MS
+      ? decrypt(key, r.accessTokenEnc)
+      : null;
+  const row = await read();
+  if (!row) throw reauthRequired();
+  if (!row.accessExpiresAt || row.accessExpiresAt.getTime() - now.getTime() > REFRESH_MARGIN_MS)
+    return decrypt(key, row.accessTokenEnc);
+  const spent = row.refreshTokenEnc;
+  if (!spent || (row.refreshExpiresAt && row.refreshExpiresAt.getTime() <= now.getTime()))
+    throw reauthRequired();
+  const stillCurrent = and(
+    eq(schema.githubTokens.userId, userId),
+    eq(schema.githubTokens.refreshTokenEnc, spent),
   );
-  if ('token' in outcome) return outcome.token;
-  if (outcome.reauth === 'missing') throw reauthRequired();
-  // GitHub rejected the refresh token: drop the dead pair and every session so the user signs in again.
-  await db.transaction(async (tx) => {
-    await tx.delete(schema.githubTokens).where(eq(schema.githubTokens.userId, userId));
-    await tx.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
-  });
-  throw reauthRequired();
+  let fresh: GithubTokenSet;
+  try {
+    fresh = await github.refreshToken(await decrypt(key, spent));
+  } catch (e) {
+    if (!(e instanceof GithubAuthError)) throw e;
+    // GitHub rejected the refresh token: drop the dead pair and every session so the user signs in again,
+    // unless another caller rotated it meanwhile (then its fresh token is used).
+    try {
+      await commit(db, [
+        db.delete(schema.githubTokens).where(stillCurrent),
+        requireChanged(db),
+        db.delete(schema.sessions).where(eq(schema.sessions.userId, userId)),
+      ]);
+    } catch (err) {
+      if (!isGuardFailure(err)) throw err;
+      const token = await usable(await read());
+      if (token) return token;
+    }
+    throw reauthRequired();
+  }
+  const [won] = await db
+    .update(schema.githubTokens)
+    .set(await encryptedRow(key, fresh, now))
+    .where(stillCurrent)
+    .returning({ userId: schema.githubTokens.userId });
+  if (won) return fresh.accessToken;
+  // Another caller rotated first and holds the stored pair; ours is valid too, but use the stored one.
+  return (await usable(await read())) ?? fresh.accessToken;
 }

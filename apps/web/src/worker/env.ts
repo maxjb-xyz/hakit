@@ -4,7 +4,8 @@ import type { ProjectRoom } from './do/project-room';
 /** Bindings + vars + secrets (wrangler.jsonc, .dev.vars.example). Keep in sync with both. */
 export interface Env {
   ASSETS: Fetcher;
-  HYPERDRIVE: Hyperdrive;
+  /** Cloudflare D1 (SQLite). Migrations: packages/db/migrations. */
+  DB: D1Database;
   PROJECT_ROOM: DurableObjectNamespace<ProjectRoom>;
   JOBS: Queue<JobMessage>;
   /** Per-agent-token ingestion limit (wrangler `ratelimits`). Optional so tests and local dev run without it. */

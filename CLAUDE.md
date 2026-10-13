@@ -10,9 +10,8 @@ pnpm install
 pnpm dev                     # apps/web on http://localhost:5173 (Vite + workerd)
 pnpm typecheck && pnpm lint && pnpm test   # must pass before every push
 pnpm format                  # Prettier
-pnpm db:generate             # Drizzle migration from schema changes
-pnpm db:migrate              # apply migrations
-pnpm db:seed                 # skills taxonomy + event templates
+pnpm db:generate             # D1 migration from schema changes (packages/db/migrations)
+pnpm db:migrate              # apply migrations to the local D1 (wrangler dev state)
 ```
 
 Local setup, accounts and secrets: `docs/SETUP.md`.
@@ -51,6 +50,8 @@ You can build any screen or engine function without accounts. Real handlers sit 
 
 **Data**
 - Schema changes go in `packages/db/src/schema.ts`, then `pnpm db:generate`. Never edit a migration that has shipped.
+- The database is Cloudflare D1: no interactive transactions and at most 100 bound parameters per statement. Commit related writes together with `commit(db, [...])` (one atomic batch), guard conditional writes with `requireChanged`, and chunk id lists with `chunkIds`/`chunkRows` (all in `@hakit/db`).
+- Seed data (skills taxonomy, event templates) lives in `packages/db/src/seed`; after editing it, regenerate the seed migration with `pnpm --filter @hakit/db seed:sql` into a new migration file.
 - Unit tests never touch a real database. Use fixtures, mock providers or the in-memory test database.
 
 **Engine**

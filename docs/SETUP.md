@@ -17,43 +17,38 @@ You land on Mission Control with fixture data and a live WebSocket. Useful URLs:
 
 Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 
-## 2. Database: Tiger Cloud
+## 2. Database: Cloudflare D1
 
-1. Create a **free** service at https://console.cloud.timescale.com. Copy the **direct service URL**: database `tsdb`, `sslmode=require`. Don't use the transaction pooler (`tsdb_transaction`).
-2. Write `packages/db/.env` (gitignored):
-   ```
-   DATABASE_URL=postgres://tsdbadmin:…@….tsdb.cloud.timescale.com:…/tsdb?uselibpqcompat=true&sslmode=require
-   ```
-   Keep `uselibpqcompat=true&`. Without it, node's `pg` driver treats `sslmode=require` as full certificate verification, which Tiger's certificate chain fails (`SELF_SIGNED_CERT_IN_CHAIN`). `drizzle-kit migrate` hides that error and only prints `Exit status 1`. psql rejects the parameter, so drop it for psql and Hyperdrive: `psql "${DATABASE_URL/uselibpqcompat=true&/}"`.
-   If you `export`ed an older `DATABASE_URL` in your shell, `unset` it first: dotenv won't override a variable that's already set.
-3. Run `pnpm db:migrate && pnpm db:seed`.
-4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`, and `timescaledb_information.continuous_aggregates` should list `activity_hourly`.
-5. Share the URL with the team **privately**: a password manager or DM, never the repo or chat logs.
-6. Optional, later: fork the service as a demo snapshot (see docs/archive/HACKATHON.md, C5).
+Hakit stores everything in one D1 database, bound as `DB` in `apps/web/wrangler.jsonc`. Migrations live in `packages/db/migrations`; the last one seeds the skills taxonomy and event templates.
 
-**Each developer:** to run against the real database instead of mocks, set `HAKIT_MOCKS=0` in `.dev.vars` and export:
+**Local real mode:** set `HAKIT_MOCKS=0` in `.dev.vars`, then create the local database:
 
 ```bash
-export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://…tiger dev URL…"
+pnpm db:migrate    # wrangler d1 migrations apply DB --local
+pnpm dev
 ```
+
+The local database lives in `apps/web/.wrangler/state`; delete that folder to start over. Tests never use it: they run on an in-memory D1 (`@hakit/db/testing`).
+
+**Schema changes:** edit `packages/db/src/schema.ts`, run `pnpm db:generate`, then `pnpm db:migrate`.
 
 ## 3. Cloudflare
 
-One worker (`hakit`), one database (the Tiger dev service from §2). Run every `wrangler` command from `apps/web`.
+Run every `wrangler` command from `apps/web`.
 
 1. `npx wrangler login`
-2. Create Hyperdrive with the Tiger URL **including the password** but **without** `uselibpqcompat=true&`, then paste the printed ID over the `000…0` in `wrangler.jsonc`:
+2. Create the database and paste the printed `database_id` over the `000…0` in `wrangler.jsonc`:
    ```bash
-   npx wrangler hyperdrive create hakit-db --connection-string="postgres://tsdbadmin:<password>@<host>:<port>/tsdb?sslmode=require"
+   npx wrangler d1 create hakit
    ```
 3. Create the queues:
    ```bash
    npx wrangler queues create hakit-jobs
    npx wrangler queues create hakit-dlq
    ```
-4. `pnpm deploy`. Note the `https://hakit.<you>.workers.dev` URL, set it as `vars.APP_URL` in `wrangler.jsonc`, and deploy again.
-5. Secrets: `npx wrangler secret put <NAME>` for `SESSION_SECRET` and `TOKEN_ENC_KEY` (each `openssl rand -base64 32`), then the GitHub values from §4 and the AI keys from §5 as they arrive. Missing secrets only turn their `/api/v1/health/deep` items red.
-6. CI deploys: Cloudflare API token ("Edit Cloudflare Workers" template); GitHub repo → Environments → `production`; Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; Actions variable `DEPLOY_ENABLED=true`.
+4. `pnpm deploy` applies pending D1 migrations to the remote database, builds and deploys. Note the `https://hakit.<you>.workers.dev` URL, set it as `vars.APP_URL` in `wrangler.jsonc`, and deploy again.
+5. Secrets: `npx wrangler secret put <NAME>` for `SESSION_SECRET` and `TOKEN_ENC_KEY` (each `openssl rand -base64 32`), then the GitHub values from §4. Workers AI needs no key (§5). Missing secrets only turn their `/api/v1/health/deep` items red.
+6. CI deploys: Cloudflare API token with Workers Scripts, D1, Queues and Workers AI edit permissions; GitHub repo → Environments → `production`; Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; Actions variable `DEPLOY_ENABLED=true`.
 
 **Plan:** Workers Free. Upgrade to Paid ($5) only if you hit the CPU, subrequest or queue limits (RISKS D-2).
 

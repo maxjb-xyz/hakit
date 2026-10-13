@@ -1,6 +1,6 @@
 /** Agent tokens + sessions (UI side). Ingestion endpoint lives in ./agent-ingest.ts. Owners: PL (T-601), GH (T-602..). */
 import { Hono } from 'hono';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { Id } from '@hakit/contracts';
 import * as fx from '@hakit/contracts/fixtures';
 import { schema } from '@hakit/db';
@@ -8,7 +8,7 @@ import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
 import { forbidden, notFound } from '../lib/errors';
 import { newAgentToken } from '../lib/agent-token';
-import { readSummary, toAgentSession } from '../lib/agent-session';
+import { toAgentSession } from '../lib/agent-session';
 import { broadcast } from '../lib/broadcast';
 import { assertMember } from '../middleware/auth';
 
@@ -93,45 +93,39 @@ route(agents, 'linkAgentSession', async ({ c, params, body }) => {
       linkKind: body.taskId ? ('confirmed' as const) : ('none' as const),
     };
   const db = c.var.db();
-  // Ownership never changes, so check it before taking the row lock (authorizePath already proved membership).
-  const [owned] = await db
+  // Ownership never changes, so the check below holds for the update (authorizePath already proved membership).
+  const [s] = await db
     .select({ userId: schema.agentSessions.userId, workspaceId: schema.agentSessions.workspaceId })
     .from(schema.agentSessions)
     .where(eq(schema.agentSessions.id, params.id))
     .limit(1);
-  if (!owned) throw notFound('Session');
-  if (owned.userId !== c.var.user!.id && (await assertMember(c, owned.workspaceId)) !== 'owner')
-    throw forbidden();
-  const session = await db.transaction(async (tx) => {
-    const [s] = await tx
-      .select()
-      .from(schema.agentSessions)
-      .where(eq(schema.agentSessions.id, params.id))
-      .for('update');
-    if (!s) throw notFound('Session');
-    let projectId = s.projectId;
-    if (body.taskId) {
-      const [t] = await tx
-        .select({ projectId: schema.tasks.projectId })
-        .from(schema.tasks)
-        .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
-        .where(and(eq(schema.tasks.id, body.taskId), eq(schema.projects.workspaceId, s.workspaceId)))
-        .limit(1);
-      if (!t) throw notFound('Task');
-      projectId = t.projectId;
-    }
-    const [saved] = await tx
-      .update(schema.agentSessions)
-      .set({
-        taskId: body.taskId,
-        projectId,
-        linkKind: body.taskId ? 'confirmed' : 'none',
-        summary: { ...readSummary(s.summary), linkedBy: 'user' },
-      })
-      .where(eq(schema.agentSessions.id, s.id))
-      .returning();
-    return toAgentSession(saved!);
-  });
+  if (!s) throw notFound('Session');
+  if (s.userId !== c.var.user!.id && (await assertMember(c, s.workspaceId)) !== 'owner') throw forbidden();
+  let projectId: string | undefined;
+  if (body.taskId) {
+    const [t] = await db
+      .select({ projectId: schema.tasks.projectId })
+      .from(schema.tasks)
+      .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
+      .where(and(eq(schema.tasks.id, body.taskId), eq(schema.projects.workspaceId, s.workspaceId)))
+      .limit(1);
+    if (!t) throw notFound('Task');
+    projectId = t.projectId;
+  }
+  // json_set pins the link inside the stored summary, so a hook event updating counters at the same time
+  // isn't overwritten with a stale copy.
+  const [saved] = await db
+    .update(schema.agentSessions)
+    .set({
+      taskId: body.taskId,
+      ...(projectId ? { projectId } : {}),
+      linkKind: body.taskId ? 'confirmed' : 'none',
+      summary: sql`json_set(${schema.agentSessions.summary}, '$.linkedBy', 'user')`,
+    })
+    .where(eq(schema.agentSessions.id, params.id))
+    .returning();
+  if (!saved) throw notFound('Session');
+  const session = toAgentSession(saved);
   if (session.projectId) {
     const projectId = session.projectId;
     c.executionCtx.waitUntil(

@@ -1,15 +1,13 @@
-import 'dotenv/config';
 import { defineConfig } from 'drizzle-kit';
 
 /**
- * Migrations run against Tiger Cloud's DIRECT service URL (not Hyperdrive, not the tsdb_transaction pooler).
- * Only the Platform (PL) owner runs `pnpm db:migrate` against the shared dev database — see CLAUDE.md.
+ * Generates D1 (SQLite) migrations into ./migrations, which wrangler applies with
+ * `wrangler d1 migrations apply DB` (apps/web/wrangler.jsonc `migrations_dir`).
  */
 export default defineConfig({
-  dialect: 'postgresql',
+  dialect: 'sqlite',
   schema: './src/schema.ts',
-  out: './drizzle',
-  dbCredentials: { url: process.env.DATABASE_URL ?? '' },
+  out: './migrations',
   strict: true,
   verbose: true,
 });

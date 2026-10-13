@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** UUID primary keys (Postgres gen_random_uuid). */
+/** UUID primary keys (generated with crypto.randomUUID). */
 export const Id = z.uuid();
 export type Id = z.infer<typeof Id>;
 

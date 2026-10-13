@@ -92,7 +92,7 @@ export function databaseLinkDependencies(db: Db, env: Env, provider: EmbeddingPr
 export async function activityLinkJob(job: LinkJob, { env }: { env: Env }): Promise<void> {
   // Mock embeddings have the wrong model/dimension for stored task vectors; confirmed links still apply.
   if (isMock(env)) return;
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   try {
     await handle.ready;
     const provider = embeddingService(env, databaseEmbeddingCache(handle.db));

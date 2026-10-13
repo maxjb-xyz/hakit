@@ -6,13 +6,13 @@ import { getServices, type Services } from '../services';
 import { HttpError } from '../lib/errors';
 
 export interface BaseOptions {
-  /** Tests inject an in-memory DB (test/pglite.ts) to exercise real-mode handlers. */
+  /** Tests inject an in-memory D1 (`@hakit/db/testing`) to exercise real-mode handlers. */
   db?: Db;
   /** Tests stub GitHub et al. while keeping real-mode routes. */
   services?: Partial<Services>;
 }
 
-/** Request id, mock flag, services, and a lazy per-request DB client (Hyperdrive). */
+/** Request id, mock flag, services, and a lazy per-request DB client (D1). */
 export const base =
   (opts: BaseOptions = {}): MiddlewareHandler<AppEnv> =>
   async (c, next) => {
@@ -32,7 +32,7 @@ export const base =
           'DB is not available in mock mode; return fixtures instead',
         );
       if (opts.db) return opts.db;
-      if (!handle) handle = createDb(c.env.HYPERDRIVE.connectionString);
+      if (!handle) handle = createDb(c.env.DB);
       return handle.db;
     });
 

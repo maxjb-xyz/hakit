@@ -1,6 +1,6 @@
 # Hakit — Technical Architecture
 
-Status: **Reference.** Written as the hackathon plan and kept as the description of the system; where it and the code disagree, the code wins. Research date 2026-10-10. Items marked **(verify)** were unconfirmed at the time; research access to some official docs was proxied through search summaries.
+Status: **Reference.** Written as the hackathon plan and kept as the description of the system; where it and the code disagree, the code wins. Since then the database moved from Tiger Postgres (Hyperdrive, TimescaleDB, pgvector) to **Cloudflare D1**, and the AI providers from Gemini and Hugging Face to **Workers AI** (Gemini and Hugging Face remain optional fallbacks); sections describing the old stack are historical. Current setup: `docs/SETUP.md`. Research date 2026-10-10. Items marked **(verify)** were unconfirmed at the time; research access to some official docs was proxied through search summaries.
 
 ---
 

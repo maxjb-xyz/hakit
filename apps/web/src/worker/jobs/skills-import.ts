@@ -4,7 +4,16 @@ import {
   type JobMessage as Job,
   type SkillImportProgress as Progress,
 } from '@hakit/contracts';
-import { createDb, schema, type Db } from '@hakit/db';
+import {
+  chunkIds,
+  chunkRows,
+  columnCount,
+  commit,
+  createDb,
+  schema,
+  type BatchItem,
+  type Db,
+} from '@hakit/db';
 import {
   aggregateEvidence,
   evidenceFromRepo,
@@ -13,7 +22,7 @@ import {
   type EvidenceDraft,
   cosine,
 } from '@hakit/engine';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, exists, inArray, notExists, sql } from 'drizzle-orm';
 import type { JobContext } from './index';
 import type { EmbeddingProvider } from '../services/ai/types';
 import { fetchPublicRepos } from '../services/skills/github';
@@ -88,24 +97,35 @@ export async function importSkillFacts(
       : 'Combining independent repository evidence',
     counts: { skills: inferred.length },
   });
-  await db.transaction(async (tx) => {
-    // Serialize imports and member skill edits that touch existing rows. Conditional upsert protects concurrent confirmations.
-    await tx
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .for('update');
-    if (workspaceId) {
-      const [active] = await tx
-        .select()
-        .from(schema.memberships)
-        .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, userId)))
-        .for('share');
-      if (!active) throw new Error('Workspace membership changed during skill import');
-    }
-    for (const skill of inferred) {
-      const skillId = taxonomy.find((t) => t.slug === skill.slug)!.id;
-      const rows = await tx
+  // D1 has no row locks. Guard every evidence write on the member skill still being pipeline-owned at
+  // commit time, so a confirmation racing the import keeps its evidence; all writes land in one batch.
+  if (workspaceId) {
+    const [active] = await db
+      .select()
+      .from(schema.memberships)
+      .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, userId)));
+    // A membership removed after this read only leaves user-scoped skill suggestions behind; harmless.
+    if (!active) throw new Error('Workspace membership changed during skill import');
+  }
+  const stillInferred = (skillId: string) =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(schema.memberSkills)
+        .where(
+          and(
+            eq(schema.memberSkills.userId, userId),
+            eq(schema.memberSkills.skillId, skillId),
+            eq(schema.memberSkills.source, 'inferred'),
+          ),
+        ),
+    );
+  const writes: BatchItem[] = [];
+  const evidenceIds: string[] = [];
+  for (const skill of inferred) {
+    const skillId = taxonomy.find((t) => t.slug === skill.slug)!.id;
+    writes.push(
+      db
         .insert(schema.memberSkills)
         .values({
           userId,
@@ -119,34 +139,56 @@ export async function importSkillFacts(
           target: [schema.memberSkills.userId, schema.memberSkills.skillId],
           set: { level: skill.level, confidence: skill.confidence, updatedAt: now },
           setWhere: eq(schema.memberSkills.source, 'inferred'),
-        })
-        .returning();
-      if (!rows.length) continue;
+        }),
       // Replace only pipeline-owned evidence; preserve self reports and task history.
-      await tx.delete(schema.skillEvidence).where(
+      db.delete(schema.skillEvidence).where(
         and(
           eq(schema.skillEvidence.userId, userId),
           eq(schema.skillEvidence.skillId, skillId),
+          stillInferred(skillId),
           sql`(${schema.skillEvidence.kind} IN ('repo_language','manifest_dependency','repo_topic','readme_semantic')
-              OR (${schema.skillEvidence.kind} = 'contribution' AND ${schema.skillEvidence.detail}->>'pipeline' = 'skills.import'))`,
+              OR (${schema.skillEvidence.kind} = 'contribution' AND json_extract(${schema.skillEvidence.detail}, '$.pipeline') = 'skills.import'))`,
         ),
-      );
-      if (skill.evidence.length)
-        await tx.insert(schema.skillEvidence).values(
-          skill.evidence.map((e) => ({
-            userId,
-            skillId,
-            kind: e.kind,
-            sourceRef: e.sourceRef,
-            url: e.url,
-            weight: e.weight,
-            summary: e.summary,
-            observedAt: e.observedAt,
-            detail: { pipeline: 'skills.import' },
-          })),
-        );
-    }
-  });
+      ),
+    );
+    const rows = skill.evidence.map((e) => ({
+      id: crypto.randomUUID(),
+      userId,
+      skillId,
+      kind: e.kind,
+      sourceRef: e.sourceRef,
+      url: e.url,
+      weight: e.weight,
+      summary: e.summary,
+      observedAt: e.observedAt,
+      detail: { pipeline: 'skills.import' },
+    }));
+    evidenceIds.push(...rows.map((r) => r.id));
+    for (const chunk of chunkRows(rows, columnCount(schema.skillEvidence)))
+      writes.push(db.insert(schema.skillEvidence).values(chunk));
+  }
+  // New evidence for a skill the member confirmed or removed meanwhile is dropped again in the same batch.
+  for (const ids of chunkIds(evidenceIds))
+    writes.push(
+      db.delete(schema.skillEvidence).where(
+        and(
+          inArray(schema.skillEvidence.id, ids),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(schema.memberSkills)
+              .where(
+                and(
+                  eq(schema.memberSkills.userId, schema.skillEvidence.userId),
+                  eq(schema.memberSkills.skillId, schema.skillEvidence.skillId),
+                  eq(schema.memberSkills.source, 'inferred'),
+                ),
+              ),
+          ),
+        ),
+      ),
+    );
+  await commit(db, writes);
   return { skills: inferred.length, semanticUnavailable };
 }
 export async function processSkillsImport(
@@ -228,7 +270,7 @@ export async function processSkillsImport(
 export async function skillsImportJob(raw: ImportJob, ctx: JobContext): Promise<void> {
   const job = JobMessage.parse(raw) as ImportJob;
   if (isMock(ctx.env)) return;
-  const handle = createDb(ctx.env.HYPERDRIVE.connectionString);
+  const handle = createDb(ctx.env.DB);
   try {
     await handle.ready;
     await processSkillsImport(job, handle.db, ctx);

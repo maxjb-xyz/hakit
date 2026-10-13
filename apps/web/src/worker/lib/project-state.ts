@@ -2,7 +2,7 @@
 import { AvailabilityWindow, TaskRequiredSkill } from '@hakit/contracts';
 import { schema, type Db } from '@hakit/db';
 import type { EngineMember, ProjectState } from '@hakit/engine';
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, ne, type Column } from 'drizzle-orm';
 import { loadBoard } from './board';
 import { notFound } from './errors';
 import { QWEN_MODEL } from '../services/embeddings';
@@ -23,24 +23,33 @@ export async function loadProjectState(db: Pick<Db, 'select'>, projectId: string
     db.select().from(schema.tasks).where(eq(schema.tasks.projectId, projectId)),
   ]);
   const ids = memberships.map((m) => m.userId);
+  // Scoped by membership joins rather than an id list: D1 caps bound parameters per statement.
+  const inWorkspace = (userId: Column) =>
+    and(eq(schema.memberships.userId, userId), eq(schema.memberships.workspaceId, workspace.id));
   const [skills, embeddings, users] = ids.length
     ? await Promise.all([
         db
           .select({ member: schema.memberSkills, skill: schema.skills })
           .from(schema.memberSkills)
           .innerJoin(schema.skills, eq(schema.skills.id, schema.memberSkills.skillId))
-          .where(and(inArray(schema.memberSkills.userId, ids), ne(schema.memberSkills.source, 'removed'))),
+          .innerJoin(schema.memberships, inWorkspace(schema.memberSkills.userId))
+          .where(ne(schema.memberSkills.source, 'removed')),
         db
-          .select()
+          .select({ embeddings: schema.memberEmbeddings })
           .from(schema.memberEmbeddings)
+          .innerJoin(schema.memberships, inWorkspace(schema.memberEmbeddings.userId))
           .where(
             and(
               eq(schema.memberEmbeddings.workspaceId, workspace.id),
               eq(schema.memberEmbeddings.model, QWEN_MODEL),
-              inArray(schema.memberEmbeddings.userId, ids),
             ),
-          ),
-        db.select().from(schema.users).where(inArray(schema.users.id, ids)),
+          )
+          .then((rows) => rows.map((r) => r.embeddings)),
+        db
+          .select({ users: schema.users })
+          .from(schema.users)
+          .innerJoin(schema.memberships, inWorkspace(schema.users.id))
+          .then((rows) => rows.map((r) => r.users)),
       ])
     : [[], [], []];
   const members: EngineMember[] = ids.map((userId) => {

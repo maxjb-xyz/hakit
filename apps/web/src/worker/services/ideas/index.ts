@@ -9,7 +9,7 @@ import {
   type SubmitIdea,
   type IdeaStreamEvent,
 } from '@hakit/contracts';
-import { schema, type Db } from '@hakit/db';
+import { chunkRows, columnCount, commit, schema, type Db } from '@hakit/db';
 import { and, desc, asc, eq } from 'drizzle-orm';
 import { ideaTeamFit } from '@hakit/engine';
 import type { LlmProvider } from '../ai/types';
@@ -116,34 +116,32 @@ async function saveIdeas(
   source: 'user' | 'ai',
   userNotes?: string,
 ) {
-  return db.transaction(async (tx) => {
-    const [project] = await tx
-      .select()
-      .from(schema.projects)
-      .where(and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, workspaceId)))
-      .for('update');
-    if (!project) throw notFound('Project');
-    const [member] = await tx
-      .select()
-      .from(schema.memberships)
-      .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, userId)))
-      .for('share');
-    if (!member) throw notFound('Project');
-    const rows = await tx
-      .insert(schema.ideas)
-      .values(
-        candidates.map((candidate) => ({
-          projectId,
-          title: candidate.title,
-          pitch: candidate.pitch,
-          payload: userNotes ? { ...candidate, userNotes } : candidate,
-          teamFit: ideaTeamFit(candidate, levels),
-          source,
-        })),
-      )
-      .returning();
-    return rows.map(ideaFromRow);
-  });
+  const [project] = await db
+    .select()
+    .from(schema.projects)
+    .where(and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, workspaceId)));
+  if (!project) throw notFound('Project');
+  const [member] = await db
+    .select()
+    .from(schema.memberships)
+    .where(and(eq(schema.memberships.workspaceId, workspaceId), eq(schema.memberships.userId, userId)));
+  if (!member) throw notFound('Project');
+  // A removal racing this insert can still land the ideas; they belong to the project, not the member.
+  const rows = candidates.map((candidate) => ({
+    projectId,
+    title: candidate.title,
+    pitch: candidate.pitch,
+    payload: userNotes ? { ...candidate, userNotes } : candidate,
+    teamFit: ideaTeamFit(candidate, levels),
+    source,
+  }));
+  const results = await commit(
+    db,
+    chunkRows(rows, columnCount(schema.ideas)).map((chunk) =>
+      db.insert(schema.ideas).values(chunk).returning(),
+    ),
+  );
+  return (results as (typeof schema.ideas.$inferSelect)[][]).flat().map(ideaFromRow);
 }
 export async function submitIdea(db: Db, projectId: string, userId: string, body: SubmitIdea) {
   if (body.title.length > 160 || body.pitch.length > 2000 || (body.notes?.length ?? 0) > 4000)

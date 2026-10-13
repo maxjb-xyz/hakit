@@ -225,11 +225,11 @@ describe('T-402 installation and repository routes', () => {
     expect(s.reads).toHaveBeenCalledTimes(1);
     expect(s.listInstallationRepos).not.toHaveBeenCalled();
   });
-  it('rechecks project membership inside the mutation transaction', async () => {
+  it('rechecks project membership right before the mutation batch', async () => {
     const s = await setup();
     s.responses.push(...routeGuard, [{ workspaceId: ids.workspace }], [s.token], []);
     expect((await s.connect()).status).toBe(404);
-    expect(s.trace).toEqual(['rollback']);
+    expect(s.trace).toEqual([]);
     expect(s.writes).not.toHaveBeenCalled();
     expect(s.send).not.toHaveBeenCalled();
   });

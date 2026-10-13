@@ -1,7 +1,8 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
-import type { Db } from '@hakit/db';
+import { schema, type Db } from '@hakit/db';
+import { createTestDb } from '@hakit/db/testing';
 import type { AppEnv } from '../lib/context';
 import type { Env } from '../env';
 import { HttpError } from '../lib/errors';
@@ -13,33 +14,10 @@ const secret = 'test-webhook-secret';
 const sign = (body: string) => 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
 
 function setup() {
-  const deliveries = new Set<string>();
   const send = vi.fn().mockResolvedValue(undefined);
-  const insert = vi.fn();
-  // Models commit/rollback without connecting to the shared database.
-  const db = {
-    transaction: async (run: (tx: unknown) => Promise<boolean>) => {
-      let pending: string | undefined;
-      const result = await run({
-        insert: (table: unknown) => {
-          insert(table);
-          return {
-            values: ({ deliveryId }: { deliveryId: string }) => ({
-              onConflictDoNothing: () => ({
-                returning: async () => {
-                  if (deliveries.has(deliveryId)) return [];
-                  pending = deliveryId;
-                  return [{ deliveryId }];
-                },
-              }),
-            }),
-          };
-        },
-      });
-      if (pending) deliveries.add(pending);
-      return result;
-    },
-  } as unknown as Db;
+  const { db: d1db } = createTestDb();
+  const insert = vi.spyOn(d1db, 'insert');
+  const db = d1db as Db;
   const env = { HAKIT_MOCKS: '0', GITHUB_WEBHOOK_SECRET: secret, JOBS: { send } } as unknown as Env;
   const app = new Hono<AppEnv>();
   app.use('*', async (c, next) => {
@@ -70,6 +48,8 @@ function setup() {
       },
       env,
     );
+  const deliveries = async () =>
+    new Set((await db.select().from(schema.webhookDeliveries)).map((r) => r.deliveryId));
   return { call, send, insert, deliveries };
 }
 
@@ -100,11 +80,11 @@ describe('GitHub signature verification', () => {
   });
 });
 
-describe('GitHub webhook ingestion (real mode, mocked bindings)', () => {
+describe('GitHub webhook ingestion (real mode, in-memory D1)', () => {
   it('records and queues a validated delivery', async () => {
     const { call, send, deliveries } = setup();
     expect((await call()).status).toBe(202);
-    expect(deliveries.has('delivery-1')).toBe(true);
+    expect((await deliveries()).has('delivery-1')).toBe(true);
     expect(send).toHaveBeenCalledExactlyOnceWith({
       type: 'github.webhook',
       deliveryId: 'delivery-1',
@@ -147,8 +127,8 @@ describe('GitHub webhook ingestion (real mode, mocked bindings)', () => {
     const { call, send, deliveries } = setup();
     send.mockRejectedValueOnce(new Error('queue unavailable'));
     expect((await call()).status).toBe(500);
-    expect(deliveries.size).toBe(0);
+    expect((await deliveries()).size).toBe(0);
     expect((await call()).status).toBe(202);
-    expect(deliveries.has('delivery-1')).toBe(true);
+    expect((await deliveries()).has('delivery-1')).toBe(true);
   });
 });

@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import { JobMessage } from '@hakit/contracts';
 import { schema } from '@hakit/db';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AppEnv } from '../lib/context';
 import { HttpError } from '../lib/errors';
@@ -46,17 +47,30 @@ githubWebhook.post('/webhooks/github', async (c) => {
   if (!supportedEvents.has(event)) return c.json({ accepted: true, ignored: true }, 202);
   if (c.var.mocks) return c.json({ accepted: true, deliveryId }, 202);
   const job = JobMessage.parse({ type: 'github.webhook', deliveryId, event, payload: payload.data });
-  const inserted = await c.var.db().transaction(async (tx) => {
-    const rows = await tx
-      .insert(schema.webhookDeliveries)
-      .values({ deliveryId, event })
-      .onConflictDoNothing({ target: schema.webhookDeliveries.deliveryId })
-      .returning({ deliveryId: schema.webhookDeliveries.deliveryId });
-    if (rows.length === 0) return false;
-    // Queue failure rolls back the claim, allowing a subsequent redelivery to retry.
-    await c.env.JOBS.send(job);
-    return true;
-  });
+  const db = c.var.db();
+  const claimed = await db
+    .insert(schema.webhookDeliveries)
+    .values({ deliveryId, event })
+    .onConflictDoNothing({ target: schema.webhookDeliveries.deliveryId })
+    .returning({ deliveryId: schema.webhookDeliveries.deliveryId });
+  const inserted = claimed.length > 0;
+  if (inserted) {
+    try {
+      await c.env.JOBS.send(job);
+    } catch (err) {
+      // Release the claim so a redelivery (manual or the T-408 sweep) can retry. Accepted race: a redelivery
+      // arriving in the few ms between claim and release is answered as a duplicate and must be resent by hand.
+      await db
+        .delete(schema.webhookDeliveries)
+        .where(
+          and(
+            eq(schema.webhookDeliveries.deliveryId, deliveryId),
+            isNull(schema.webhookDeliveries.processedAt),
+          ),
+        );
+      throw err;
+    }
+  }
   if (!inserted) return c.json({ accepted: true, duplicate: true }, 200);
   return c.json({ accepted: true }, 202);
 });
