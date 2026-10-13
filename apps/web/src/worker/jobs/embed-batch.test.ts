@@ -1,4 +1,4 @@
-/** Integration tests run against local WASM Postgres with fake providers; never Tiger or HF. */
+/** Integration tests run against the in-memory D1 with fake providers; never a live provider. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { chunkRows, columnCount, schema } from '@hakit/db';

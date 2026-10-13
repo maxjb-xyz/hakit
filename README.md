@@ -30,7 +30,7 @@ More (including 375px mobile views) in [`docs/screenshots`](docs/screenshots).
 
 ## Stack
 
-Cloudflare Workers (Hono, Durable Objects for real-time rooms, Queues, Cron), React + Vite, TigerData Postgres via Hyperdrive with Drizzle, Workers AI for generation and embeddings, a GitHub App for activity, and a Claude Code plugin for agent telemetry. Monorepo with pnpm: `packages/contracts` (Zod API contract), `packages/engine` (pure planning/solver/CPM/adaptive logic), `packages/db`, `packages/ui`, `packages/agent-plugin`, `apps/web`.
+Cloudflare Workers (Hono, Durable Objects for real-time rooms, Queues, Cron), React + Vite, Cloudflare D1 with Drizzle, Workers AI for generation and embeddings, a GitHub App for activity, and a Claude Code plugin for agent telemetry. Monorepo with pnpm: `packages/contracts` (Zod API contract), `packages/engine` (pure planning/solver/CPM/adaptive logic), `packages/db`, `packages/ui`, `packages/agent-plugin`, `apps/web`.
 
 ## Run it locally
 
