@@ -9,6 +9,7 @@ import { requireMember, requireUser, session } from './middleware/auth';
 import { health } from './routes/health';
 import { authFlow } from './routes/auth-flow';
 import { identity } from './routes/identity';
+import { privacy } from './routes/privacy';
 import { capability } from './routes/capability';
 import { planning } from './routes/planning';
 import { tasks } from './routes/tasks';
@@ -72,6 +73,7 @@ export function createApp(opts: BaseOptions = {}) {
     health,
     authFlow,
     identity,
+    privacy,
     capability,
     planning,
     tasks,

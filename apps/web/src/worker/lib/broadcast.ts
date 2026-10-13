@@ -18,3 +18,18 @@ export async function broadcastWorkspace(env: Env, workspaceId: string, payload:
   const stub = env.PROJECT_ROOM.get(env.PROJECT_ROOM.idFromName(roomName.workspace(workspaceId)));
   await stub.broadcast(payload);
 }
+
+/**
+ * After a workspace (and its projects) is deleted: close its rooms and clear their replay buffers.
+ * Best effort; a room that is unreachable holds no sockets that can reconnect, since the Worker now 404s.
+ */
+export async function closeRooms(env: Env, workspaceId: string, projectIds: string[]): Promise<void> {
+  const names = [roomName.workspace(workspaceId), ...projectIds.map(roomName.project)];
+  await Promise.all(
+    names.map((n) =>
+      Promise.resolve()
+        .then(() => env.PROJECT_ROOM.get(env.PROJECT_ROOM.idFromName(n)).close('Workspace deleted'))
+        .catch(() => {}),
+    ),
+  );
+}

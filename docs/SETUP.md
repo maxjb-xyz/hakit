@@ -76,6 +76,16 @@ curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application
   --data-binary @push.json
 ```
 
+### Your data
+
+Everything lives in your own D1 database. Per user Hakit stores: the GitHub profile (id, login, name, avatar, email), the GitHub user token (AES-GCM encrypted with `TOKEN_ENC_KEY`), sessions (only a SHA-256 of the cookie), workspace memberships and profiles, inferred and confirmed skills with their evidence (repo languages, dependencies, topics), assignments and task changes, GitHub activity attributed to them (commit, branch and PR metadata, never code), and, only if they install the Claude Code plugin, agent token hashes and session telemetry (status, repo and branch if shared, prompts only when turned on per token).
+
+Anyone can manage this in **Settings → Your data**:
+- **Export my data** (`GET /api/v1/me/export`) downloads it all as JSON. Token hashes, encrypted tokens and session ids are left out.
+- **Delete my account** (`DELETE /api/v1/me`) removes the user and their personal data (sessions, GitHub token, agent tokens and sessions, profiles, skills and evidence, memberships, their Claude Code telemetry). Team data stays on the board without their name: tasks, task history, plans and GitHub activity keep existing with the reference cleared. Workspaces where they were the only member are deleted; a sole owner of a team must transfer ownership or delete the workspace first.
+
+Owners also get **Settings → Danger zone → Delete workspace** (`DELETE /api/v1/w/:wid`, typing the workspace name to confirm), which deletes its projects, plans, tasks, activity, recommendations, repo connections, invites and agent sessions. GitHub installations and repo metadata are instance-wide and stay; uninstall the App on GitHub to remove them from GitHub's side.
+
 ## 6. AI providers
 
 Hakit uses **Workers AI** through the `AI` binding in `wrangler.jsonc`: `AI_MODEL_PLAN` / `AI_MODEL_FAST` for plans, ideas and explanations, and `@cf/qwen/qwen3-embedding-0.6b` for embeddings. No key or secret is needed; usage is billed to the Cloudflare account (the free plan includes a daily allowance). In local real mode the binding calls your account, so run `npx wrangler login` first. Mock mode never calls it.

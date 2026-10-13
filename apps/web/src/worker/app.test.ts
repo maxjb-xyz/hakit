@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { API_PREFIX, buildPath, endpoints } from '@hakit/contracts';
-import { ids } from '@hakit/contracts/fixtures';
+import { ids, workspace } from '@hakit/contracts/fixtures';
 import { createApp } from './app';
 import type { Env } from './env';
 
@@ -55,6 +55,7 @@ const bodies: Partial<Record<keyof typeof endpoints, unknown>> = {
   createAgentToken: { name: 'laptop' },
   linkAgentSession: { taskId: ids.task(8) },
   startGithubSetup: { setupKey: 'x' },
+  deleteWorkspace: { confirmName: workspace.name },
 };
 const queries: Partial<Record<keyof typeof endpoints, string>> = {
   installUrl: '?workspaceId=' + ids.workspace,
@@ -79,7 +80,7 @@ describe('mock-mode API satisfies contracts', () => {
   it.each(jsonEndpoints)('%s', async (name, def) => {
     const path = buildPath(def.path, params) + (queries[name as keyof typeof endpoints] ?? '');
     const body =
-      def.method === 'GET' || def.method === 'DELETE'
+      def.method === 'GET' || (def.method === 'DELETE' && !('body' in def))
         ? undefined
         : (bodies[name as keyof typeof endpoints] ?? {});
     const res = await call(def.method, path, body);

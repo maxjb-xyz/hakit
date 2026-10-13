@@ -37,6 +37,8 @@ export async function createHarness(services: Partial<Services> = {}) {
   };
   const jobs = { send: vi.fn(async () => {}) };
   const broadcasts: unknown[] = [];
+  /** Room names closed via ProjectRoom.close (workspace deletion). */
+  const closedRooms: string[] = [];
   const env = {
     HAKIT_MOCKS: '0',
     APP_URL: 'https://hakit.test',
@@ -49,7 +51,10 @@ export async function createHarness(services: Partial<Services> = {}) {
     JOBS: jobs,
     PROJECT_ROOM: {
       idFromName: (n: string) => n,
-      get: () => ({ broadcast: async (p: unknown) => void broadcasts.push(p) }),
+      get: (name: string) => ({
+        broadcast: async (p: unknown) => void broadcasts.push(p),
+        close: async () => void closedRooms.push(name),
+      }),
     },
   } as unknown as Env;
   const pending: Promise<unknown>[] = [];
@@ -85,5 +90,5 @@ export async function createHarness(services: Partial<Services> = {}) {
     return { id: u!.id, token: await createSession(db, u!.id, null, new Date()) };
   }
 
-  return { db: db as Db, github, jobs, broadcasts, env, call, signIn };
+  return { db: db as Db, github, jobs, broadcasts, closedRooms, env, call, signIn };
 }
