@@ -65,7 +65,7 @@ export interface EndpointDef {
   response?: z.ZodType;
   kind?: 'json' | 'sse';
   event?: z.ZodType;
-  /** Owning workstream (docs/HACKATHON.md §3). */
+  /** Owning workstream (docs/archive/HACKATHON.md §3). */
   owner: 'PL' | 'IN' | 'FE' | 'GH';
 }
 

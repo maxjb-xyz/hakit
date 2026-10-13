@@ -1,6 +1,6 @@
 # Hakit — Technical Architecture
 
-Status: **Planning draft v1.** Research date 2026-10-10. Items marked **(verify)** need a 5-minute check during Phase 0 setup; research access to some official docs was proxied through search summaries.
+Status: **Reference.** Written as the hackathon plan and kept as the description of the system; where it and the code disagree, the code wins. Research date 2026-10-10. Items marked **(verify)** were unconfirmed at the time; research access to some official docs was proxied through search summaries.
 
 ---
 

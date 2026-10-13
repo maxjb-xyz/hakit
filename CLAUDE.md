@@ -1,7 +1,7 @@
 # Hakit — Agent & Contributor Guide
 
-Hakit is a hackathon team OS: capability-aware planning, explainable task assignment, adaptive execution.
-Read `docs/PRODUCT.md` (what), `docs/ARCHITECTURE.md` (how), `docs/TASKS.md` (your task's acceptance criteria) before coding.
+Hakit is a team OS for hackathons: capability-aware planning, explainable task assignment, adaptive execution.
+Read `docs/PRODUCT.md` (what) and `docs/ARCHITECTURE.md` (how) before coding. `docs/archive/` holds the hackathon-era plans; task IDs like `T-305` in comments refer to `docs/archive/TASKS.md`.
 
 ## Commands
 
@@ -10,9 +10,9 @@ pnpm install
 pnpm dev                     # apps/web on http://localhost:5173 (Vite + workerd)
 pnpm typecheck && pnpm lint && pnpm test   # must pass before every push
 pnpm format                  # Prettier
-pnpm db:generate             # Drizzle migration from schema changes (PL only)
-pnpm db:migrate              # apply to Tiger dev (PL only)
-pnpm db:seed                 # skills taxonomy + Knight Hacks IX template (PL only)
+pnpm db:generate             # Drizzle migration from schema changes
+pnpm db:migrate              # apply migrations
+pnpm db:seed                 # skills taxonomy + event templates
 ```
 
 Local setup, accounts and secrets: `docs/SETUP.md`.
@@ -24,23 +24,21 @@ Local setup, accounts and secrets: `docs/SETUP.md`.
 - a fake signed-in user (Priya, workspace owner)
 - mock LLM, embedding and GitHub providers
 
-You can build any screen or engine function without accounts. Real handlers replace `mockOr(c, 'T-xxx', …)` calls one task at a time. Unimplemented real paths return **501 naming the task**.
+You can build any screen or engine function without accounts. Real handlers sit behind `mockOr(c, 'T-xxx', …)`; a real path that isn't implemented returns **501 naming the task**.
 
-## Layout & ownership
+## Layout
 
-| Path | What | Owner |
-|---|---|---|
-| `packages/contracts` | Zod schemas, `endpoints` API registry, WS/job messages, fixtures. **The shared contract.** | PL (changes need all-stream sign-off) |
-| `packages/db` | Drizzle schema, migrations, seeds | PL |
-| `packages/engine` | Pure decision logic: capability, plan validation, solver, CPM, adaptive rules | IN |
-| `packages/ui` | Design tokens + components | FE |
-| `packages/agent-plugin` | Claude Code plugin (hooks → `/api/v1/agent/events`) | GH |
-| `apps/web/src/worker/routes/identity.ts`, `planning.ts` (projects), `tasks.ts` (CRUD), `execution.ts` (snapshot/accept), `middleware/`, `routes/health.ts` | API | PL |
-| `apps/web/src/worker/routes/capability.ts`, `planning.ts` (ideas/plans), `tasks.ts` (solve/explain), `services/ai`, `services/embeddings`, `jobs` for skills/embed/recs | Intelligence | IN |
-| `apps/web/src/worker/routes/github.ts`, `agents.ts`, `agent-ingest.ts`, `realtime.ts`, `webhooks/`, `do/`, `services/github`, jobs for github/activity/agent | GitHub / real-time / agents | GH |
-| `apps/web/src/client/**` | React app | FE |
-
-PL = Platform, IN = Intelligence, FE = Frontend/Design, GH = GitHub/Real-time/Agents (`docs/HACKATHON.md` §3). Each endpoint's owner is also recorded in `endpoints[*].owner`.
+| Path | What |
+|---|---|
+| `packages/contracts` | Zod schemas, `endpoints` API registry, WS/job messages, fixtures. **The shared contract.** |
+| `packages/db` | Drizzle schema, migrations, seeds |
+| `packages/engine` | Pure decision logic: capability, plan validation, solver, CPM, adaptive rules |
+| `packages/ui` | Design tokens + components |
+| `packages/agent-plugin` | Claude Code plugin (hooks → `/api/v1/agent/events`) |
+| `apps/web/src/worker/routes` | API handlers, one file per area (identity, planning, tasks, execution, capability, github, agents, realtime, health) |
+| `apps/web/src/worker/services` | AI, embeddings, GitHub, planning, skills, capability |
+| `apps/web/src/worker/jobs`, `cron/`, `webhooks/`, `do/` | Queue jobs, scheduled sweeps, inbound webhooks, the `ProjectRoom` Durable Object |
+| `apps/web/src/client/**` | React app |
 
 ## Rules
 
@@ -48,13 +46,12 @@ PL = Platform, IN = Intelligence, FE = Frontend/Design, GH = GitHub/Real-time/Ag
 - Every API endpoint is declared once in `packages/contracts/src/api.ts`.
 - Register it in the worker with `route(app, 'name', handler)` / `sseRoute`.
 - Call it from the client with `api('name', { params, body })`. No ad-hoc `fetch('/api/…')`.
-- Contract changes after the freeze must be **additive**: new optional fields or new endpoints. A breaking change needs a PR approved by all four workstreams.
+- Prefer additive changes (new optional fields, new endpoints). The agent plugin and other clients may be on older versions.
 - `apps/web/src/worker/app.test.ts` checks every endpoint against its schema in mock mode. Keep fixtures valid.
 
 **Data**
-- Only PL writes migrations. Others open a PR against `packages/db/src/schema.ts` or ask PL.
-- Everyone shares the Tiger dev database. Don't run destructive SQL there.
-- Unit tests never touch the database. Use fixtures and mock providers.
+- Schema changes go in `packages/db/src/schema.ts`, then `pnpm db:generate`. Never edit a migration that has shipped.
+- Unit tests never touch a real database. Use fixtures, mock providers or the in-memory test database.
 
 **Engine**
 - `packages/engine` stays pure: no `fetch`, no DB, no `Date.now()`. Time comes in via `ProjectState.now`.
@@ -79,7 +76,5 @@ PL = Platform, IN = Intelligence, FE = Frontend/Design, GH = GitHub/Real-time/Ag
 
 ## Workflow
 
-- **Branches:** `hk-<task-number>-short-name` for Hakit board tasks, or `t-<TASKS id>-short-name` for scaffold tasks (e.g. `t-201-github-auth`).
-- **PRs:** small, one task each. Use the PR template. Merge into `main` only when CI is green. Deploys run from `main`.
-- **Integration checkpoints** (docs/HACKATHON.md §5): stop and merge before each.
-- If you find a contract gap, raise it in the team channel before working around it.
+- **PRs:** small and focused. Use the PR template. Merge into `main` only when CI is green.
+- Hakit is licensed under AGPL-3.0 (`LICENSE`).

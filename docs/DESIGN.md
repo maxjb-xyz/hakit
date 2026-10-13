@@ -1,6 +1,6 @@
 # Hakit — Design System & UX Specification
 
-Status: **Planning draft v1.** Tokens below are the starting contract for `packages/ui`; Figma mirrors them (Figma is the exploration surface, code tokens are the source of truth — see §11).
+Status: **Reference.** Written as the hackathon plan and kept as the description of the system; where it and the code disagree, the code wins. Tokens below are the starting contract for `packages/ui`; Figma mirrors them (Figma is the exploration surface, code tokens are the source of truth — see §11).
 
 ---
 
@@ -263,7 +263,7 @@ Layout (desktop, 3 bands):
 1. **Day-0 (hours 0–4):** Figma file "Hakit DS" with variables mirroring §2–4 tokens (collections: color, space, radius, type). Wireframe S11 Mission Control, S9 Assignment review, S8 Plan review first (demo-critical).
 2. **Hours 4–8:** hi-fi for S11, S9, S3; component specs for `ExplanationCard`, `RecommendationCard`, `SkillChip`, `ActivityItem`.
 3. Tokens are **authored in code** (`packages/ui/tokens.css`) and kept in sync with Figma variables manually (or via Figma Variables export / Dev Mode MCP if available — see INTEGRATIONS §7). Code is the source of truth to avoid blocking engineers.
-4. Engineers reference frames via Dev Mode links in TASKS.md acceptance criteria.
+4. Engineers reference frames via Dev Mode links in task acceptance criteria.
 
 ## 12. Design acceptance checklist (applies to every feature PR)
 

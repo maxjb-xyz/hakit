@@ -1,5 +1,5 @@
 /**
- * T-705 demo kit CLI (docs/DEMO.md §4). Real mode only; mock mode needs no seed.
+ * T-705 demo kit CLI (docs/archive/DEMO.md §4). Real mode only; mock mode needs no seed.
  *
  *   DEMO_DATABASE_URL=postgres://…fork… pnpm --filter @hakit/web demo seed [--owner <github-login>]
  *   … demo reset | demo swap | demo stall <HK-number>
