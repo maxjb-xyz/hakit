@@ -4,7 +4,7 @@
  * (session, hook, ts) so a redelivered transition is stored once; state changes themselves are convergent.
  */
 import { and, desc, eq, isNull, lt, ne, sql } from 'drizzle-orm';
-import { createDb, schema, type Db } from '@hakit/db';
+import { commit, createDb, isGuardFailure, requireChanged, schema, type BatchItem, type Db } from '@hakit/db';
 import {
   ActivityEvent,
   WsPayload,
@@ -30,7 +30,7 @@ import {
 } from '../lib/agent-session';
 
 type AgentEventJob = Extract<JobMessage, { type: 'agent.event' }>;
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type Tx = Pick<Db, 'select'>;
 type Publish = (projectId: string, payload: WsPayload) => Promise<void>;
 type SessionRow = typeof schema.agentSessions.$inferSelect;
 
@@ -88,7 +88,11 @@ async function inProgressTask(tx: Tx, userId: string, workspaceId: string, proje
         projectId ? eq(schema.tasks.projectId, projectId) : undefined,
       ),
     )
-    .orderBy(sql`${schema.tasks.startedAt} desc nulls last`, desc(schema.tasks.updatedAt))
+    .orderBy(
+      sql`${schema.tasks.startedAt} is null`,
+      desc(schema.tasks.startedAt),
+      desc(schema.tasks.updatedAt),
+    )
     .limit(1);
   return row ?? null;
 }
@@ -122,35 +126,48 @@ export async function resolveLink(
     : { projectId, taskId: null, linkKind: 'none' };
 }
 
-/** Lock-or-create the session row for (user, external session id). */
-async function lockSession(tx: Tx, job: AgentEventJob, at: Date) {
-  const [created] = await tx
-    .insert(schema.agentSessions)
-    .values({
-      externalSessionId: job.event.sessionId,
-      userId: job.userId,
-      workspaceId: job.workspaceId,
-      agent: job.event.agent,
-      startedAt: at,
-      lastEventAt: at,
-      summary: initialState(at).summary,
+/**
+ * The session row for (user, external session id) with its stored summary text, the optimistic-concurrency
+ * guard for the write. A session not stored yet starts from `initialState` under a fresh id.
+ */
+async function readSession(db: Db, job: AgentEventJob, at: Date) {
+  const [found] = await db
+    .select({
+      row: schema.agentSessions,
+      summaryText: sql<string>`cast(${schema.agentSessions.summary} as text)`,
     })
-    .onConflictDoNothing()
-    .returning();
-  if (created) return { row: created, created: true };
-  const [row] = await tx
-    .select()
     .from(schema.agentSessions)
     .where(
       and(
         eq(schema.agentSessions.userId, job.userId),
         eq(schema.agentSessions.externalSessionId, job.event.sessionId),
       ),
-    )
-    .for('update');
-  if (!row) throw new Error('agent session vanished while locking');
-  return { row, created: false };
+    );
+  if (found) return { row: found.row, summaryText: found.summaryText, created: false };
+  const initial = initialState(at);
+  const row: SessionRow = {
+    id: crypto.randomUUID(),
+    externalSessionId: job.event.sessionId,
+    userId: job.userId,
+    workspaceId: job.workspaceId,
+    projectId: null,
+    agent: job.event.agent,
+    repoFullName: null,
+    branch: null,
+    cwdHash: null,
+    status: initial.status,
+    taskId: null,
+    linkKind: 'none',
+    startedAt: at,
+    lastEventAt: at,
+    endedAt: null,
+    summary: initial.summary,
+  };
+  return { row, summaryText: null, created: true };
 }
+
+/** Optimistic attempts before the job fails and the queue redelivers it. */
+const WRITE_ATTEMPTS = 5;
 
 function stateOf(row: SessionRow): SessionState {
   return {
@@ -184,8 +201,23 @@ export async function processAgentEvent(input: AgentEventJob, db: Db, publish: P
   if (!token) return;
 
   const at = new Date(event.ts);
-  const result = await db.transaction(async (tx) => {
-    const { row, created } = await lockSession(tx, input, at);
+  let result: Awaited<ReturnType<typeof attempt>> | undefined;
+  for (let i = 0; i < WRITE_ATTEMPTS && !result; i++) {
+    try {
+      result = await attempt();
+    } catch (error) {
+      if (!isGuardFailure(error)) throw error;
+    }
+  }
+  if (!result) throw new Error('agent session kept changing while applying an event; retry');
+
+  /**
+   * D1 has no row locks: read, apply the event, then write guarded on the row being unchanged (or still
+   * absent). A concurrent event for the same session fails the guard, rolls back the batch (activity
+   * included) and is re-applied on top of the newer state.
+   */
+  async function attempt() {
+    const { row, summaryText, created } = await readSession(db, input, at);
     const before = created ? null : toAgentSession(row);
     const prev = stateOf(row);
     const next = applyHookEvent(prev, event);
@@ -205,9 +237,9 @@ export async function processAgentEvent(input: AgentEventJob, db: Db, publish: P
         moved ||
         (linkKind !== 'confirmed' && ['SessionStart', 'UserPromptSubmit'].includes(event.hookEventName)));
     if (relink) {
-      const repo = await projectForRepo(tx, input.workspaceId, repoFullName);
+      const repo = await projectForRepo(db, input.workspaceId, repoFullName);
       repoId = repo?.repoId ?? null;
-      ({ projectId, taskId, linkKind } = await resolveLink(tx, {
+      ({ projectId, taskId, linkKind } = await resolveLink(db, {
         userId: input.userId,
         workspaceId: input.workspaceId,
         branch,
@@ -216,28 +248,42 @@ export async function processAgentEvent(input: AgentEventJob, db: Db, publish: P
     }
 
     const summary: SessionSummary = next.summary;
-    const [saved] = await tx
-      .update(schema.agentSessions)
-      .set({
-        status: next.status,
-        lastEventAt: next.lastEventAt,
-        endedAt: next.endedAt,
-        summary,
-        repoFullName,
-        branch,
-        cwdHash,
-        projectId,
-        taskId,
-        linkKind,
-      })
-      .where(eq(schema.agentSessions.id, row.id))
-      .returning();
-    const session = toAgentSession(saved!);
+    const state = {
+      status: next.status,
+      lastEventAt: next.lastEventAt,
+      endedAt: next.endedAt,
+      summary,
+      repoFullName,
+      branch,
+      cwdHash,
+      projectId,
+      taskId,
+      linkKind,
+    };
+    const write = created
+      ? db
+          .insert(schema.agentSessions)
+          .values({ ...row, ...state })
+          .onConflictDoNothing()
+          .returning()
+      : db
+          .update(schema.agentSessions)
+          .set(state)
+          .where(
+            and(
+              eq(schema.agentSessions.id, row.id),
+              eq(schema.agentSessions.status, row.status),
+              eq(schema.agentSessions.lastEventAt, row.lastEventAt),
+              sql`cast(${schema.agentSessions.summary} as text) = ${summaryText}`,
+            ),
+          )
+          .returning();
 
     const kind = fresh
       ? activityKindFor(created ? null : prev.status, next.status, event.hookEventName)
       : null;
-    let activity: ActivityEvent | null = null;
+    let activityWrite: BatchItem | null = null;
+    let activityValues: ActivityEvent | null = null;
     if (kind && projectId) {
       const values = ActivityEvent.parse({
         id: await stableId(`${row.id}|${event.hookEventName}|${event.ts}`),
@@ -260,7 +306,7 @@ export async function processAgentEvent(input: AgentEventJob, db: Db, publish: P
         deletions: null,
         agentSessionId: row.id,
       });
-      const [inserted] = await tx
+      activityWrite = db
         .insert(schema.activityEvents)
         .values({
           ...values,
@@ -269,12 +315,19 @@ export async function processAgentEvent(input: AgentEventJob, db: Db, publish: P
         })
         .onConflictDoNothing()
         .returning({ id: schema.activityEvents.id });
-      if (inserted) activity = values;
+      activityValues = values;
     }
+    const [saved, , inserted] = (await commit(db, [
+      write,
+      requireChanged(db),
+      ...(activityWrite ? [activityWrite] : []),
+    ])) as [SessionRow[], unknown, Array<{ id: string }>?];
+    const session = toAgentSession(saved[0]!);
+    const activity = inserted?.length ? activityValues : null;
     return { session, changed: !before || visible(before) !== visible(session), activity };
-  });
+  }
 
-  // Broadcast only after the transaction committed.
+  // Broadcast only after the batch committed.
   const { session, changed, activity } = result;
   if (session.projectId && changed)
     await publish(session.projectId, WsPayload.parse({ type: 'agent_session.updated', data: { session } }));
@@ -286,7 +339,7 @@ export async function processAgentEvent(input: AgentEventJob, db: Db, publish: P
 }
 
 export async function agentEventJob(job: AgentEventJob, { env }: { env: Env }): Promise<void> {
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   try {
     await handle.ready;
     await processAgentEvent(job, handle.db, (projectId, payload) => broadcast(env, projectId, payload));

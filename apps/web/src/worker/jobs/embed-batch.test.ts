@@ -1,15 +1,15 @@
 /** Integration tests run against local WASM Postgres with fake providers; never Tiger or HF. */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { schema } from '@hakit/db';
+import { chunkRows, columnCount, schema } from '@hakit/db';
 import type { JobMessage } from '@hakit/contracts';
-import { createTestDb } from '../test/pglite';
+import { createTestDb } from '@hakit/db/testing';
 import { databaseEmbeddingCache, cachedEmbeddings, QWEN_MODEL } from '../services/embeddings';
 import { processEmbeddingBatch, embedBatchJob } from './embed-batch';
 import { handleQueue, handlers } from './index';
 import type { Env } from '../env';
 
-let testDb: Awaited<ReturnType<typeof createTestDb>>;
+let testDb: ReturnType<typeof createTestDb>;
 let userId: string, workspaceId: string, projectId: string;
 const vector = (index = 0): number[] => Array.from({ length: 1024 }, (_, i) => (i === index ? 1 : 0));
 const provider = () => ({
@@ -23,16 +23,9 @@ const job = (target: 'task' | 'member' | 'skill', ids: string[]) => ({
   target,
   ids,
 });
-beforeAll(async () => {
-  testDb = await createTestDb();
-}, 30_000);
-afterAll(async () => {
-  await testDb.pg.close();
-});
 beforeEach(async () => {
   vi.restoreAllMocks();
-  // Destructive reset applies only to this test's isolated, in-memory database.
-  await testDb.pg.exec('TRUNCATE users, skills, embedding_cache CASCADE');
+  testDb = createTestDb();
   const [user] = await testDb.db
     .insert(schema.users)
     .values({ githubUserId: 1, githubLogin: 'member' })
@@ -128,10 +121,10 @@ describe('embedding DB cache and batch jobs', () => {
     expect(p.embed).not.toHaveBeenCalled();
   });
   it('splits large batches into provider-safe chunks', async () => {
-    const rows = await testDb.db
-      .insert(schema.tasks)
-      .values(Array.from({ length: 35 }, (_, i) => ({ projectId, number: i + 1, title: 'Task ' + i })))
-      .returning();
+    const values = Array.from({ length: 35 }, (_, i) => ({ projectId, number: i + 1, title: 'Task ' + i }));
+    const rows = [];
+    for (const chunk of chunkRows(values, columnCount(schema.tasks)))
+      rows.push(...(await testDb.db.insert(schema.tasks).values(chunk).returning()));
     const p = provider();
     await processEmbeddingBatch(
       job(

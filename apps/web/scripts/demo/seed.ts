@@ -1,6 +1,6 @@
 /**
- * T-705 demo workspace seed for REAL mode (docs/archive/DEMO.md). Run it only against a Tiger fork of the
- * dev service (see cli.ts), never the shared dev database.
+ * T-705 demo workspace seed for REAL mode (docs/archive/DEMO.md). Run it against a disposable D1 (see
+ * cli.ts), never a database other people are using.
  *
  * The client still addresses the fixture workspace/project ids (`@hakit/contracts/fixtures` `ids`),
  * so the demo workspace is created with exactly those ids: every screen then reads real rows.
@@ -32,7 +32,7 @@ export const SWAP_MEMBER = {
   ],
 };
 
-/** Taxonomy + hackathon templates: the same idempotent upserts as packages/db/src/seed/run.ts. */
+/** Taxonomy + hackathon templates: idempotent upserts, like the generated migration seed (packages/db/src/seed/sql.ts). */
 export async function seedReference(db: Db) {
   for (const s of SKILLS)
     await db

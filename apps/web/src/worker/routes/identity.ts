@@ -1,6 +1,6 @@
 /** Auth, workspaces, invites, members, profiles. Owner: PL (T-201..T-203). */
 import { Hono, type Context } from 'hono';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import {
   Id,
   type AvailabilityWindow,
@@ -9,7 +9,15 @@ import {
   type Workspace,
 } from '@hakit/contracts';
 import * as fx from '@hakit/contracts/fixtures';
-import { schema, type Db } from '@hakit/db';
+import {
+  chunkIds,
+  commit,
+  isGuardFailure,
+  isUniqueViolation,
+  requireChanged,
+  schema,
+  type Db,
+} from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
 import { forbidden, HttpError, notFound } from '../lib/errors';
@@ -188,15 +196,22 @@ route(identity, 'createWorkspace', async ({ c, body }) => {
   const db = c.var.db();
   const dates = await resolveDates(db, body);
   const userId = me(c).id;
-  const w = await db.transaction(async (tx) => {
-    const [w] = await tx
+  const workspaceId = crypto.randomUUID();
+  const [created] = await commit(db, [
+    db
       .insert(workspaces)
-      .values({ name: body.name, slug: `${slugify(body.name)}-${randomHex(3)}`, createdBy: userId, ...dates })
-      .returning();
-    await tx.insert(memberships).values({ workspaceId: w!.id, userId, role: 'owner', colorIndex: 0 });
-    await tx.insert(memberProfiles).values({ workspaceId: w!.id, userId });
-    return w!;
-  });
+      .values({
+        id: workspaceId,
+        name: body.name,
+        slug: `${slugify(body.name)}-${randomHex(3)}`,
+        createdBy: userId,
+        ...dates,
+      })
+      .returning(),
+    db.insert(memberships).values({ workspaceId, userId, role: 'owner', colorIndex: 0 }),
+    db.insert(memberProfiles).values({ workspaceId, userId }),
+  ]);
+  const w = (created as WorkspaceRow[])[0]!;
   return { ...toWorkspace(w), hackathonSlug: await templateSlug(db, w.hackathonTemplateId) };
 });
 
@@ -299,34 +314,53 @@ route(identity, 'previewInvite', async ({ c, params }) => {
 route(identity, 'acceptInvite', async ({ c, params }) => {
   if (c.var.mocks) return fx.workspace;
   const userId = me(c).id;
-  const w = await c.var.db().transaction(async (tx) => {
-    // Lock the invite so concurrent accepts can't exceed max_uses.
-    const [i] = await tx
-      .select()
-      .from(invites)
-      .where(eq(invites.code, params.code.toUpperCase()))
-      .for('update');
-    if (!i) throw notFound('Invite');
-    const existing = await tx
-      .select({ userId: memberships.userId, colorIndex: memberships.colorIndex })
-      .from(memberships)
-      .where(eq(memberships.workspaceId, i.workspaceId));
-    if (!existing.some((m) => m.userId === userId)) {
-      if (inviteDead(i, new Date()))
-        throw new HttpError(410, 'invite_expired', 'This invite link has expired');
-      const used = new Set(existing.map((m) => m.colorIndex));
-      const colorIndex = [0, 1, 2, 3, 4, 5, 6, 7].find((k) => !used.has(k)) ?? existing.length % 8;
-      await tx.insert(memberships).values({ workspaceId: i.workspaceId, userId, role: 'member', colorIndex });
-      await tx.insert(memberProfiles).values({ workspaceId: i.workspaceId, userId }).onConflictDoNothing();
-      await tx
-        .update(invites)
-        .set({ uses: i.uses + 1 })
-        .where(eq(invites.id, i.id));
+  const db = c.var.db();
+  const [i] = await db.select().from(invites).where(eq(invites.code, params.code.toUpperCase()));
+  if (!i) throw notFound('Invite');
+  const isMember = async () =>
+    (
+      await db
+        .select({ userId: memberships.userId })
+        .from(memberships)
+        .where(and(eq(memberships.workspaceId, i.workspaceId), eq(memberships.userId, userId)))
+    ).length > 0;
+  const existing = await db
+    .select({ userId: memberships.userId, colorIndex: memberships.colorIndex })
+    .from(memberships)
+    .where(eq(memberships.workspaceId, i.workspaceId));
+  if (!existing.some((m) => m.userId === userId)) {
+    const now = new Date();
+    if (inviteDead(i, now)) throw new HttpError(410, 'invite_expired', 'This invite link has expired');
+    const used = new Set(existing.map((m) => m.colorIndex));
+    // Two people joining at once may share a colour; that is cosmetic.
+    const colorIndex = [0, 1, 2, 3, 4, 5, 6, 7].find((k) => !used.has(k)) ?? existing.length % 8;
+    try {
+      await commit(db, [
+        // Claim a use only while the invite is still live, so concurrent accepts can't exceed max_uses.
+        db
+          .update(invites)
+          .set({ uses: sql`${invites.uses} + 1` })
+          .where(
+            and(
+              eq(invites.id, i.id),
+              isNull(invites.revokedAt),
+              gt(invites.expiresAt, now),
+              or(isNull(invites.maxUses), lt(invites.uses, invites.maxUses)),
+            ),
+          ),
+        requireChanged(db),
+        db.insert(memberships).values({ workspaceId: i.workspaceId, userId, role: 'member', colorIndex }),
+        db.insert(memberProfiles).values({ workspaceId: i.workspaceId, userId }).onConflictDoNothing(),
+      ]);
+    } catch (e) {
+      // Same user accepting twice at once: the other request already made them a member.
+      const raced = (isUniqueViolation(e) || isGuardFailure(e)) && (await isMember());
+      if (!raced)
+        throw isGuardFailure(e) ? new HttpError(410, 'invite_expired', 'This invite link has expired') : e;
     }
-    const [w] = await tx.select().from(workspaces).where(eq(workspaces.id, i.workspaceId));
-    return w!;
-  });
-  return toWorkspace(w);
+  }
+  const [w] = await db.select().from(workspaces).where(eq(workspaces.id, i.workspaceId));
+  return toWorkspace(w!);
 });
 
 /* ----------------------------- members & profiles ----------------------------- */
@@ -350,32 +384,45 @@ route(identity, 'listMembers', async ({ c, params }) => {
   const userIds = rows.map((r) => r.u.id);
   if (userIds.length === 0) return [];
 
-  const skillRows = await db
-    .select({
-      userId: schema.memberSkills.userId,
-      slug: schema.skills.slug,
-      level: schema.memberSkills.level,
-      confidence: schema.memberSkills.confidence,
-      source: schema.memberSkills.source,
-      confirmedAt: schema.memberSkills.confirmedAt,
-    })
-    .from(schema.memberSkills)
-    .innerJoin(schema.skills, eq(schema.skills.id, schema.memberSkills.skillId))
-    .where(and(inArray(schema.memberSkills.userId, userIds), ne(schema.memberSkills.source, 'removed')));
-
-  const current = await db
-    .select({ userId: schema.assignments.userId, taskId: schema.tasks.id })
-    .from(schema.assignments)
-    .innerJoin(schema.tasks, eq(schema.tasks.id, schema.assignments.taskId))
-    .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
-    .where(
-      and(
-        eq(schema.projects.workspaceId, params.wid),
-        eq(schema.assignments.status, 'active'),
-        eq(schema.tasks.status, 'in_progress'),
-        inArray(schema.assignments.userId, userIds),
+  const chunks = chunkIds(userIds);
+  const skillRows = (
+    await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .select({
+            userId: schema.memberSkills.userId,
+            slug: schema.skills.slug,
+            level: schema.memberSkills.level,
+            confidence: schema.memberSkills.confidence,
+            source: schema.memberSkills.source,
+            confirmedAt: schema.memberSkills.confirmedAt,
+          })
+          .from(schema.memberSkills)
+          .innerJoin(schema.skills, eq(schema.skills.id, schema.memberSkills.skillId))
+          .where(and(inArray(schema.memberSkills.userId, chunk), ne(schema.memberSkills.source, 'removed'))),
       ),
-    );
+    )
+  ).flat();
+
+  const current = (
+    await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .select({ userId: schema.assignments.userId, taskId: schema.tasks.id })
+          .from(schema.assignments)
+          .innerJoin(schema.tasks, eq(schema.tasks.id, schema.assignments.taskId))
+          .innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.projectId))
+          .where(
+            and(
+              eq(schema.projects.workspaceId, params.wid),
+              eq(schema.assignments.status, 'active'),
+              eq(schema.tasks.status, 'in_progress'),
+              inArray(schema.assignments.userId, chunk),
+            ),
+          ),
+      ),
+    )
+  ).flat();
 
   return rows.map(({ u, m, p }): Member => {
     const top = skillRows

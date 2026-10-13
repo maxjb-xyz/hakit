@@ -5,7 +5,7 @@
  *  3. expire invites; idle/end stale agent sessions (PL T-202, GH T-602)
  */
 import { eq, inArray } from 'drizzle-orm';
-import { createDb, schema } from '@hakit/db';
+import { chunkIds, createDb, schema } from '@hakit/db';
 import type { JobMessage } from '@hakit/contracts';
 import type { Env } from '../env';
 import { isMock } from '../env';
@@ -25,7 +25,7 @@ const BATCH = 100;
 
 /** T-504: one `recs.evaluate` per active project; the job itself is idempotent. */
 export async function enqueueRecommendationEvaluations(env: Env): Promise<number> {
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   let ids: string[];
   try {
     await handle.ready;
@@ -66,7 +66,7 @@ export async function handleScheduled(controller: ScheduledController, env: Env)
 
 /** T-602: mark agent sessions idle (>10m quiet) / ended (>2h quiet). */
 async function sweepAgentSessionsJob(env: Env, now: Date) {
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   try {
     await handle.ready;
     const updated = await sweepAgentSessions(handle.db, (pid, payload) => broadcast(env, pid, payload), now);
@@ -95,18 +95,17 @@ export async function redeliverFailedWebhooks(
   const deliveries = await client.listDeliveries(jwt, new Date(now.getTime() - REDELIVERY_WINDOW_MS));
   const guids = [...new Set(deliveries.map((d) => d.guid))];
   if (guids.length === 0) return 0;
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   let ledger: Set<string>;
   try {
     await handle.ready;
-    ledger = new Set(
-      (
-        await handle.db
-          .select({ id: schema.webhookDeliveries.deliveryId })
-          .from(schema.webhookDeliveries)
-          .where(inArray(schema.webhookDeliveries.deliveryId, guids))
-      ).map((r) => r.id),
-    );
+    ledger = new Set();
+    for (const chunk of chunkIds(guids))
+      for (const r of await handle.db
+        .select({ id: schema.webhookDeliveries.deliveryId })
+        .from(schema.webhookDeliveries)
+        .where(inArray(schema.webhookDeliveries.deliveryId, chunk)))
+        ledger.add(r.id);
   } finally {
     await handle.close();
   }

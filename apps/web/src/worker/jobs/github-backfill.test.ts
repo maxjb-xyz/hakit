@@ -4,7 +4,6 @@ import {
   backfillKey,
   processGithubBackfill,
   type BackfillDependencies,
-  type BackfillTransaction,
   type ConnectedRepo,
 } from './github-backfill';
 import {
@@ -116,33 +115,30 @@ describe('normalizeBackfill', () => {
 function setup(existing: Activity[] = []) {
   const events: Activity[] = [...existing];
   const trace: string[] = [];
-  const tx: BackfillTransaction = {
-    byGithubId: async (id) => (id === 200 ? user : null),
-    byAlias: async () => null,
-    taskByNumber: async (_p, numbers) => (numbers.includes(12) ? task12 : null),
-    hasEquivalent: async (e) =>
-      events.some(
-        (x) =>
-          x.projectId === e.projectId &&
-          x.kind === e.kind &&
-          (e.kind === 'commit'
-            ? x.sha === e.sha
-            : e.prNumber !== null
-              ? x.prNumber === e.prNumber
-              : x.ref === e.ref),
-      ),
-    save: async (e) => {
-      events.push(e);
-      return e;
-    },
-  };
+  const equivalent = (x: Activity, e: Activity) =>
+    x.projectId === e.projectId &&
+    x.kind === e.kind &&
+    (e.kind === 'commit'
+      ? x.sha === e.sha
+      : e.prNumber !== null
+        ? x.prNumber === e.prNumber
+        : x.ref === e.ref);
   const deps: BackfillDependencies = {
     connectedRepo: vi.fn(async () => repo),
     snapshot: vi.fn(async () => snapshot),
-    transaction: async (run) => {
-      const r = await run(tx);
+    byGithubId: async (id) => (id === 200 ? user : null),
+    byAlias: async () => null,
+    taskByNumber: async (_p, numbers) => (numbers.includes(12) ? task12 : null),
+    // Models the atomic batch of guarded inserts: only events without a stored equivalent are inserted.
+    save: async (batch) => {
+      const inserted: Activity[] = [];
+      for (const e of batch) {
+        if (events.some((x) => equivalent(x, e))) continue;
+        events.push(e);
+        inserted.push(e);
+      }
       trace.push('commit');
-      return r;
+      return inserted;
     },
     publish: vi.fn(async () => {
       trace.push('publish');

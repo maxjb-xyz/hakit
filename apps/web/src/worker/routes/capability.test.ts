@@ -1,6 +1,6 @@
 /** Real API over isolated WASM Postgres; no shared database or paid provider calls. */
 import { beforeAll, beforeEach, expect, it, vi } from 'vitest';
-import { schema } from '@hakit/db';
+import { chunkRows, columnCount, schema } from '@hakit/db';
 import { eq } from 'drizzle-orm';
 import { MemberSkill, Skill, TeamCapability } from '@hakit/contracts';
 import { createHarness } from '../test/harness';
@@ -319,14 +319,14 @@ it('does not spend embedding calls on exact aliases, short terms or an unembedde
   expect(provider.embed).not.toHaveBeenCalled();
 });
 it('bounds search results for large taxonomies', async () => {
-  await h.db.insert(schema.skills).values(
-    Array.from({ length: 60 }, (_, i) => ({
-      slug: `skill-${i}`,
-      name: `Skill ${i}`,
-      category: 'backend' as const,
-      aliases: [],
-    })),
-  );
+  const rows = Array.from({ length: 60 }, (_, i) => ({
+    slug: `skill-${i}`,
+    name: `Skill ${i}`,
+    category: 'backend' as const,
+    aliases: [],
+  }));
+  for (const chunk of chunkRows(rows, columnCount(schema.skills)))
+    await h.db.insert(schema.skills).values(chunk);
   expect(await searchTaxonomy(h.db, '')).toHaveLength(50);
 });
 

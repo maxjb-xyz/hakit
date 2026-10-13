@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { createDb, schema, type Db } from '@hakit/db';
+import { chunkIds, chunkRows, columnCount, commit, createDb, schema, type Db } from '@hakit/db';
 import type { EmbeddingProvider } from '../ai/types';
 import { prepareTexts, validateTexts, validateVectors } from './providers';
 
@@ -13,27 +13,41 @@ export interface EmbeddingCache {
 }
 export function databaseEmbeddingCache(db: Db): EmbeddingCache {
   return {
-    get: (model, hashes) =>
-      db
-        .select({ hash: schema.embeddingCache.hash, embedding: schema.embeddingCache.embedding })
-        .from(schema.embeddingCache)
-        .where(and(eq(schema.embeddingCache.model, model), inArray(schema.embeddingCache.hash, hashes))),
+    // Chunked: D1 caps bound parameters per statement.
+    get: async (model, hashes) =>
+      (
+        await Promise.all(
+          chunkIds(hashes).map((chunk) =>
+            db
+              .select({ hash: schema.embeddingCache.hash, embedding: schema.embeddingCache.embedding })
+              .from(schema.embeddingCache)
+              .where(and(eq(schema.embeddingCache.model, model), inArray(schema.embeddingCache.hash, chunk))),
+          ),
+        )
+      ).flat(),
     async put(model, rows) {
-      if (!rows.length) return;
-      await db
-        .insert(schema.embeddingCache)
-        .values(rows.map((row) => ({ ...row, model })))
-        .onConflictDoUpdate({
-          target: [schema.embeddingCache.hash, schema.embeddingCache.model],
-          set: { embedding: sql`excluded.embedding` },
-        });
+      await commit(
+        db,
+        chunkRows(
+          rows.map((row) => ({ ...row, model })),
+          columnCount(schema.embeddingCache),
+        ).map((chunk) =>
+          db
+            .insert(schema.embeddingCache)
+            .values(chunk)
+            .onConflictDoUpdate({
+              target: [schema.embeddingCache.hash, schema.embeddingCache.model],
+              set: { embedding: sql`excluded.embedding` },
+            }),
+        ),
+      );
     },
   };
 }
-/** Lazy cache connections, closed even on failures. Provider calls happen outside DB transactions. */
-export function hyperdriveEmbeddingCache(connectionString: () => string): EmbeddingCache {
+/** Cache on the D1 binding, opened per call. Provider calls happen outside any DB write. */
+export function d1EmbeddingCache(d1: D1Database): EmbeddingCache {
   const run = async <T>(operation: (cache: EmbeddingCache) => Promise<T>): Promise<T> => {
-    const handle = createDb(connectionString());
+    const handle = createDb(d1);
     try {
       await handle.ready;
       return await operation(databaseEmbeddingCache(handle.db));

@@ -1,6 +1,6 @@
 /**
  * Plan materialization (T-308): a PlanDocument becomes milestones, HK-numbered tasks and dependencies in one
- * transaction. Pure planning of rows lives in `planRows` so it can be unit-tested without a database.
+ * atomic batch. Pure planning of rows lives in `planRows` so it can be unit-tested without a database.
  */
 import type { PlanDocument, TaskRequiredSkill } from '@hakit/contracts';
 

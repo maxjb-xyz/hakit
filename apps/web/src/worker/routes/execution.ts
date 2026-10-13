@@ -2,7 +2,7 @@
 import { Hono, type Context } from 'hono';
 import { and, desc, eq } from 'drizzle-orm';
 import { Id, type RecommendationAction } from '@hakit/contracts';
-import { schema, type Db } from '@hakit/db';
+import { commit, isGuardFailure, requireChanged, schema } from '@hakit/db';
 import * as fx from '@hakit/contracts/fixtures';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
@@ -13,8 +13,6 @@ import { buildSnapshot, toRecommendation } from '../lib/mission-control';
 import { applyActions, mergeActions } from '../lib/apply-recommendation';
 import { assertProjectMember } from '../middleware/auth';
 import { aiProviderStatus } from '../services/ai/status';
-
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export const execution = new Hono<AppEnv>();
 
@@ -36,16 +34,33 @@ async function assertRecommendationMember(c: Context<AppEnv>, rid: string) {
   return { projectId: r.projectId, ...(await assertProjectMember(c, r.projectId)) };
 }
 
-/** Inside the transaction: lock the row; 409 once resolved (concurrent accept/dismiss serialize here). */
-async function lockOpen(tx: Tx, rid: string) {
-  const [r] = await tx
+/** 409 once resolved. The resolving batch re-checks `status = 'open'`, so concurrent accept/dismiss can't both win. */
+async function readOpen(c: Context<AppEnv>, rid: string) {
+  const [r] = await c.var
+    .db()
     .select()
     .from(schema.recommendations)
-    .where(eq(schema.recommendations.id, rid))
-    .for('update');
+    .where(eq(schema.recommendations.id, rid));
   if (r!.status !== 'open') throw conflict(`Recommendation is already ${r!.status}`);
   return r!;
 }
+
+/** The status change that resolves `rid`, guarded so the batch rolls back if someone resolved it first. */
+const resolveOpen = (
+  db: ReturnType<AppEnv['Variables']['db']>,
+  rid: string,
+  set: Partial<typeof schema.recommendations.$inferInsert>,
+) => [
+  db
+    .update(schema.recommendations)
+    .set(set)
+    .where(and(eq(schema.recommendations.id, rid), eq(schema.recommendations.status, 'open'))),
+  requireChanged(db),
+];
+
+const alreadyResolved = (e: unknown) => {
+  throw isGuardFailure(e) ? conflict('Recommendation was resolved by someone else') : e;
+};
 
 const resolvedBroadcasts = (
   c: Context<AppEnv>,
@@ -92,17 +107,16 @@ route(execution, 'acceptRecommendation', async ({ c, params, body }) => {
   const { workspaceId } = await assertRecommendationMember(c, params.rid);
   const db = c.var.db();
   const now = new Date();
-  const resolved = await db.transaction(async (tx) => {
-    const r = await lockOpen(tx, params.rid);
-    const actions = mergeActions(r.actions as RecommendationAction[], body.modifications);
-    await applyActions(tx, { projectId: r.projectId, workspaceId, actorId: c.var.user!.id, now }, actions);
-    const [done] = await tx
-      .update(schema.recommendations)
-      .set({ status: 'accepted', actions, resolvedAt: now, resolvedBy: c.var.user!.id })
-      .where(eq(schema.recommendations.id, r.id))
-      .returning();
-    return done!;
-  });
+  const r = await readOpen(c, params.rid);
+  const actions = mergeActions(r.actions as RecommendationAction[], body.modifications);
+  const writes = await applyActions(
+    db,
+    { projectId: r.projectId, workspaceId, actorId: c.var.user!.id, now },
+    actions,
+  );
+  const set = { status: 'accepted' as const, actions, resolvedAt: now, resolvedBy: c.var.user!.id };
+  await commit(db, [...resolveOpen(db, r.id, set), ...writes]).catch(alreadyResolved);
+  const resolved = { ...r, ...set };
   resolvedBroadcasts(c, resolved, true);
   return loadBoard(db, resolved.projectId);
 });
@@ -116,20 +130,16 @@ route(execution, 'dismissRecommendation', async ({ c, params, body }) => {
       resolvedBy: fx.ids.users.priya,
     };
   await assertRecommendationMember(c, params.rid);
-  const resolved = await c.var.db().transaction(async (tx) => {
-    const r = await lockOpen(tx, params.rid);
-    const [done] = await tx
-      .update(schema.recommendations)
-      .set({
-        status: 'dismissed',
-        resolvedAt: new Date(),
-        resolvedBy: c.var.user!.id,
-        dismissReason: body.reason ?? null,
-      })
-      .where(eq(schema.recommendations.id, r.id))
-      .returning();
-    return done!;
-  });
+  const db = c.var.db();
+  const r = await readOpen(c, params.rid);
+  const set = {
+    status: 'dismissed' as const,
+    resolvedAt: new Date(),
+    resolvedBy: c.var.user!.id,
+    dismissReason: body.reason ?? null,
+  };
+  await commit(db, resolveOpen(db, r.id, set)).catch(alreadyResolved);
+  const resolved = { ...r, ...set };
   resolvedBroadcasts(c, resolved, false);
   return toRecommendation(resolved);
 });

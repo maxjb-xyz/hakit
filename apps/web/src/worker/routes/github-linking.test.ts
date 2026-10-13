@@ -54,7 +54,7 @@ function setup(responses: unknown[][], returned: unknown[][] = [], signedIn = tr
 
 describe('manual activity link (T-406)', () => {
   const path = `/activity/${stored.id}/link`;
-  it('confirms the link to a task in the same project, then broadcasts after commit', async () => {
+  it('confirms the link to a task in the same project, then broadcasts after the write', async () => {
     const s = setup(
       [...eventGuard, [{ id: stored.id, projectId: ids.project }], [{ id: ids.task(5) }]],
       [[{ ...stored, taskId: ids.task(5), linkKind: 'confirmed', linkConfidence: null }]],
@@ -75,7 +75,11 @@ describe('manual activity link (T-406)', () => {
       { taskId: ids.task(5), linkKind: 'confirmed', linkConfidence: null },
       expect.anything(),
     );
-    expect(s.trace).toEqual(['commit', 'broadcast']);
+    // The same-project task check is repeated inside the UPDATE itself.
+    const guarded = s.sql(s.writes.mock.calls.find((call) => call[0] === 'update')![3]);
+    expect(guarded.sql).toContain('exists (select 1 from "tasks"');
+    expect(guarded.params).toEqual(expect.arrayContaining([ids.task(5), ids.project]));
+    expect(s.trace).toEqual(['broadcast']);
     expect(s.notify).toHaveBeenCalledWith(expect.objectContaining({ type: 'activity.created' }));
   });
   it('unlinks with a null task', async () => {
@@ -97,7 +101,7 @@ describe('manual activity link (T-406)', () => {
     expect((await s.post(path, { taskId: ids.task(99) })).status).toBe(404);
     expect(s.writes).not.toHaveBeenCalled();
     expect(s.notify).not.toHaveBeenCalled();
-    expect(s.trace).toEqual(['rollback']);
+    expect(s.trace).toEqual([]);
   });
   it('hides events from non-members', async () => {
     const s = setup([[{ projectId: ids.project }], [{ workspaceId: ids.workspace }], []]);

@@ -3,7 +3,7 @@
  * recommendations by dedupe key and expires those whose signal cleared. Broadcasts after commit.
  * Idempotent: re-running on unchanged state writes and broadcasts nothing.
  */
-import { and, eq, gt, inArray, isNotNull, max, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, max } from 'drizzle-orm';
 import {
   AgentSessionStatus,
   RecommendationDraft,
@@ -11,7 +11,16 @@ import {
   type JobMessage,
   type WsPayload,
 } from '@hakit/contracts';
-import { createDb, schema, type Db } from '@hakit/db';
+import {
+  chunkIds,
+  chunkRows,
+  columnCount,
+  commit,
+  createDb,
+  schema,
+  type BatchItem,
+  type Db,
+} from '@hakit/db';
 import { computeSchedule, DEFAULT_CONFIG, evaluateRules, type ProjectState } from '@hakit/engine';
 import type { Env } from '../env';
 import { isMock } from '../env';
@@ -31,7 +40,7 @@ export interface Reconciliation {
   expire: string[];
 }
 
-/** jsonb does not preserve key order, so compare with sorted keys. */
+/** Stored JSON may not preserve key order, so compare with sorted keys. */
 const canonical = (v: unknown): unknown =>
   Array.isArray(v)
     ? v.map(canonical)
@@ -123,86 +132,94 @@ async function loadActivity(db: Pick<Db, 'select'>, projectId: string) {
   return { lastActivityByTask, lastActivityByMember, agentSessions };
 }
 
-/** Runs the rules and writes the result; returns the payloads to broadcast once committed. */
+/**
+ * Runs the rules and writes the result; returns the payloads to broadcast once committed.
+ * Cron and board-change jobs may overlap. Without locks, every write is guarded instead: creates hit the
+ * open-dedupe unique index (ON CONFLICT DO NOTHING) and updates/expiries only touch rows still open, so
+ * an overlapping run writes nothing twice and the next evaluation repairs any stale content.
+ */
 export async function evaluateProject(db: Db, projectId: string, now: Date): Promise<WsPayload[]> {
-  return db.transaction(async (tx) => {
-    // Serialize evaluations per project: cron and board-change jobs may overlap.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`recs:${projectId}`}, 0))`);
-    const [project] = await tx
-      .select({ status: schema.projects.status })
-      .from(schema.projects)
-      .where(eq(schema.projects.id, projectId));
-    if (project?.status !== 'active') return [];
-    const [{ state }, activity] = await Promise.all([
-      loadProjectState(tx, projectId, now),
-      loadActivity(tx, projectId),
-    ]);
-    const engineState: ProjectState = { ...state, ...activity };
-    const drafts = evaluateRules(engineState, computeSchedule(engineState), DEFAULT_CONFIG).map((d) =>
-      RecommendationDraft.parse(d),
-    );
-    const keys = drafts.map((d) => d.dedupeKey);
-    const [open, recent] = await Promise.all([
-      tx
-        .select()
-        .from(schema.recommendations)
-        .where(
-          and(eq(schema.recommendations.projectId, projectId), eq(schema.recommendations.status, 'open')),
-        )
-        .for('update'),
-      keys.length
-        ? tx
-            .select({ key: schema.recommendations.dedupeKey })
-            .from(schema.recommendations)
-            .where(
-              and(
-                eq(schema.recommendations.projectId, projectId),
-                inArray(schema.recommendations.status, ['accepted', 'dismissed']),
-                inArray(schema.recommendations.dedupeKey, keys),
-                gt(schema.recommendations.resolvedAt, new Date(now.getTime() - RESOLVED_COOLDOWN_MS)),
-              ),
-            )
-        : [],
-    ]);
-    const plan = reconcileRecommendations(
-      open.map((r) => ({ ...r, ...RecommendationDraft.parse(r) })),
-      drafts,
-      new Set(recent.map((r) => r.key)),
-    );
-    const out: WsPayload[] = [];
-    if (plan.create.length) {
-      const rows = await tx
-        .insert(schema.recommendations)
-        .values(plan.create.map((d) => ({ ...d, projectId })))
-        .returning();
-      for (const r of rows)
-        out.push({ type: 'recommendation.created', data: { recommendation: toRecommendation(r) } });
-    }
-    for (const { id, draft } of plan.update) {
-      const [r] = await tx
+  const [project] = await db
+    .select({ status: schema.projects.status })
+    .from(schema.projects)
+    .where(eq(schema.projects.id, projectId));
+  if (project?.status !== 'active') return [];
+  const [{ state }, activity] = await Promise.all([
+    loadProjectState(db, projectId, now),
+    loadActivity(db, projectId),
+  ]);
+  const engineState: ProjectState = { ...state, ...activity };
+  const drafts = evaluateRules(engineState, computeSchedule(engineState), DEFAULT_CONFIG).map((d) =>
+    RecommendationDraft.parse(d),
+  );
+  const keys = drafts.map((d) => d.dedupeKey);
+  const [open, recent] = await Promise.all([
+    db
+      .select()
+      .from(schema.recommendations)
+      .where(and(eq(schema.recommendations.projectId, projectId), eq(schema.recommendations.status, 'open'))),
+    Promise.all(
+      chunkIds(keys).map((chunk) =>
+        db
+          .select({ key: schema.recommendations.dedupeKey })
+          .from(schema.recommendations)
+          .where(
+            and(
+              eq(schema.recommendations.projectId, projectId),
+              inArray(schema.recommendations.status, ['accepted', 'dismissed']),
+              inArray(schema.recommendations.dedupeKey, chunk),
+              gt(schema.recommendations.resolvedAt, new Date(now.getTime() - RESOLVED_COOLDOWN_MS)),
+            ),
+          ),
+      ),
+    ).then((chunks) => chunks.flat()),
+  ]);
+  const plan = reconcileRecommendations(
+    open.map((r) => ({ ...r, ...RecommendationDraft.parse(r) })),
+    drafts,
+    new Set(recent.map((r) => r.key)),
+  );
+  const stillOpen = eq(schema.recommendations.status, 'open');
+  const writes: Array<{ item: BatchItem; type: 'recommendation.created' | 'recommendation.resolved' }> = [
+    ...chunkRows(
+      plan.create.map((d) => ({ ...d, projectId })),
+      columnCount(schema.recommendations),
+    ).map((rows) => ({
+      item: db.insert(schema.recommendations).values(rows).onConflictDoNothing().returning(),
+      type: 'recommendation.created' as const,
+    })),
+    // No dedicated "updated" message; clients treat `created` as an invalidation of the list.
+    ...plan.update.map(({ id, draft }) => ({
+      item: db
         .update(schema.recommendations)
         .set(draft)
-        .where(eq(schema.recommendations.id, id))
-        .returning();
-      // No dedicated "updated" message; clients treat `created` as an invalidation of the list.
-      out.push({ type: 'recommendation.created', data: { recommendation: toRecommendation(r!) } });
-    }
-    if (plan.expire.length) {
-      const rows = await tx
+        .where(and(eq(schema.recommendations.id, id), stillOpen))
+        .returning(),
+      type: 'recommendation.created' as const,
+    })),
+    ...chunkIds(plan.expire).map((ids) => ({
+      item: db
         .update(schema.recommendations)
         .set({ status: 'expired', resolvedAt: now })
-        .where(inArray(schema.recommendations.id, plan.expire))
-        .returning();
-      for (const r of rows)
-        out.push({ type: 'recommendation.resolved', data: { recommendation: toRecommendation(r) } });
-    }
-    return out;
-  });
+        .where(and(inArray(schema.recommendations.id, ids), stillOpen))
+        .returning(),
+      type: 'recommendation.resolved' as const,
+    })),
+  ];
+  const results = await commit(
+    db,
+    writes.map((w) => w.item),
+  );
+  return writes.flatMap(({ type }, i) =>
+    (results[i] as RecRow[]).map(
+      (r) => ({ type, data: { recommendation: toRecommendation(r) } }) as WsPayload,
+    ),
+  );
 }
 
 export async function recsEvaluateJob(job: RecsJob, { env }: { env: Env }): Promise<void> {
   if (isMock(env)) return;
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   let payloads: WsPayload[];
   try {
     await handle.ready;

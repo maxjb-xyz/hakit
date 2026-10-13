@@ -1,16 +1,16 @@
-/** T-705: the demo seed against in-memory Postgres with the real migrations (never Tiger). */
+/** T-705: the demo seed against in-memory D1 with the real migrations. */
 import { describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { ids } from '@hakit/contracts/fixtures';
 import { schema } from '@hakit/db';
-import { createTestDb } from '../../src/worker/test/pglite';
+import { createTestDb } from '@hakit/db/testing';
 import { DEMO_GITHUB_ID_BASE, SWAP_MEMBER, resetDemo, seedDemo, stallTask, swapTeam } from './seed';
 
 const now = new Date('2026-10-10T15:00:00Z');
 
 describe('demo seed', () => {
   it('seeds the fixture-id workspace idempotently, swaps the team, and stalls a task', async () => {
-    const { db } = await createTestDb();
+    const { db } = createTestDb();
     // A presenter who signed in once through GitHub.
     await db.insert(schema.users).values({ githubUserId: 42, githubLogin: 'presenter', name: 'Presenter' });
     await seedDemo(db, { now });

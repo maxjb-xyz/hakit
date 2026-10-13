@@ -3,7 +3,17 @@ import { Hono, type Context } from 'hono';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Id, type TaskStatus } from '@hakit/contracts';
 import * as fx from '@hakit/contracts/fixtures';
-import { schema, type Db } from '@hakit/db';
+import {
+  chunkIds,
+  chunkRows,
+  columnCount,
+  commit,
+  isGuardFailure,
+  isUniqueViolation,
+  requireChanged,
+  schema,
+  type Db,
+} from '@hakit/db';
 import type { AppEnv } from '../lib/context';
 import { route } from '../lib/route';
 import { solveAssignments, explainAssignment, scorePair } from '@hakit/engine';
@@ -11,7 +21,13 @@ import { loadProjectState } from '../lib/project-state';
 import { polishExplanations } from '../services/ai/explanations';
 import { conflict, HttpError, notFound } from '../lib/errors';
 import { loadBoard, toAssignment, toTask } from '../lib/board';
-import { addDependency, allocateTaskNumbers, assignTask, memberLogin } from '../lib/board-mutations';
+import {
+  addDependency,
+  allocateTaskNumbers,
+  assignTask,
+  loadGraph,
+  memberLogin,
+} from '../lib/board-mutations';
 import { broadcast } from '../lib/broadcast';
 import { assertProjectMember, assertTaskMember } from '../middleware/auth';
 
@@ -82,22 +98,23 @@ route(tasks, 'createTask', async ({ c, params, body }) => {
   await assertProjectMember(c, params.pid);
   const db = c.var.db();
   await assertMilestone(db, params.pid, body.milestoneId);
-  const task = await db.transaction(async (tx) => {
-    const number = await allocateTaskNumbers(tx, params.pid);
-    const [t] = await tx
+  const number = await allocateTaskNumbers(db, params.pid);
+  const id = crypto.randomUUID();
+  const [[t]] = await commit(db, [
+    db
       .insert(schema.tasks)
-      .values({ ...body, projectId: params.pid, number, source: 'manual' })
-      .returning();
-    await tx
+      .values({ ...body, id, projectId: params.pid, number, source: 'manual' })
+      .returning(),
+    db
       .insert(schema.taskEvents)
       .values([
-        { taskId: t!.id, actorUserId: c.var.user!.id, kind: 'created' },
+        { taskId: id, actorUserId: c.var.user!.id, kind: 'created' },
         ...(body.labels?.length
-          ? [{ taskId: t!.id, actorUserId: c.var.user!.id, kind: 'label', toValue: body.labels.join(', ') }]
+          ? [{ taskId: id, actorUserId: c.var.user!.id, kind: 'label', toValue: body.labels.join(', ') }]
           : []),
-      ]);
-    return toTask(t!, null);
-  });
+      ]),
+  ]);
+  const task = toTask(t as typeof schema.tasks.$inferSelect, null);
   notify(c, params.pid, { type: 'task.updated', data: { task, assignment: null } });
   return task;
 });
@@ -119,40 +136,53 @@ route(tasks, 'updateTask', async ({ c, params, body }) => {
   const db = c.var.db();
   await assertMilestone(db, projectId, body.milestoneId);
   const now = new Date();
-  const { task, assignment } = await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
+  const [cur] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid));
+  const { task, assignment } = await (async () => {
     const statusChanged = body.status !== undefined && body.status !== cur!.status;
     const fromLabels = cur!.labels.join(', ');
     const toLabels = body.labels?.join(', ');
     const labelsChanged = toLabels !== undefined && toLabels !== fromLabels;
-    const [t] = await tx
-      .update(schema.tasks)
-      .set({
-        ...body,
-        ...(statusChanged ? statusStamps(cur!.status, body.status!, cur!.startedAt, now) : {}),
-        updatedAt: now,
-      })
-      .where(eq(schema.tasks.id, params.tid))
-      .returning();
-    if (statusChanged)
-      await tx.insert(schema.taskEvents).values({
-        taskId: params.tid,
-        actorUserId: c.var.user!.id,
-        kind: 'status',
-        fromValue: cur!.status,
-        toValue: body.status!,
-      });
-    if (labelsChanged)
-      await tx.insert(schema.taskEvents).values({
-        taskId: params.tid,
-        actorUserId: c.var.user!.id,
-        kind: 'label',
-        fromValue: fromLabels || null,
-        toValue: toLabels || null,
-      });
-    const a = await activeAssignment(tx, params.tid);
-    return { task: toTask(t!, a?.userId ?? null), assignment: a ? toAssignment(a) : null };
-  });
+    // The status event records the status this request read; a concurrent edit can make `from` stale,
+    // which only affects the history line, never the stored task.
+    const [[t]] = await commit(db, [
+      db
+        .update(schema.tasks)
+        .set({
+          ...body,
+          ...(statusChanged ? statusStamps(cur!.status, body.status!, cur!.startedAt, now) : {}),
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.id, params.tid))
+        .returning(),
+      ...(statusChanged
+        ? [
+            db.insert(schema.taskEvents).values({
+              taskId: params.tid,
+              actorUserId: c.var.user!.id,
+              kind: 'status',
+              fromValue: cur!.status,
+              toValue: body.status!,
+            }),
+          ]
+        : []),
+      ...(labelsChanged
+        ? [
+            db.insert(schema.taskEvents).values({
+              taskId: params.tid,
+              actorUserId: c.var.user!.id,
+              kind: 'label',
+              fromValue: fromLabels || null,
+              toValue: toLabels || null,
+            }),
+          ]
+        : []),
+    ]);
+    const a = await activeAssignment(db, params.tid);
+    return {
+      task: toTask(t as typeof schema.tasks.$inferSelect, a?.userId ?? null),
+      assignment: a ? toAssignment(a) : null,
+    };
+  })();
   notify(c, projectId, { type: 'task.updated', data: { task, assignment } });
   return task;
 });
@@ -187,7 +217,8 @@ route(tasks, 'putDependency', async ({ c, params, body }) => {
   if (c.var.mocks) return { ok: true as const };
   const { projectId } = await assertTaskMember(c, params.tid);
   if (!Id.safeParse(params.depId).success) throw notFound('Task');
-  await c.var.db().transaction((tx) => addDependency(tx, projectId, params.tid, params.depId, body.kind));
+  const db = c.var.db();
+  await commit(db, [addDependency(db, await loadGraph(db, projectId), params.tid, params.depId, body.kind)]);
   notify(c, projectId, { type: 'board.changed', data: { reason: 'dependency' } });
   return { ok: true as const };
 });
@@ -225,15 +256,10 @@ route(tasks, 'solveAssignments', async ({ c, params, body }) => {
     };
   await assertProjectMember(c, params.pid);
   const db = c.var.db();
-  const { assignments, solved, proposals, ctx } = await db.transaction(async (tx) => {
-    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
-    await tx
-      .select({ id: schema.tasks.id })
-      .from(schema.tasks)
-      .where(eq(schema.tasks.projectId, params.pid))
-      .orderBy(schema.tasks.id)
-      .for('update');
-    const { state, users, board, taxonomy } = await loadProjectState(tx, params.pid, new Date());
+  // Two concurrent solves each replace the other's proposals; the later batch wins, which is the same
+  // outcome the old row locks produced in sequence.
+  const { assignments, solved, proposals, ctx } = await (async () => {
+    const { state, users, board, taxonomy } = await loadProjectState(db, params.pid, new Date());
     const solved = solveAssignments(state, body);
     const ctx = {
       memberName: (id: string) =>
@@ -248,37 +274,53 @@ route(tasks, 'solveAssignments', async ({ c, params, body }) => {
         (body.scope === 'unassigned' || active.source === 'manual' || (body.respectLocks && active.locked))
       );
     });
-    if (board.tasks.length)
-      await tx
-        .update(schema.assignments)
-        .set({ status: 'rejected' })
-        .where(
-          and(
-            inArray(
-              schema.assignments.taskId,
-              board.tasks.map((t) => t.id),
-            ),
-            eq(schema.assignments.status, 'proposed'),
-          ),
-        );
-    if (!proposals.length) return { assignments: [], solved, proposals, ctx };
-    const rows = await tx
-      .insert(schema.assignments)
-      .values(
-        proposals.map((a) => ({
-          ...a,
-          status: 'proposed' as const,
-          source: 'solver' as const,
-          locked: false,
-          score: a.breakdown.total,
-          explanation: explainAssignment({ ...a, score: a.breakdown.total }, a.alternatives, ctx),
-          explanationSource: 'template',
-          createdBy: c.var.user!.id,
-        })),
+    const rows = proposals.map((a) => ({
+      ...a,
+      id: crypto.randomUUID(),
+      status: 'proposed' as const,
+      source: 'solver' as const,
+      locked: false,
+      score: a.breakdown.total,
+      explanation: explainAssignment({ ...a, score: a.breakdown.total }, a.alternatives, ctx),
+      explanationSource: 'template',
+      createdBy: c.var.user!.id,
+    }));
+    await commit(db, [
+      ...(board.tasks.length
+        ? [
+            db
+              .update(schema.assignments)
+              .set({ status: 'rejected' })
+              .where(
+                and(
+                  eq(schema.assignments.status, 'proposed'),
+                  inArray(
+                    schema.assignments.taskId,
+                    db
+                      .select({ id: schema.tasks.id })
+                      .from(schema.tasks)
+                      .where(eq(schema.tasks.projectId, params.pid)),
+                  ),
+                ),
+              ),
+          ]
+        : []),
+      ...chunkRows(rows, columnCount(schema.assignments)).map((chunk) =>
+        db.insert(schema.assignments).values(chunk),
+      ),
+    ]);
+    if (!rows.length) return { assignments: [], solved, proposals, ctx };
+    const ids = rows.map((r) => r.id);
+    const saved = (
+      await Promise.all(
+        chunkIds(ids).map((chunk) =>
+          db.select().from(schema.assignments).where(inArray(schema.assignments.id, chunk)),
+        ),
       )
-      .returning();
-    return { assignments: rows.map(toAssignment), solved, proposals, ctx };
-  });
+    ).flat();
+    const byId = new Map(saved.map((r) => [r.id, r]));
+    return { assignments: ids.map((id) => toAssignment(byId.get(id)!)), solved, proposals, ctx };
+  })();
   if (assignments.length)
     c.executionCtx.waitUntil(
       (async () => {
@@ -307,36 +349,60 @@ route(tasks, 'acceptAssignments', async ({ c, params, body }) => {
   await assertProjectMember(c, params.pid);
   const db = c.var.db();
   const ids = [...new Set(body.assignmentIds)];
-  await db.transaction(async (tx) => {
-    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
-    const proposals = await tx
-      .select({ a: schema.assignments })
-      .from(schema.assignments)
-      .innerJoin(schema.tasks, eq(schema.tasks.id, schema.assignments.taskId))
-      .where(and(inArray(schema.assignments.id, ids), eq(schema.tasks.projectId, params.pid)))
-      .for('update');
-    if (proposals.length !== ids.length) throw notFound('Assignment');
-    const taskIds = proposals.map((p) => p.a.taskId);
-    if (new Set(taskIds).size !== taskIds.length) throw badRequest('Two proposals for the same task');
-    if (proposals.some((p) => p.a.status !== 'proposed'))
-      throw conflict('Only proposed assignments can be accepted');
-    const current = await tx
-      .select()
-      .from(schema.assignments)
-      .where(and(inArray(schema.assignments.taskId, taskIds), eq(schema.assignments.status, 'active')))
-      .for('update');
-    if (current.some((a) => a.locked)) throw conflict('A locked assignment cannot be replaced by the solver');
-    if (current.length)
-      await tx
+  const proposals = (
+    await Promise.all(
+      chunkIds(ids).map((chunk) =>
+        db
+          .select({ a: schema.assignments })
+          .from(schema.assignments)
+          .innerJoin(schema.tasks, eq(schema.tasks.id, schema.assignments.taskId))
+          .where(and(inArray(schema.assignments.id, chunk), eq(schema.tasks.projectId, params.pid))),
+      ),
+    )
+  ).flat();
+  if (proposals.length !== ids.length) throw notFound('Assignment');
+  const taskIds = proposals.map((p) => p.a.taskId);
+  if (new Set(taskIds).size !== taskIds.length) throw badRequest('Two proposals for the same task');
+  if (proposals.some((p) => p.a.status !== 'proposed'))
+    throw conflict('Only proposed assignments can be accepted');
+  const current = (
+    await Promise.all(
+      chunkIds(taskIds).map((chunk) =>
+        db
+          .select()
+          .from(schema.assignments)
+          .where(and(inArray(schema.assignments.taskId, chunk), eq(schema.assignments.status, 'active'))),
+      ),
+    )
+  ).flat();
+  if (current.some((a) => a.locked)) throw conflict('A locked assignment cannot be replaced by the solver');
+  // Guards stand in for the old row locks: the batch applies only if every active assignment read above is
+  // still active and unlocked, and every proposal is still proposed.
+  await commit(db, [
+    ...chunkIds(current.map((a) => a.id)).flatMap((chunk) => [
+      db
         .update(schema.assignments)
         .set({ status: 'replaced' })
         .where(
-          inArray(
-            schema.assignments.id,
-            current.map((a) => a.id),
+          and(
+            inArray(schema.assignments.id, chunk),
+            eq(schema.assignments.status, 'active'),
+            eq(schema.assignments.locked, false),
           ),
-        );
-    await tx.update(schema.assignments).set({ status: 'active' }).where(inArray(schema.assignments.id, ids));
+        ),
+      requireChanged(db, chunk.length),
+    ]),
+    ...chunkIds(ids).flatMap((chunk) => [
+      db
+        .update(schema.assignments)
+        .set({ status: 'active' })
+        .where(and(inArray(schema.assignments.id, chunk), eq(schema.assignments.status, 'proposed'))),
+      requireChanged(db, chunk.length),
+    ]),
+  ]).catch((e: unknown) => {
+    throw isGuardFailure(e) || isUniqueViolation(e)
+      ? conflict('The board changed; reload and accept again')
+      : e;
   });
   notify(c, params.pid, { type: 'board.changed', data: { reason: 'assignments_accepted' } });
   return loadBoard(db, params.pid);
@@ -360,36 +426,37 @@ route(tasks, 'manualAssign', async ({ c, params, body }) => {
   const { projectId, workspaceId } = await assertTaskMember(c, params.tid);
   const db = c.var.db();
   if (!userId) {
-    const task = await db.transaction(async (tx) => {
-      const [t] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
-      const ended = await tx
-        .update(schema.assignments)
-        .set({ status: 'replaced' })
-        .where(and(eq(schema.assignments.taskId, params.tid), eq(schema.assignments.status, 'active')))
-        .returning({ id: schema.assignments.id });
-      if (ended.length > 0)
-        await tx
-          .insert(schema.taskEvents)
-          .values({ taskId: params.tid, actorUserId: c.var.user!.id, kind: 'assignee', toValue: null });
-      return toTask(t!, null);
-    });
+    const [t] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid));
+    const ended = await db
+      .update(schema.assignments)
+      .set({ status: 'replaced' })
+      .where(and(eq(schema.assignments.taskId, params.tid), eq(schema.assignments.status, 'active')))
+      .returning({ id: schema.assignments.id });
+    if (ended.length > 0)
+      await db
+        .insert(schema.taskEvents)
+        .values({ taskId: params.tid, actorUserId: c.var.user!.id, kind: 'assignee', toValue: null });
+    const task = toTask(t!, null);
     notify(c, projectId, { type: 'task.updated', data: { task, assignment: null } });
     return null;
   }
   const login = await memberLogin(db, workspaceId, userId);
-  const { task, assignment } = await db.transaction(async (tx) => {
-    await tx.select().from(schema.projects).where(eq(schema.projects.id, projectId)).for('update');
-    const [t] = await tx.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid)).for('update');
-    const a = await assignTask(tx, {
-      taskId: params.tid,
+  const { task, assignment } = await (async () => {
+    const now = new Date();
+    const [t] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, params.tid));
+    // Score against the board as it will be once this assignment replaces the active one.
+    const { state, users, board, taxonomy } = await loadProjectState(db, projectId, now);
+    const scored = scorePair(
+      {
+        ...state,
+        activeAssignments: [
+          ...state.activeAssignments.filter((x) => x.taskId !== params.tid),
+          { taskId: params.tid, userId, locked: body.lock, source: 'manual' },
+        ],
+      },
+      params.tid,
       userId,
-      login,
-      source: 'manual',
-      locked: body.lock,
-      actorId: c.var.user!.id,
-    });
-    const { state, users, board, taxonomy } = await loadProjectState(tx, projectId, new Date());
-    const scored = scorePair(state, params.tid, userId);
+    );
     const reasonCodes = [...scored.reasonCodes, 'MANUAL', ...(body.lock ? ['OVERRIDE_LOCKED'] : [])];
     const explanation = explainAssignment(
       { userId: userId, reasonCodes, score: scored.breakdown.total },
@@ -400,13 +467,33 @@ route(tasks, 'manualAssign', async ({ c, params, body }) => {
         skillName: (slug) => taxonomy.find((s) => s.slug === slug)?.name ?? slug,
       },
     );
-    const [updated] = await tx
-      .update(schema.assignments)
-      .set({ score: scored.breakdown.total, breakdown: scored.breakdown, reasonCodes, explanation })
-      .where(eq(schema.assignments.id, a.id))
-      .returning();
-    return { task: toTask(t!, userId), assignment: toAssignment(updated!) };
-  });
+    const { assignment: a, writes } = assignTask(db, {
+      taskId: params.tid,
+      userId,
+      login,
+      source: 'manual',
+      locked: body.lock,
+      actorId: c.var.user!.id,
+      now,
+    });
+    const scoredRow = {
+      ...a,
+      score: scored.breakdown.total,
+      breakdown: scored.breakdown,
+      reasonCodes,
+      explanation,
+    };
+    await commit(db, [
+      ...writes,
+      db
+        .update(schema.assignments)
+        .set({ score: scoredRow.score, breakdown: scoredRow.breakdown, reasonCodes, explanation })
+        .where(eq(schema.assignments.id, a.id)),
+    ]).catch((e: unknown) => {
+      throw isUniqueViolation(e) ? conflict('The task was assigned at the same time; reload and retry') : e;
+    });
+    return { task: toTask(t!, userId), assignment: toAssignment(scoredRow) };
+  })();
   notify(c, projectId, { type: 'task.updated', data: { task, assignment } });
   return assignment;
 });

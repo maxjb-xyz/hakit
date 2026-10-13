@@ -1,7 +1,7 @@
-/** T-205: idempotent embedding writes; no network call occurs inside a DB transaction. */
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+/** T-205: idempotent embedding writes; provider calls happen before the single write batch. */
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
-import { createDb, schema, type Db } from '@hakit/db';
+import { chunkIds, commit, createDb, schema, type BatchItem, type Db } from '@hakit/db';
 import { Id, JobMessage, TaskRequiredSkill } from '@hakit/contracts';
 import type { Env } from '../env';
 import { isMock } from '../env';
@@ -27,7 +27,18 @@ interface RecordToEmbed {
   updatedAt?: Date;
 }
 
+/** Reads by id list in chunks: D1 caps bound parameters per statement, and a job carries up to 100 ids. */
 async function records(
+  db: Pick<Db, 'select'>,
+  target: EmbedJob['target'],
+  ids: string[],
+): Promise<RecordToEmbed[]> {
+  const out: RecordToEmbed[] = [];
+  for (const chunk of chunkIds(ids)) out.push(...(await recordsChunk(db, target, chunk)));
+  return out;
+}
+
+async function recordsChunk(
   db: Pick<Db, 'select'>,
   target: EmbedJob['target'],
   ids: string[],
@@ -134,68 +145,35 @@ export async function processEmbeddingBatch(
     }
   }
   if (!original.length) return;
-  await db.transaction(async (tx) => {
-    // Lock source rows before re-reading so an edit cannot slip between validation and vector writes.
-    // The user lock also serializes member vectors with skill imports. Sort locks consistently.
-    if (job.target === 'member') {
-      await tx
-        .select({ id: schema.users.id })
-        .from(schema.users)
-        .where(inArray(schema.users.id, ids))
-        .orderBy(asc(schema.users.id))
-        .for('update');
-      await tx
-        .select()
-        .from(schema.memberships)
-        .where(inArray(schema.memberships.userId, ids))
-        .orderBy(asc(schema.memberships.userId), asc(schema.memberships.workspaceId))
-        .for('share');
-      await tx
-        .select()
-        .from(schema.memberProfiles)
-        .where(inArray(schema.memberProfiles.userId, ids))
-        .orderBy(asc(schema.memberProfiles.userId), asc(schema.memberProfiles.workspaceId))
-        .for('share');
-      await tx
-        .select({ id: schema.memberSkills.id })
-        .from(schema.memberSkills)
-        .innerJoin(schema.skills, eq(schema.memberSkills.skillId, schema.skills.id))
-        .where(inArray(schema.memberSkills.userId, ids))
-        .orderBy(asc(schema.memberSkills.userId), asc(schema.memberSkills.skillId))
-        .for('share');
-    } else if (job.target === 'skill') {
-      await tx
-        .select({ id: schema.skills.id })
-        .from(schema.skills)
-        .where(inArray(schema.skills.id, ids))
-        .orderBy(asc(schema.skills.id))
-        .for('update');
-    }
-    const current = new Map((await records(tx, job.target, ids)).map((record) => [record.key, record]));
-    for (const record of original) {
-      const latest = current.get(record.key);
-      if (!latest) continue; // Deleted tasks or departed members must not be recreated.
-      if (latest.text !== record.text)
-        throw new EmbeddingError(
-          'provider_failed',
-          'Embedding source changed during processing; retry with current content',
-        );
-      const embedding = computed.get(record.key)!;
-      if (job.target === 'task') {
-        const written = await tx
+  // D1 has no row locks: re-read the sources, then apply every write in one atomic batch. Task writes are
+  // guarded by `updated_at`, so an edit landing between the re-read and the commit leaves the old vector
+  // and fails the job for a retry. Skill and member vectors may briefly reflect text a concurrent edit
+  // just replaced; that edit enqueues its own embed job, which overwrites them.
+  const current = new Map((await records(db, job.target, ids)).map((record) => [record.key, record]));
+  const writes: BatchItem[] = [];
+  const now = new Date();
+  for (const record of original) {
+    const latest = current.get(record.key);
+    if (!latest) continue; // Deleted tasks or departed members must not be recreated.
+    if (latest.text !== record.text)
+      throw new EmbeddingError(
+        'provider_failed',
+        'Embedding source changed during processing; retry with current content',
+      );
+    const embedding = computed.get(record.key)!;
+    if (job.target === 'task') {
+      writes.push(
+        db
           .update(schema.tasks)
           .set({ embedding })
           .where(and(eq(schema.tasks.id, record.id), eq(schema.tasks.updatedAt, record.updatedAt!)))
-          .returning({ id: schema.tasks.id });
-        if (!written.length)
-          throw new EmbeddingError(
-            'provider_failed',
-            'Task changed during embedding; retry with current content',
-          );
-      } else if (job.target === 'skill') {
-        await tx.update(schema.skills).set({ embedding }).where(eq(schema.skills.id, record.id));
-      } else {
-        await tx
+          .returning({ id: schema.tasks.id }),
+      );
+    } else if (job.target === 'skill') {
+      writes.push(db.update(schema.skills).set({ embedding }).where(eq(schema.skills.id, record.id)));
+    } else {
+      writes.push(
+        db
           .insert(schema.memberEmbeddings)
           .values({
             userId: record.id,
@@ -210,15 +188,18 @@ export async function processEmbeddingBatch(
               schema.memberEmbeddings.workspaceId,
               schema.memberEmbeddings.kind,
             ],
-            set: { embedding, model: provider.model, updatedAt: new Date() },
-          });
-      }
+            set: { embedding, model: provider.model, updatedAt: now },
+          }),
+      );
     }
-  });
+  }
+  const results = await commit(db, writes);
+  if (job.target === 'task' && results.some((rows) => Array.isArray(rows) && rows.length === 0))
+    throw new EmbeddingError('provider_failed', 'Task changed during embedding; retry with current content');
 }
 export async function embedBatchJob(job: EmbedJob, { env }: { env: Env }): Promise<void> {
   if (isMock(env)) return;
-  const handle = createDb(env.HYPERDRIVE.connectionString);
+  const handle = createDb(env.DB);
   try {
     await handle.ready;
     await processEmbeddingBatch(job, handle.db, embeddingService(env, databaseEmbeddingCache(handle.db)));

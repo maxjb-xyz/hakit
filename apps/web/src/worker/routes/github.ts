@@ -94,7 +94,7 @@ route(github, 'linkActivity', async ({ c, params, body }) => {
 route(github, 'mapAuthor', async ({ c, params, body }) => {
   if (c.var.mocks) return { ok: true as const };
   if (!c.var.user) throw unauthorized();
-  // requireMember has checked the caller's workspace membership; the target member is checked in the transaction.
+  // requireMember has checked the caller's workspace membership; the target member is checked before the batch.
   const relinked = await mapAuthorAlias(c.var.db(), params.wid, body.raw, body.userId);
   // One notification per project invalidates its activity feed; clients may see a known event ID again.
   for (const event of relinked)

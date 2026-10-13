@@ -7,7 +7,7 @@ import type { Services } from '../services';
 import type { Env } from '../env';
 import { createSession } from '../lib/session';
 import type { GithubService } from '../services/github';
-import { createTestDb } from './pglite';
+import { createTestDb } from '@hakit/db/testing';
 
 /** Realistic-length fake GitHub tokens (redaction matches real token shapes). */
 export const GHO = `gho_${'A1b2C3d4E5'.repeat(4).slice(0, 36)}`;

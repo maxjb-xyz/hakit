@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { and, asc, eq } from 'drizzle-orm';
 import { PlanStreamEvent, Recommendation } from '@hakit/contracts';
-import { schema } from '@hakit/db';
+import { chunkRows, columnCount, schema } from '@hakit/db';
 import { ALLOWED_SKILL_SLUGS, IDEAS } from '../services/ai/evals/cases';
 import { scriptedPlanner } from '../services/ai/evals/providers';
 import { createHarness } from '../test/harness';
@@ -39,11 +39,13 @@ beforeAll(async () => {
   await h.db
     .insert(schema.memberProfiles)
     .values([owner, mate].map((m) => ({ workspaceId: wid, userId: m.id, availableHours: 24 })));
-  const skills = await h.db
-    .insert(schema.skills)
-    .values(ALLOWED_SKILL_SLUGS.map((slug) => ({ slug, name: slug, category: 'frontend' as const })))
-    .returning();
-  await h.db.insert(schema.memberSkills).values(
+  const skills: (typeof schema.skills.$inferSelect)[] = [];
+  for (const chunk of chunkRows(
+    ALLOWED_SKILL_SLUGS.map((slug) => ({ slug, name: slug, category: 'frontend' as const })),
+    columnCount(schema.skills),
+  ))
+    skills.push(...(await h.db.insert(schema.skills).values(chunk).returning()));
+  for (const chunk of chunkRows(
     [owner, mate].flatMap((m) =>
       skills.map((s) => ({
         userId: m.id,
@@ -53,7 +55,9 @@ beforeAll(async () => {
         confidence: 1,
       })),
     ),
-  );
+    columnCount(schema.memberSkills),
+  ))
+    await h.db.insert(schema.memberSkills).values(chunk);
   const [p] = await h.db
     .insert(schema.projects)
     .values({ workspaceId: wid, name: 'QA', status: 'planning' })

@@ -1,7 +1,7 @@
 /** Hackathons, projects, constraints, ideas, plans. Owners: PL (projects), IN (ideas/plans). */
 import { Hono } from 'hono';
 import * as fx from '@hakit/contracts/fixtures';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   PlanDocument,
   IdeaStreamEvent,
@@ -12,7 +12,16 @@ import {
   type PlanStreamEvent,
   type Project,
 } from '@hakit/contracts';
-import { schema } from '@hakit/db';
+import {
+  chunkRows,
+  columnCount,
+  commit,
+  isGuardFailure,
+  isUniqueViolation,
+  requireChanged,
+  schema,
+  type BatchItem,
+} from '@hakit/db';
 import { validatePlan } from '@hakit/engine';
 import type { AppEnv } from '../lib/context';
 import { route, sseRoute } from '../lib/route';
@@ -29,6 +38,10 @@ import { generateCachedPlan } from '../services/planning/cache';
 import { planModelId } from '../services/ai';
 
 const badRequest = (message: string) => new HttpError(400, 'invalid_body', message);
+
+/** Next plan version, computed inside the INSERT so concurrent saves can't pick the same number. */
+const nextPlanVersion = (projectId: string) =>
+  sql<number>`(select coalesce(max(${schema.plans.version}), 0) + 1 from ${schema.plans} where ${schema.plans.projectId} = ${projectId})`;
 
 export const planning = new Hono<AppEnv>();
 
@@ -252,13 +265,13 @@ route(planning, 'putConstraints', async ({ c, params, body }) => {
       .where(and(eq(schema.workspaces.id, workspaceId), inArray(schema.challenges.id, refIds as string[])));
     if (valid.length !== refIds.length) throw badRequest('Unknown challenge for this hackathon');
   }
-  await db.transaction(async (tx) => {
-    await tx.delete(schema.projectConstraints).where(eq(schema.projectConstraints.projectId, params.pid));
-    if (body.constraints.length)
-      await tx
-        .insert(schema.projectConstraints)
-        .values(body.constraints.map((k) => ({ projectId: params.pid, ...k })));
-  });
+  await commit(db, [
+    db.delete(schema.projectConstraints).where(eq(schema.projectConstraints.projectId, params.pid)),
+    ...chunkRows(
+      body.constraints.map((k) => ({ projectId: params.pid, ...k })),
+      columnCount(schema.projectConstraints),
+    ).map((rows) => db.insert(schema.projectConstraints).values(rows)),
+  ]);
   return body;
 });
 
@@ -349,27 +362,20 @@ sseRoute(planning, 'generatePlan', async ({ c, params, body, send }) => {
         },
       });
       await emit({ type: 'stage', stage: 'save', message: 'Saving a versioned draft plan' });
-      const saved = await db.transaction(async (tx) => {
-        await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
-        const [latest] = await tx
-          .select({ version: schema.plans.version })
-          .from(schema.plans)
-          .where(eq(schema.plans.projectId, params.pid))
-          .orderBy(desc(schema.plans.version))
-          .limit(1);
-        const [plan] = await tx
+      const [inserted] = await commit(db, [
+        db
           .insert(schema.plans)
           .values({
             projectId: params.pid,
-            version: (latest?.version ?? 0) + 1,
+            version: nextPlanVersion(params.pid),
             ...result,
             createdBy: c.var.user!.id,
           })
-          .returning();
-        await tx.update(schema.ideas).set({ selected: false }).where(eq(schema.ideas.projectId, params.pid));
-        await tx.update(schema.ideas).set({ selected: true }).where(eq(schema.ideas.id, body.ideaId));
-        return plan!;
-      });
+          .returning(),
+        db.update(schema.ideas).set({ selected: false }).where(eq(schema.ideas.projectId, params.pid)),
+        db.update(schema.ideas).set({ selected: true }).where(eq(schema.ideas.id, body.ideaId)),
+      ]);
+      const saved = (inserted as (typeof schema.plans.$inferSelect)[])[0]!;
       c.executionCtx.waitUntil(
         broadcast(c.env, params.pid, {
           type: 'plan.progress',
@@ -465,52 +471,63 @@ route(planning, 'patchPlan', async ({ c, params, body }) => {
   }
   await assertProjectMember(c, params.pid);
   const db = c.var.db();
-  const saved = await db.transaction(async (tx) => {
-    // Lock the project so patches serialize with each other, with generation and with accept.
-    await tx.select().from(schema.projects).where(eq(schema.projects.id, params.pid)).for('update');
-    const [source] = await tx
-      .select()
-      .from(schema.plans)
-      .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
-      .limit(1);
-    if (!source) throw notFound('Plan');
-    if (source.status !== 'draft') throw conflict(`Plan is ${source.status}; only draft plans can be edited`);
-    const [accepted] = await tx
-      .select({ id: schema.plans.id })
-      .from(schema.plans)
-      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
-      .limit(1);
-    if (accepted) throw conflict('This project already has an accepted plan');
+  const [source] = await db
+    .select()
+    .from(schema.plans)
+    .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+    .limit(1);
+  if (!source) throw notFound('Plan');
+  if (source.status !== 'draft') throw conflict(`Plan is ${source.status}; only draft plans can be edited`);
+  const [accepted] = await db
+    .select({ id: schema.plans.id })
+    .from(schema.plans)
+    .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
+    .limit(1);
+  if (accepted) throw conflict('This project already has an accepted plan');
 
-    const edited = applyPlanPatch(PlanDocument.parse(source.payload), body);
-    const checked = validatePlan({
-      ...(await planValidationInput(tx, params.pid, new Date())),
-      outline: edited.outline,
-      tasks: edited.tasks,
-    });
-    // Same rule as generation: persist the validator's retained scope; cut keys stay in feasibility.
-    const payload = PlanDocument.safeParse({ ...edited, tasks: checked.tasks });
-    if (!payload.success)
-      throw new HttpError(422, 'invalid_plan', 'Edited plan is not valid', checked.feasibility.issues);
-    const [latest] = await tx
-      .select({ version: schema.plans.version })
-      .from(schema.plans)
-      .where(eq(schema.plans.projectId, params.pid))
-      .orderBy(desc(schema.plans.version))
-      .limit(1);
-    const [plan] = await tx
-      .insert(schema.plans)
-      .values({
-        projectId: params.pid,
-        version: latest!.version + 1,
-        payload: payload.data,
-        feasibility: checked.feasibility,
-        model: source.model,
-        createdBy: c.var.user!.id,
-      })
-      .returning();
-    return plan!;
+  const edited = applyPlanPatch(PlanDocument.parse(source.payload), body);
+  const checked = validatePlan({
+    ...(await planValidationInput(db, params.pid, new Date())),
+    outline: edited.outline,
+    tasks: edited.tasks,
   });
+  // Same rule as generation: persist the validator's retained scope; cut keys stay in feasibility.
+  const payload = PlanDocument.safeParse({ ...edited, tasks: checked.tasks });
+  if (!payload.success)
+    throw new HttpError(422, 'invalid_plan', 'Edited plan is not valid', checked.feasibility.issues);
+  // Guard: the source must still be a draft and the project still without an accepted plan, so a patch never
+  // lands after an accept. The no-op update matches only if both hold; requireChanged rolls back otherwise.
+  let saved: typeof schema.plans.$inferSelect;
+  try {
+    const results = await commit(db, [
+      db
+        .update(schema.plans)
+        .set({ status: 'draft' })
+        .where(
+          and(
+            eq(schema.plans.id, source.id),
+            eq(schema.plans.status, 'draft'),
+            sql`not exists (select 1 from ${schema.plans} p where p.project_id = ${params.pid} and p.status = 'accepted')`,
+          ),
+        ),
+      requireChanged(db),
+      db
+        .insert(schema.plans)
+        .values({
+          projectId: params.pid,
+          version: nextPlanVersion(params.pid),
+          payload: payload.data,
+          feasibility: checked.feasibility,
+          model: source.model,
+          createdBy: c.var.user!.id,
+        })
+        .returning(),
+    ]);
+    saved = (results[2] as (typeof schema.plans.$inferSelect)[])[0]!;
+  } catch (e) {
+    if (isGuardFailure(e)) throw conflict('Plan changed while saving; reload and try again');
+    throw e;
+  }
   c.executionCtx.waitUntil(
     broadcast(c.env, params.pid, {
       type: 'plan.progress',
@@ -520,91 +537,97 @@ route(planning, 'patchPlan', async ({ c, params, body }) => {
   return Plan.parse({ ...saved, createdAt: saved.createdAt.toISOString() });
 });
 /**
- * T-308: accept a draft plan and materialize it in one transaction. The project row is locked so concurrent accepts
- * serialize; a project with an accepted plan must re-plan explicitly (409), so tasks are never duplicated.
+ * T-308: accept a draft plan and materialize it in one atomic batch. Compare-and-set guards on the plan's status
+ * and the project's task counter fail the batch if another accept, patch or task creation landed since the reads,
+ * so concurrent accepts can't both succeed; a project with an accepted plan must re-plan explicitly (409), so
+ * tasks are never duplicated.
  */
 route(planning, 'acceptPlan', async ({ c, params }) => {
   if (c.var.mocks) return fx.board;
   await assertProjectMember(c, params.pid);
   const db = c.var.db();
-  const taskIds = await db.transaction(async (tx) => {
-    const [project] = await tx
-      .select()
-      .from(schema.projects)
-      .where(eq(schema.projects.id, params.pid))
-      .for('update');
-    const [plan] = await tx
-      .select()
-      .from(schema.plans)
-      .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
-      .limit(1);
-    if (!plan) throw notFound('Plan');
-    if (plan.status !== 'draft') throw conflict(`Plan is already ${plan.status}`);
-    const [accepted] = await tx
-      .select({ id: schema.plans.id })
-      .from(schema.plans)
-      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
-      .limit(1);
-    if (accepted) throw conflict('This project already has an accepted plan');
+  const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, params.pid));
+  const [plan] = await db
+    .select()
+    .from(schema.plans)
+    .where(and(eq(schema.plans.id, params.planId), eq(schema.plans.projectId, params.pid)))
+    .limit(1);
+  if (!plan) throw notFound('Plan');
+  if (plan.status !== 'draft') throw conflict(`Plan is already ${plan.status}`);
+  const [accepted] = await db
+    .select({ id: schema.plans.id })
+    .from(schema.plans)
+    .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'accepted')))
+    .limit(1);
+  if (accepted) throw conflict('This project already has an accepted plan');
 
-    const doc = PlanDocument.parse(plan.payload);
-    const [ws] = await tx
-      .select({ startsAt: schema.workspaces.startsAt })
-      .from(schema.workspaces)
-      .where(eq(schema.workspaces.id, project!.workspaceId));
-    const rows = planRows(doc, project!.nextTaskNumber, ws?.startsAt ?? null);
+  const doc = PlanDocument.parse(plan.payload);
+  const [ws] = await db
+    .select({ startsAt: schema.workspaces.startsAt })
+    .from(schema.workspaces)
+    .where(eq(schema.workspaces.id, project!.workspaceId));
+  const firstNumber = project!.nextTaskNumber;
+  const rows = planRows(doc, firstNumber, ws?.startsAt ?? null);
 
-    const milestoneIds = new Map<string, string>();
-    for (const m of rows.milestones) {
-      const [r] = await tx
-        .insert(schema.milestones)
-        .values({
-          projectId: params.pid,
-          planId: plan.id,
-          title: m.title,
-          ordinal: m.ordinal,
-          targetAt: m.targetAt,
-        })
-        .returning({ id: schema.milestones.id });
-      milestoneIds.set(m.key, r!.id);
-    }
-    const inserted = rows.tasks.length
-      ? await tx
-          .insert(schema.tasks)
-          .values(
-            rows.tasks.map(({ key: _key, milestoneKey, ...t }) => ({
-              ...t,
-              projectId: params.pid,
-              milestoneId: milestoneKey ? (milestoneIds.get(milestoneKey) ?? null) : null,
-              source: 'plan' as const,
-            })),
-          )
-          .returning({ id: schema.tasks.id, number: schema.tasks.number })
-      : [];
-    const idByKey = new Map(rows.tasks.map((t) => [t.key, inserted.find((r) => r.number === t.number)!.id]));
-    if (rows.dependencies.length)
-      await tx.insert(schema.taskDependencies).values(
-        rows.dependencies.map(([t, d]) => ({
-          taskId: idByKey.get(t)!,
-          dependsOnTaskId: idByKey.get(d)!,
-          kind: 'blocks' as const,
-        })),
-      );
-    await tx.update(schema.plans).set({ status: 'accepted' }).where(eq(schema.plans.id, plan.id));
-    await tx
+  const milestoneIds = new Map(rows.milestones.map((m) => [m.key, crypto.randomUUID()]));
+  const idByKey = new Map(rows.tasks.map((t) => [t.key, crypto.randomUUID()]));
+  const milestoneRows = rows.milestones.map((m) => ({
+    id: milestoneIds.get(m.key)!,
+    projectId: params.pid,
+    planId: plan.id,
+    title: m.title,
+    ordinal: m.ordinal,
+    targetAt: m.targetAt,
+  }));
+  const taskRows = rows.tasks.map(({ key, milestoneKey, ...t }) => ({
+    ...t,
+    id: idByKey.get(key)!,
+    projectId: params.pid,
+    milestoneId: milestoneKey ? (milestoneIds.get(milestoneKey) ?? null) : null,
+    source: 'plan' as const,
+  }));
+  const depRows = rows.dependencies.map(([t, d]) => ({
+    taskId: idByKey.get(t)!,
+    dependsOnTaskId: idByKey.get(d)!,
+    kind: 'blocks' as const,
+  }));
+  const writes: BatchItem[] = [
+    // Guard: only a plan still in draft becomes accepted (another accept supersedes every other draft).
+    db
+      .update(schema.plans)
+      .set({ status: 'accepted' })
+      .where(and(eq(schema.plans.id, plan.id), eq(schema.plans.status, 'draft'))),
+    requireChanged(db),
+    db
       .update(schema.plans)
       .set({ status: 'superseded' })
-      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'draft')));
-    await tx
+      .where(and(eq(schema.plans.projectId, params.pid), eq(schema.plans.status, 'draft'))),
+    // Guard: task numbers were taken from this counter value; a concurrent task create moved it.
+    db
       .update(schema.projects)
       .set({
         currentPlanId: plan.id,
         status: 'active',
-        nextTaskNumber: project!.nextTaskNumber + rows.tasks.length,
+        nextTaskNumber: firstNumber + rows.tasks.length,
       })
-      .where(eq(schema.projects.id, params.pid));
-    return inserted.map((r) => r.id);
-  });
+      .where(and(eq(schema.projects.id, params.pid), eq(schema.projects.nextTaskNumber, firstNumber))),
+    requireChanged(db),
+    ...chunkRows(milestoneRows, columnCount(schema.milestones)).map((r) =>
+      db.insert(schema.milestones).values(r),
+    ),
+    ...chunkRows(taskRows, columnCount(schema.tasks)).map((r) => db.insert(schema.tasks).values(r)),
+    ...chunkRows(depRows, columnCount(schema.taskDependencies)).map((r) =>
+      db.insert(schema.taskDependencies).values(r),
+    ),
+  ];
+  try {
+    await commit(db, writes);
+  } catch (e) {
+    if (isGuardFailure(e) || isUniqueViolation(e))
+      throw conflict('The plan or board changed while accepting; reload and try again');
+    throw e;
+  }
+  const taskIds = taskRows.map((t) => t.id);
 
   // After commit: embeddings for the solver, then tell open dashboards.
   // A failed enqueue must not fail an already-committed accept; embeddings can be backfilled.

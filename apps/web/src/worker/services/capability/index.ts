@@ -8,8 +8,8 @@ import {
   TeamCapability,
   type UpsertMemberSkill,
 } from '@hakit/contracts';
-import { schema, type Db } from '@hakit/db';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { chunkIds, commit, schema, type Db } from '@hakit/db';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { computeTeamCapability, cosine, type EngineMember } from '@hakit/engine';
 import { HttpError, notFound } from '../../lib/errors';
 import type { EmbeddingProvider } from '../ai/types';
@@ -23,24 +23,25 @@ export async function memberSkills(db: Pick<Db, 'select'>, userId: string) {
     .where(and(eq(schema.memberSkills.userId, userId), ne(schema.memberSkills.source, 'removed')))
     .orderBy(asc(schema.skills.category), asc(schema.skills.slug));
   if (!rows.length) return [];
-  const evidence = await db
-    .select({ evidence: schema.skillEvidence, slug: schema.skills.slug })
-    .from(schema.skillEvidence)
-    .innerJoin(schema.skills, eq(schema.skillEvidence.skillId, schema.skills.id))
-    .where(
-      and(
-        eq(schema.skillEvidence.userId, userId),
-        inArray(
-          schema.skillEvidence.skillId,
-          rows.map((r) => r.skill.id),
-        ),
+  // Per-skill order survives chunking: each skill's evidence comes from exactly one chunk.
+  const evidence = (
+    await Promise.all(
+      chunkIds(rows.map((r) => r.skill.id)).map((skillIds) =>
+        db
+          .select({ evidence: schema.skillEvidence, slug: schema.skills.slug })
+          .from(schema.skillEvidence)
+          .innerJoin(schema.skills, eq(schema.skillEvidence.skillId, schema.skills.id))
+          .where(
+            and(eq(schema.skillEvidence.userId, userId), inArray(schema.skillEvidence.skillId, skillIds)),
+          )
+          .orderBy(
+            asc(schema.skillEvidence.sourceRef),
+            asc(schema.skillEvidence.kind),
+            asc(schema.skillEvidence.id),
+          ),
       ),
     )
-    .orderBy(
-      asc(schema.skillEvidence.sourceRef),
-      asc(schema.skillEvidence.kind),
-      asc(schema.skillEvidence.id),
-    );
+  ).flat();
   return rows.map(({ member, skill }) =>
     MemberSkill.parse({
       skill: Skill.parse(skill),
@@ -71,48 +72,30 @@ export async function taxonomySkill(db: Pick<Db, 'select'>, slug: string) {
   if (!skill) throw notFound('Skill');
   return skill;
 }
-/** Lock the user exactly as import/member embedding jobs do. Explicit edits always win. */
+/**
+ * Explicit edits always win. The writes commit as one batch, so a concurrent import/embedding job sees either
+ * all of this edit or none of it; removal keeps the stored level in SQL rather than from a stale read.
+ */
 export async function editSkill(db: Db, userId: string, slug: string, body: UpsertMemberSkill | null) {
   const skill = await taxonomySkill(db, slug);
   const now = new Date();
-  return db.transaction(async (tx) => {
-    await tx
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .for('update');
-    const [existing] = await tx
-      .select()
-      .from(schema.memberSkills)
-      .where(and(eq(schema.memberSkills.userId, userId), eq(schema.memberSkills.skillId, skill.id)));
-    const source =
-      body === null
-        ? ('removed' as const)
-        : body.confirmed
-          ? ('confirmed' as const)
-          : ('self_added' as const);
-    await tx
+  const source =
+    body === null ? ('removed' as const) : body.confirmed ? ('confirmed' as const) : ('self_added' as const);
+  const fields = {
+    source,
+    confidence: body === null ? 0 : 1,
+    confirmedAt: body?.confirmed ? now : null,
+    updatedAt: now,
+  };
+  await commit(db, [
+    db
       .insert(schema.memberSkills)
-      .values({
-        userId,
-        skillId: skill.id,
-        source,
-        level: body?.level ?? existing?.level ?? 1,
-        confidence: body === null ? 0 : 1,
-        confirmedAt: body?.confirmed ? now : null,
-        updatedAt: now,
-      })
+      .values({ userId, skillId: skill.id, level: body?.level ?? 1, ...fields })
       .onConflictDoUpdate({
         target: [schema.memberSkills.userId, schema.memberSkills.skillId],
-        set: {
-          source,
-          level: body?.level ?? existing?.level ?? 1,
-          confidence: body === null ? 0 : 1,
-          confirmedAt: body?.confirmed ? now : null,
-          updatedAt: now,
-        },
-      });
-    await tx
+        set: { ...fields, level: body?.level ?? sql`${schema.memberSkills.level}` },
+      }),
+    db
       .delete(schema.skillEvidence)
       .where(
         and(
@@ -120,8 +103,8 @@ export async function editSkill(db: Db, userId: string, slug: string, body: Upse
           eq(schema.skillEvidence.skillId, skill.id),
           eq(schema.skillEvidence.kind, 'self_report'),
         ),
-      );
-    await tx.insert(schema.skillEvidence).values({
+      ),
+    db.insert(schema.skillEvidence).values({
       userId,
       skillId: skill.id,
       kind: 'self_report',
@@ -135,11 +118,11 @@ export async function editSkill(db: Db, userId: string, slug: string, body: Upse
             : `Member added level ${body.level}`,
       detail: { removed: body === null, confirmed: body?.confirmed ?? false },
       observedAt: now,
-    });
+    }),
     // Do not expose a stale semantic profile while the refresh job is pending.
-    await tx.delete(schema.memberEmbeddings).where(eq(schema.memberEmbeddings.userId, userId));
-    return body === null ? null : (await memberSkills(tx, userId)).find((row) => row.skill.id === skill.id)!;
-  });
+    db.delete(schema.memberEmbeddings).where(eq(schema.memberEmbeddings.userId, userId)),
+  ]);
+  return body === null ? null : (await memberSkills(db, userId)).find((row) => row.skill.id === skill.id)!;
 }
 export async function searchTaxonomy(db: Pick<Db, 'select'>, q: string, provider?: EmbeddingProvider) {
   if (q.length > 120) throw new HttpError(400, 'invalid_query', 'Skill search is limited to 120 characters');
@@ -207,21 +190,33 @@ export async function teamCapability(db: Pick<Db, 'select'>, workspaceId: string
     .from(schema.memberships)
     .where(eq(schema.memberships.workspaceId, workspaceId));
   const ids = members.map((m) => m.userId);
-  const profiles = ids.length
-    ? await db
-        .select()
-        .from(schema.memberProfiles)
-        .where(
-          and(eq(schema.memberProfiles.workspaceId, workspaceId), inArray(schema.memberProfiles.userId, ids)),
-        )
-    : [];
-  const rows = ids.length
-    ? await db
-        .select({ member: schema.memberSkills, skill: schema.skills })
-        .from(schema.memberSkills)
-        .innerJoin(schema.skills, eq(schema.memberSkills.skillId, schema.skills.id))
-        .where(and(inArray(schema.memberSkills.userId, ids), ne(schema.memberSkills.source, 'removed')))
-    : [];
+  const chunks = chunkIds(ids);
+  const profiles = (
+    await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .select()
+          .from(schema.memberProfiles)
+          .where(
+            and(
+              eq(schema.memberProfiles.workspaceId, workspaceId),
+              inArray(schema.memberProfiles.userId, chunk),
+            ),
+          ),
+      ),
+    )
+  ).flat();
+  const rows = (
+    await Promise.all(
+      chunks.map((chunk) =>
+        db
+          .select({ member: schema.memberSkills, skill: schema.skills })
+          .from(schema.memberSkills)
+          .innerJoin(schema.skills, eq(schema.memberSkills.skillId, schema.skills.id))
+          .where(and(inArray(schema.memberSkills.userId, chunk), ne(schema.memberSkills.source, 'removed'))),
+      ),
+    )
+  ).flat();
   const skills = await db.select().from(schema.skills);
   const engineMembers: EngineMember[] = ids.map((userId) => {
     const profile = profiles.find((p) => p.userId === userId);
