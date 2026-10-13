@@ -17,10 +17,22 @@ export async function sha256Hex(value: string): Promise<string> {
   return Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Import TOKEN_ENC_KEY (base64 of 32 random bytes; `openssl rand -base64 32`). */
-export async function importEncKey(base64Key: string | undefined): Promise<CryptoKey> {
-  const raw = base64Key ? Uint8Array.from(atob(base64Key), (ch) => ch.charCodeAt(0)) : new Uint8Array();
-  if (raw.length !== 32) throw new HttpError(500, 'misconfigured', 'TOKEN_ENC_KEY must be 32 bytes, base64');
+/**
+ * Import TOKEN_ENC_KEY. Base64 of 32 bytes (`openssl rand -base64 32`) is used as the key directly; any
+ * other secret of 32+ characters (say, a password manager string pasted into the Deploy form) is hashed
+ * to one with SHA-256.
+ */
+export async function importEncKey(secret: string | undefined): Promise<CryptoKey> {
+  let raw = new Uint8Array();
+  try {
+    if (secret) raw = Uint8Array.from(atob(secret), (ch) => ch.charCodeAt(0));
+  } catch {
+    // Not base64; hashed below.
+  }
+  if (raw.length !== 32 && secret && secret.length >= 32)
+    raw = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(secret)));
+  if (raw.length !== 32)
+    throw new HttpError(500, 'misconfigured', 'TOKEN_ENC_KEY must be at least 32 characters');
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 

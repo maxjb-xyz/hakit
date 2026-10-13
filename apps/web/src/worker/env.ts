@@ -13,6 +13,10 @@ export interface Env {
   /** Workers AI: the default LLM and embedding provider. Optional so tests and mock mode run without it. */
   AI?: Ai;
 
+  /**
+   * Public origin. Optional in wrangler vars: `resolveEnv` (lib/instance.ts) fills it from the request origin,
+   * so handlers always see a value.
+   */
   APP_URL: string;
   /** "1" = fixtures + fake auth + mock providers. */
   HAKIT_MOCKS: string;
@@ -35,7 +39,8 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY?: string;
   GEMINI_API_KEY?: string;
   HF_TOKEN?: string;
-  /** E2E only (T-701): enables POST /auth/test-login. Set on preview/local runs, NEVER in production. */
+  /** E2E only (T-701): "1" plus E2E_LOGIN_SECRET enables POST /auth/test-login. NEVER set in production. */
+  E2E_LOGIN_ENABLED?: string;
   E2E_LOGIN_SECRET?: string;
 }
 

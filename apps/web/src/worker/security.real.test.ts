@@ -32,6 +32,8 @@ const GLOBAL: EndpointName[] = [
   'previewInvite',
   'acceptInvite',
   'aiStatus',
+  'setupStatus',
+  'startGithubSetup',
   'installUrl',
   // The caller's own data: their skills and the GitHub repos their own token can see.
   'upsertSkill',
@@ -40,8 +42,8 @@ const GLOBAL: EndpointName[] = [
   'listRepos',
   'createRepo',
 ];
-/** No session needed (app.ts PUBLIC). Logout without a session is a harmless no-op. */
-const PUBLIC: EndpointName[] = ['previewInvite', 'logout'];
+/** No session needed (app.ts PUBLIC). Logout without a session is a harmless no-op; setup has its own key. */
+const PUBLIC: EndpointName[] = ['previewInvite', 'logout', 'setupStatus', 'startGithubSetup'];
 /** Owner-only routes (assertOwner). */
 const OWNER_ONLY: EndpointName[] = ['updateWorkspace'];
 

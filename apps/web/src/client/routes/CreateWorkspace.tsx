@@ -1,6 +1,6 @@
 /**
- * S2 Workspace creation `/new` (DESIGN §8, T-207). Name the team, pick the hackathon template (Knight Hacks IX
- * preselected: it fills the event window, tracks, challenges and judging) or a custom event with its own deadline,
+ * S2 Workspace creation `/new` (DESIGN §8, T-207). Name the team, then set up a custom event with its own deadline
+ * (the default) or pick the seeded hackathon template (it fills the event window, tracks, challenges and judging),
  * then `createWorkspace`. Step two (`?wid=`) is the invite panel, then onboarding for the new workspace.
  * Reached from Onboarding (no workspace yet), the top-bar workspace menu and ⌘K.
  */
@@ -45,7 +45,7 @@ function CreateForm() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [name, setName] = useState('');
-  const [template, setTemplate] = useState<EventKind>('hackathon');
+  const [template, setTemplate] = useState<EventKind>('custom');
   const [startsAt, setStartsAt] = useState('');
   const [deadlineAt, setDeadlineAt] = useState('');
   const [touched, setTouched] = useState(false);

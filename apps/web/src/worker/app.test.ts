@@ -54,6 +54,7 @@ const bodies: Partial<Record<keyof typeof endpoints, unknown>> = {
   mapAuthor: { raw: 'x@example.com', userId: ids.users.jae },
   createAgentToken: { name: 'laptop' },
   linkAgentSession: { taskId: ids.task(8) },
+  startGithubSetup: { setupKey: 'x' },
 };
 const queries: Partial<Record<keyof typeof endpoints, string>> = {
   installUrl: '?workspaceId=' + ids.workspace,

@@ -2,6 +2,7 @@ import { fixtureRepo } from './mock';
 import { GithubAuthError, type GithubService, type GithubTokenSet } from './types';
 import type { Env } from '../../env';
 import { githubDiscovery } from './discovery';
+import { z } from 'zod';
 
 /** Verify the original UTF-8 body with WebCrypto's timing-safe HMAC verification. */
 export async function verifyWebhook(
@@ -25,7 +26,38 @@ export async function verifyWebhook(
   return crypto.subtle.verify('HMAC', key, bytes, encoder.encode(rawBody));
 }
 
-export { GithubAuthError, type GithubService, type GithubTokenSet } from './types';
+export { GithubAuthError, type GithubService, type GithubTokenSet, type ManifestConversion } from './types';
+
+const ConversionResponse = z.object({
+  id: z.number().int().positive(),
+  slug: z.string().min(1),
+  client_id: z.string().min(1),
+  client_secret: z.string().min(1),
+  webhook_secret: z.string().min(1).nullable(),
+  pem: z.string().includes('PRIVATE KEY'),
+  owner: z.object({ login: z.string() }).nullable().optional(),
+});
+
+/** POST /app-manifests/{code}/conversions: unauthenticated, single use, valid for an hour. */
+async function convertManifest(code: string) {
+  const res = await fetch(`https://api.github.com/app-manifests/${encodeURIComponent(code)}/conversions`, {
+    method: 'POST',
+    headers: { ...UA, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+  });
+  if (res.status === 404 || res.status === 422) throw new GithubAuthError('bad_manifest_code');
+  if (!res.ok) throw new Error(`GitHub manifest conversion HTTP ${res.status}`);
+  const j = ConversionResponse.parse(await res.json());
+  if (!j.webhook_secret) throw new Error('GitHub manifest conversion: no webhook secret');
+  return {
+    id: j.id,
+    slug: j.slug,
+    clientId: j.client_id,
+    clientSecret: j.client_secret,
+    webhookSecret: j.webhook_secret,
+    pem: j.pem,
+    ownerLogin: j.owner?.login ?? null,
+  };
+}
 
 const UA = { 'user-agent': 'hakit', accept: 'application/json' };
 
@@ -86,6 +118,7 @@ export function githubService(env: Env): GithubService {
     },
     ...githubDiscovery(),
     verifyWebhook: (raw, signature) => verifyWebhook(env.GITHUB_WEBHOOK_SECRET, raw, signature),
+    convertManifest,
   };
 }
 
@@ -116,4 +149,7 @@ export const mockGithub: GithubService = {
   listInstallationRepos: async () => [fixtureRepo],
   userHasInstallation: async () => true,
   verifyWebhook: async () => true,
+  convertManifest: async () => {
+    throw new Error('GitHub App setup is not available in mock mode');
+  },
 };

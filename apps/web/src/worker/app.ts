@@ -17,10 +17,17 @@ import { execution } from './routes/execution';
 import { agents } from './routes/agents';
 import { agentIngest } from './routes/agent-ingest';
 import { realtime } from './routes/realtime';
+import { setup } from './routes/setup';
 import { githubWebhook } from './webhooks/github';
 
 /** Routes that don't need a signed-in user. Everything else under /api/v1 does. */
-const PUBLIC = [/^\/health(\/deep)?$/, /^\/auth\//, /^\/invites\/[^/]+$/, /^\/agent\/events$/];
+const PUBLIC = [
+  /^\/health(\/deep)?$/,
+  /^\/auth\//,
+  /^\/setup(\/github(\/callback)?)?$/,
+  /^\/invites\/[^/]+$/,
+  /^\/agent\/events$/,
+];
 
 export function createApp(opts: BaseOptions = {}) {
   const app = new Hono<AppEnv>();
@@ -73,6 +80,7 @@ export function createApp(opts: BaseOptions = {}) {
     agents,
     agentIngest,
     realtime,
+    setup,
   ]) {
     api.route('/', r);
   }

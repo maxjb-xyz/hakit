@@ -6,20 +6,35 @@
 nvm use            # Node 22+
 corepack enable    # pnpm 10
 pnpm install
-cp apps/web/.dev.vars.example apps/web/.dev.vars   # HAKIT_MOCKS=1 by default
-pnpm dev           # http://localhost:5173
+pnpm dev           # http://localhost:5173, mock mode
 ```
 
-You land on Mission Control with fixture data and a live WebSocket. Useful URLs:
+`pnpm dev` runs in mock mode: fixture data, a fake signed-in user, and mock AI and GitHub. You land on Mission Control with a live WebSocket. Useful URLs:
 - `/_ui` component gallery
 - `/api/v1/health/deep` health checks
 - `/login` sign-in screen
 
-Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
+Local settings and secrets go in `.dev.vars` at the repo root (copy `.dev.vars.example`; it's gitignored). Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 
-## 2. Database: Cloudflare D1
+## 2. Deploy your own
 
-Hakit stores everything in one D1 database, bound as `DB` in `apps/web/wrangler.jsonc`. Migrations live in `packages/db/migrations`; the last one seeds the skills taxonomy and event templates.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/maxjb-xyz/hakit)
+
+1. Click the button. Cloudflare copies the repo to your GitHub account and creates the Worker, the D1 database, the queues and the Durable Object, with Workers AI bound. Every deploy applies pending D1 migrations first.
+2. When it asks for `SESSION_SECRET` and `TOKEN_ENC_KEY`, give each a different random string of 32 or more characters (`openssl rand -base64 32` works). Keep `SESSION_SECRET` handy for step 4.
+3. Open the Worker's URL and choose **Continue with GitHub**. A fresh instance has no GitHub App yet, so this takes you to `/setup`.
+4. Paste `SESSION_SECRET` as the setup key (it proves you deployed this instance), optionally name a GitHub organization to own the App, and choose **Create GitHub App**. GitHub shows the App it's about to create, pointed at your URL; confirm it.
+5. Back on `/setup`, continue to sign in, create your workspace, and install the App on your repos from the workspace when Hakit asks.
+
+The App's credentials are stored in D1, encrypted with `TOKEN_ENC_KEY`. To start GitHub setup over, delete them and redeploy: `npx wrangler d1 execute hakit --remote --command "delete from instance_settings where key = 'github_app'"`. Changing `TOKEN_ENC_KEY` also makes `/setup` available again, and signs everyone out of GitHub.
+
+The public URL is the origin requests arrive on. If the Worker sits behind another hostname or proxy, set `APP_URL` in `wrangler.jsonc` `vars`.
+
+**Updates:** pull upstream changes into your copy of the repo; Cloudflare redeploys and migrates on push.
+
+## 3. Database: Cloudflare D1
+
+Hakit stores everything in one D1 database, bound as `DB` in `wrangler.jsonc` (repo root). Migrations live in `packages/db/migrations`; `0002_seed.sql` seeds the skills taxonomy and event templates.
 
 **Local real mode:** set `HAKIT_MOCKS=0` in `.dev.vars`, then create the local database:
 
@@ -28,57 +43,30 @@ pnpm db:migrate    # wrangler d1 migrations apply DB --local
 pnpm dev
 ```
 
-The local database lives in `apps/web/.wrangler/state`; delete that folder to start over. Tests never use it: they run on an in-memory D1 (`@hakit/db/testing`).
+The local database lives in `apps/web/.wrangler/state`; delete that folder to start over. Real mode calls your account's Workers AI, so run `npx wrangler login` first. GitHub sign-in works locally too: open `http://localhost:5173/setup` (put a 32+ character `SESSION_SECRET` and `TOKEN_ENC_KEY` in `.dev.vars` first). Tests never use the local database: they run on an in-memory D1 (`@hakit/db/testing`).
 
 **Schema changes:** edit `packages/db/src/schema.ts`, run `pnpm db:generate`, then `pnpm db:migrate`.
 
-## 3. Cloudflare
+## 4. Manual deploy
 
-Run every `wrangler` command from `apps/web`.
+Without the button, from the repo root:
 
 1. `npx wrangler login`
-2. Create the database and paste the printed `database_id` over the `000…0` in `wrangler.jsonc`:
+2. Create the database and queues. Wrangler finds the database by its name, `hakit`, so there's no ID to copy.
    ```bash
    npx wrangler d1 create hakit
-   ```
-3. Create the queues:
-   ```bash
    npx wrangler queues create hakit-jobs
    npx wrangler queues create hakit-dlq
    ```
-4. `pnpm deploy` applies pending D1 migrations to the remote database, builds and deploys. Note the `https://hakit.<you>.workers.dev` URL, set it as `vars.APP_URL` in `wrangler.jsonc`, and deploy again.
-5. Secrets: `npx wrangler secret put <NAME>` for `SESSION_SECRET` and `TOKEN_ENC_KEY` (each `openssl rand -base64 32`), then the GitHub values from §4. Workers AI needs no key (§5). Missing secrets only turn their `/api/v1/health/deep` items red.
-6. CI deploys: Cloudflare API token with Workers Scripts, D1, Queues and Workers AI edit permissions; GitHub repo → Environments → `production`; Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; Actions variable `DEPLOY_ENABLED=true`.
+3. `pnpm run deploy` applies pending D1 migrations to the remote database, builds and deploys. (Plain `pnpm deploy` is a different, built-in pnpm command.)
+4. Secrets: `npx wrangler secret put SESSION_SECRET` and `npx wrangler secret put TOKEN_ENC_KEY` (32+ random characters each). Then follow steps 3 to 5 of §2.
+5. CI deploys: Cloudflare API token with Workers Scripts, D1, Queues and Workers AI edit permissions; GitHub repo → Environments → `production`; Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; Actions variable `DEPLOY_ENABLED=true`.
 
-**Plan:** Workers Free. Upgrade to Paid ($5) only if you hit the CPU, subrequest or queue limits (RISKS D-2).
+## 5. GitHub App
 
-## 4. GitHub Apps
+`/setup` (§2) creates the App for you. It's public (invite links need that: "Only on this account" makes GitHub 404 the sign-in page for everyone but the owner), reads Contents, Metadata and Pull requests, reads members' email addresses, and subscribes to Create, Delete, Pull request, Pull request review, Push and Repository events. Locally the webhook is created inactive, since GitHub can't reach localhost.
 
-- **Hakit Dev**: local sign-in only. Webhooks **off**. Local webhook work replays signed fixtures (below). No tunnels.
-- **Hakit**: production. Webhooks go to the deployed worker.
-
-GitHub → Settings → Developer settings → GitHub Apps → **New GitHub App**:
-
-| Field | Hakit Dev | Hakit |
-|---|---|---|
-| Homepage URL | `http://localhost:5173` | `https://<prod-host>` |
-| Callback URL | `http://localhost:5173/api/v1/auth/github/callback` | `https://<prod-host>/api/v1/auth/github/callback` |
-| Expire user authorization tokens | ✅ | ✅ |
-| Request user authorization during installation | ❌ | ❌ |
-| Setup URL (+ Redirect on update ✅) | `http://localhost:5173/api/v1/auth/github/setup` | `https://<prod-host>/api/v1/auth/github/setup` |
-| Webhook | Active ❌ | Active ✅, URL `https://<prod-host>/webhooks/github`, secret `openssl rand -hex 32` |
-| Where can it be installed | Any account | **Any account** (public). "Only on this account" makes GitHub 404 the sign-in page for everyone except the owner, so invite links break. |
-
-**Permissions:** Repository: Contents, Metadata, Pull requests (all read). Account: Email addresses (read).
-**Events** (Hakit): Create, Delete, Pull request, Pull request review, Push, Repository.
-
-For each app: note the App ID, Client ID and slug; generate a client secret (shown once); generate a private key and convert it to PKCS#8:
-```bash
-openssl pkcs8 -topk8 -nocrypt -in <downloaded>.pem -out <name>.pkcs8.pem
-```
-
-- **Hakit values → production:** `npx wrangler secret put` for `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, and `npx wrangler secret put GITHUB_APP_PRIVATE_KEY < hakit.pkcs8.pem`.
-- **Hakit Dev values → `apps/web/.dev.vars`.** Keep `APP_URL=http://localhost:5173`. Put the key on one line: `awk '{printf "%s\\n", $0}' hakit-dev.pkcs8.pem`. Pick any `GITHUB_WEBHOOK_SECRET` for fixture signing.
+To use an App you made by hand instead, create one with those settings, callback URL `<url>/api/v1/auth/github/callback`, setup URL `<url>/api/v1/auth/github/setup` (redirect on update on), webhook URL `<url>/webhooks/github` and "Expire user authorization tokens" on. Then set `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET` and `GITHUB_APP_PRIVATE_KEY` as secrets (or in `.dev.vars`, with the key on one line: `awk '{printf "%s\\n", $0}' key.pem`). The key can stay in the format GitHub downloads. Values set this way take precedence over `/setup`.
 
 **Local webhooks:** copy real payloads from the Hakit app's Advanced → Recent Deliveries into fixtures and replay them:
 ```bash
@@ -88,7 +76,7 @@ curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application
   --data-binary @push.json
 ```
 
-## 5. AI providers
+## 6. AI providers
 
 Hakit uses **Workers AI** through the `AI` binding in `wrangler.jsonc`: `AI_MODEL_PLAN` / `AI_MODEL_FAST` for plans, ideas and explanations, and `@cf/qwen/qwen3-embedding-0.6b` for embeddings. No key or secret is needed; usage is billed to the Cloudflare account (the free plan includes a daily allowance). In local real mode the binding calls your account, so run `npx wrangler login` first. Mock mode never calls it.
 
@@ -99,8 +87,22 @@ Optional fallbacks, used only when set. The router tries Workers AI first.
 | Gemini | https://aistudio.google.com → API key. Model IDs default to `gemini-flash-latest` / `gemini-flash-lite-latest` (override with `GEMINI_MODEL_PLAN` / `GEMINI_MODEL_FAST`) | `GEMINI_API_KEY` |
 | Hugging Face | Token with "Inference Providers" permission. Serves the same `Qwen/Qwen3-Embedding-0.6B` model, so vectors stay compatible | `HF_TOKEN` |
 
-Live checks outside the worker (`pnpm --filter @hakit/web check:llm`, `eval:planning`, `check:embeddings`) call Workers AI over REST when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token with Workers AI read and edit) are in `apps/web/.dev.vars`, and otherwise fall back to the Gemini or Hugging Face keys.
+Live checks outside the worker (`pnpm --filter @hakit/web check:llm`, `eval:planning`, `check:embeddings`) call Workers AI over REST when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (a token with Workers AI read and edit) are in `.dev.vars`, and otherwise fall back to the Gemini or Hugging Face keys.
 
-## 6. Branch protection
+## 7. What the free plan covers
+
+Hakit runs on the Workers Free plan for a small team. The limits that matter:
+
+| Resource | Free plan | What uses it |
+|---|---|---|
+| Workers | 100,000 requests/day, 10 ms CPU per request | API, WebSockets, webhooks. Large boards can approach the CPU limit when solving assignments. |
+| Queues | 10,000 operations/day | Recommendation checks every 2 minutes per active project, embeddings, GitHub backfill, agent events. About three active projects fit (each check costs about 3 operations). |
+| D1 | 5M rows read and 100,000 written per day, 5 GB | Everything. |
+| Workers AI | 10,000 neurons/day | Ideas, plans, explanations, embeddings. Roughly 15 plan generations a day plus the small calls (estimated from Llama 4 Scout pricing). |
+| Durable Objects | SQLite-backed, 100,000 requests/day | Live project rooms. |
+
+Workers Paid ($5/month) lifts all of these well past what a hackathon needs; switch if `/api/v1/health/deep` or the dashboard shows errors from limits.
+
+## 8. Branch protection
 
 On `main`, require pull requests and passing status checks (the `ci` workflow), and disallow force pushes.

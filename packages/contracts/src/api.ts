@@ -48,6 +48,7 @@ import { MissionControlSnapshot } from './mission-control';
 import { AcceptRecommendation, DismissRecommendation, Recommendation } from './recommendations';
 import { AgentSession, AgentTokenCreated, AgentTokenSummary, CreateAgentToken, LinkSession } from './agents';
 import { AiProviderStatus } from './ai';
+import { GithubManifestForm, SetupStatus, StartGithubSetup } from './setup';
 
 /**
  * THE API CONTRACT. Every `/api/v1` JSON endpoint is declared here exactly once.
@@ -354,6 +355,16 @@ export const endpoints = {
     body: LinkSession,
     response: AgentSession,
     owner: 'GH',
+  },
+
+  // First-run setup (PL). Public until the GitHub App exists; see routes/setup.ts.
+  setupStatus: { method: 'GET', path: '/setup', response: SetupStatus, owner: 'PL' },
+  startGithubSetup: {
+    method: 'POST',
+    path: '/setup/github',
+    body: StartGithubSetup,
+    response: GithubManifestForm,
+    owner: 'PL',
   },
 
   // Ops

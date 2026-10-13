@@ -18,7 +18,7 @@ Local setup, accounts and secrets: `docs/SETUP.md`.
 
 ## Mock mode (default for local dev)
 
-`apps/web/.dev.vars` with `HAKIT_MOCKS=1` gives you:
+`pnpm dev` runs in mock mode (set `HAKIT_MOCKS=0` in the repo-root `.dev.vars` to turn it off), which gives you:
 - fixture responses from every endpoint (`packages/contracts/src/fixtures`)
 - a fake signed-in user (Priya, workspace owner)
 - mock LLM, embedding and GitHub providers

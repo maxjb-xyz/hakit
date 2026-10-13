@@ -1,6 +1,6 @@
 /**
- * T-207 · S2 in the browser (mock mode): create a workspace from the Knight Hacks template, make an invite link with
- * an expiry and a use limit, and reach the same panel from Team and Settings.
+ * T-207 · S2 in the browser (mock mode): create a workspace (custom event by default, or the seeded Knight Hacks
+ * template), make an invite link with an expiry and a use limit, and reach the same panel from Team and Settings.
  */
 import { expect, test } from '@playwright/test';
 import { ids } from '@hakit/contracts/fixtures';
@@ -11,14 +11,13 @@ test.skip(REAL, 'Runs against mock-mode fixtures');
 test('create a workspace, then invite the team', async ({ page }) => {
   await page.goto('/new');
   await expect(page.getByRole('heading', { level: 1, name: 'Create a workspace' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: /Knight Hacks IX/ })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /Custom event/ })).toBeChecked();
 
   // Validation before anything is sent.
   await page.getByRole('button', { name: 'Create workspace' }).click();
   await expect(page.getByText('Give your team a name.')).toBeVisible();
 
   // Custom events need a deadline.
-  await page.getByRole('radio', { name: /Custom event/ }).check();
   await expect(page.getByLabel('Submission deadline')).toBeVisible();
   await page.getByRole('radio', { name: /Knight Hacks IX/ }).check();
 

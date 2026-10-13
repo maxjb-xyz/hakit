@@ -17,7 +17,7 @@ import {
 
 /**
  * Real mode: E2E_LOGIN_SECRET set → sign in through POST /auth/test-login against a real-mode server (preview, or
- * local with a database). Mock mode (default): the local `vite dev` server with HAKIT_MOCKS=1 serves fixtures.
+ * local with a database) that has E2E_LOGIN_ENABLED=1 and the same secret. Mock mode (default): the local `vite dev` server with HAKIT_MOCKS=1 serves fixtures.
  */
 export const REAL = !!process.env.E2E_LOGIN_SECRET;
 

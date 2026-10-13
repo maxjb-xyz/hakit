@@ -16,8 +16,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @hakit/db generate",
-    "db:migrate": "pnpm --filter @hakit/web exec wrangler d1 migrations apply DB --local --config wrangler.jsonc",
-    "deploy": "pnpm --filter @hakit/web deploy"
+    "db:migrate": "pnpm --filter @hakit/web exec wrangler d1 migrations apply DB --local --config ../../wrangler.jsonc --persist-to .wrangler/state",
+    "deploy": "pnpm --filter @hakit/web run deploy"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
@@ -29,5 +29,15 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.71.0",
     "vitest": "^4.1.11"
+  },
+  "cloudflare": {
+    "bindings": {
+      "SESSION_SECRET": {
+        "description": "Signs sessions and proves you own this instance at `/setup`. Any random string of 32+ characters (e.g. `openssl rand -base64 32`). Keep a copy: you paste it once at `/setup`."
+      },
+      "TOKEN_ENC_KEY": {
+        "description": "Encrypts GitHub tokens and the GitHub App credentials stored in D1. Any random string of 32+ characters, different from SESSION_SECRET. Keep it stable: changing it means setting up GitHub again."
+      }
+    }
   }
 }
