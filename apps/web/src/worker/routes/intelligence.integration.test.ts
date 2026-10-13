@@ -106,7 +106,7 @@ it('persists the prompt hash and serves a second version through the real route 
   expect(rows[1]!.payload).toEqual(first.payload);
   expect(events.some((e) => e.type === 'validation')).toBe(true);
   // A changed model must generate again rather than use the previous model's result.
-  h.env.GEMINI_MODEL_PLAN = 'another-model';
+  h.env.AI_MODEL_PLAN = 'another-model';
   await requestPlan();
   expect(generate).toHaveBeenCalled();
 });

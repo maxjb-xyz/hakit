@@ -15,9 +15,15 @@ GITHUB_CLIENT_SECRET=
 GITHUB_WEBHOOK_SECRET=
 GITHUB_APP_PRIVATE_KEY=
 
-# AI providers: Gemini (planning and prose) and Hugging Face (embeddings). Nothing else.
-GEMINI_API_KEY=
-HF_TOKEN=
+# AI runs on Workers AI through the AI binding in wrangler.jsonc; no key needed. Real mode locally
+# calls your Cloudflare account (`wrangler login`). Optional fallbacks, used only when set:
+# GEMINI_API_KEY=
+# HF_TOKEN=
+
+# Live checks and evals outside the worker (check:llm, eval:planning, check:embeddings) call Workers AI
+# over REST with these. Token needs Workers AI read + edit.
+# CLOUDFLARE_ACCOUNT_ID=
+# CLOUDFLARE_API_TOKEN=
 
 # E2E only (T-701): enables POST /api/v1/auth/test-login. Never set in production.
 # E2E_LOGIN_SECRET=

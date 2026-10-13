@@ -42,8 +42,8 @@ export async function createHarness(services: Partial<Services> = {}) {
     TOKEN_ENC_KEY,
     EMBED_DIM: '1024',
     EMBED_MODEL: 'x',
-    GEMINI_MODEL_PLAN: 'x',
-    GEMINI_MODEL_FAST: 'x',
+    AI_MODEL_PLAN: 'x',
+    AI_MODEL_FAST: 'x',
     JOBS: jobs,
     PROJECT_ROOM: {
       idFromName: (n: string) => n,
