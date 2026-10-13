@@ -4,7 +4,7 @@
 
 Status: **Planning draft v1 — awaiting approval.** Nothing in this document is implemented yet.
 
-Related: [COMPETITIVE](./COMPETITIVE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [DESIGN](./DESIGN.md) · [AI](./AI.md) · [INTEGRATIONS](./INTEGRATIONS.md) · [PHASES](./PHASES.md) · [TASKS](./TASKS.md) · [HACKATHON](./HACKATHON.md) · [RISKS](./RISKS.md)
+Related: [ARCHITECTURE](./ARCHITECTURE.md) · [DESIGN](./DESIGN.md) · [AI](./AI.md) · [INTEGRATIONS](./INTEGRATIONS.md) · [SETUP](./SETUP.md). Hackathon-era planning (competitive analysis, phases, tasks, risks) is in [archive](./archive/).
 
 ---
 

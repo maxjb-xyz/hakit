@@ -17,7 +17,7 @@ You land on Mission Control with fixture data and a live WebSocket. Useful URLs:
 
 Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 
-## 2. Shared dev database: Tiger Cloud (PL owner does this once)
+## 2. Database: Tiger Cloud
 
 1. Create a **free** service at https://console.cloud.timescale.com. Copy the **direct service URL**: database `tsdb`, `sslmode=require`. Don't use the transaction pooler (`tsdb_transaction`).
 2. Write `packages/db/.env` (gitignored):
@@ -29,7 +29,7 @@ Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 3. Run `pnpm db:migrate && pnpm db:seed`.
 4. Check that `drizzle/0002_timescale.sql` applied cleanly: `select * from timescaledb_information.hypertables;` should list `activity_events`, and `timescaledb_information.continuous_aggregates` should list `activity_hourly`.
 5. Share the URL with the team **privately**: a password manager or DM, never the repo or chat logs.
-6. Optional, later: fork the service as a demo snapshot (HACKATHON C5).
+6. Optional, later: fork the service as a demo snapshot (see docs/archive/HACKATHON.md, C5).
 
 **Each developer:** to run against the real database instead of mocks, set `HAKIT_MOCKS=0` in `.dev.vars` and export:
 
@@ -37,7 +37,7 @@ Before pushing, run `pnpm typecheck && pnpm lint && pnpm test`.
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://…tiger dev URL…"
 ```
 
-## 3. Cloudflare (PL owner)
+## 3. Cloudflare
 
 One worker (`hakit`), one database (the Tiger dev service from §2). Run every `wrangler` command from `apps/web`.
 
@@ -57,7 +57,7 @@ One worker (`hakit`), one database (the Tiger dev service from §2). Run every `
 
 **Plan:** Workers Free. Upgrade to Paid ($5) only if you hit the CPU, subrequest or queue limits (RISKS D-2).
 
-## 4. GitHub Apps (GH owner)
+## 4. GitHub Apps
 
 - **Hakit Dev**: local sign-in only. Webhooks **off**. Local webhook work replays signed fixtures (below). No tunnels.
 - **Hakit**: production. Webhooks go to the deployed worker.
@@ -93,13 +93,13 @@ curl -X POST http://localhost:5173/webhooks/github -H "Content-Type: application
   --data-binary @push.json
 ```
 
-## 5. AI providers (IN owner)
+## 5. AI providers
 
 | Provider | Steps | Secret |
 |---|---|---|
 | Gemini | https://aistudio.google.com → API key. Enable billing with a spend cap (D-6). Confirm the model IDs behind `gemini-flash-latest` / Flash-Lite | `GEMINI_API_KEY` |
 | Hugging Face | Token with "Inference Providers" permission. PRO or prepaid credits needed (D-5). Check `Qwen/Qwen3-Embedding-0.6B` availability on the router | `HF_TOKEN` |
 
-## 6. Branch protection (owner)
+## 6. Branch protection
 
 On `main`, require pull requests and passing status checks (the `ci` workflow), and disallow force pushes.

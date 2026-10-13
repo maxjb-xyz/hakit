@@ -1,6 +1,6 @@
 # Hakit — Intelligence Architecture
 
-Status: **Planning draft v1.**
+Status: **Reference.** Written as the hackathon plan and kept as the description of the system; where it and the code disagree, the code wins.
 
 Hakit's AI has three separate responsibilities. Each one keeps **model recommendations** apart from **deterministic decisions**:
 

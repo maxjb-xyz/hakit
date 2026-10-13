@@ -1,5 +1,5 @@
 /**
- * T-705 demo workspace seed for REAL mode (docs/DEMO.md). Run it only against a Tiger fork of the
+ * T-705 demo workspace seed for REAL mode (docs/archive/DEMO.md). Run it only against a Tiger fork of the
  * dev service (see cli.ts), never the shared dev database.
  *
  * The client still addresses the fixture workspace/project ids (`@hakit/contracts/fixtures` `ids`),

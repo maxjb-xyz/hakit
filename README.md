@@ -43,19 +43,21 @@ pnpm typecheck && pnpm lint && pnpm test
 
 Mock mode needs no accounts. For real GitHub, Gemini and database setup see [`docs/SETUP.md`](docs/SETUP.md).
 
-Start with [`CLAUDE.md`](./CLAUDE.md) (conventions and ownership) and [`docs/SETUP.md`](./docs/SETUP.md) (accounts and secrets).
+## Docs
 
-| Doc                                  | Contents                                                                |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| [PRODUCT](docs/PRODUCT.md)           | Requirements, journeys, priorities, differentiators                     |
-| [COMPETITIVE](docs/COMPETITIVE.md)   | Hackord and adjacent tools, positioning                                 |
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | Cloudflare architecture, data model, API, real-time, jobs, security     |
-| [DESIGN](docs/DESIGN.md)             | Brand, tokens, components, screen specs, accessibility                  |
-| [AI](docs/AI.md)                     | Capability, planning, assignment and adaptive engines; model strategy   |
-| [INTEGRATIONS](docs/INTEGRATIONS.md) | GitHub, Hugging Face, Gemini, TigerData, agents, Figma, ElevenLabs |
-| [PHASES](docs/PHASES.md)             | Phased plan and post-hackathon roadmap                                  |
-| [TASKS](docs/TASKS.md)               | Executable tasks with acceptance criteria                               |
-| [HACKATHON](docs/HACKATHON.md)       | 36-hour schedule, checkpoints, demo script, fallbacks                   |
-| [RISKS](docs/RISKS.md)               | Risks, mitigations, decisions awaiting approval                         |
-| [DEMO](docs/DEMO.md)                 | Demo click-path, real-mode seed/swap/stall, fallbacks                   |
-| [SUBMISSION](docs/SUBMISSION.md)     | Devpost write-up, built-with, capture checklist                         |
+Contributors start with [`CLAUDE.md`](./CLAUDE.md) (conventions and code rules) and [`docs/SETUP.md`](./docs/SETUP.md) (accounts and secrets).
+
+| Doc                                  | Contents                                                            |
+| ------------------------------------ | ------------------------------------------------------------------- |
+| [PRODUCT](docs/PRODUCT.md)           | Requirements, journeys, priorities, differentiators                 |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | Cloudflare architecture, data model, API, real-time, jobs, security |
+| [DESIGN](docs/DESIGN.md)             | Brand, tokens, components, screen specs, accessibility              |
+| [AI](docs/AI.md)                     | Capability, planning, assignment and adaptive engines               |
+| [INTEGRATIONS](docs/INTEGRATIONS.md) | GitHub, AI providers, database, agents                              |
+| [SETUP](docs/SETUP.md)               | Local development, accounts, secrets, deployment                    |
+
+Hakit was built at Knight Hacks IX. The hackathon plans, task list and verification notes are kept in [`docs/archive`](docs/archive).
+
+## License
+
+[AGPL-3.0](./LICENSE). If you run a modified Hakit as a service, you must publish your changes.

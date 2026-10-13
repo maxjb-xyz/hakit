@@ -1,6 +1,6 @@
 # Hakit — Integrations
 
-Status: **Planning draft v1.** Research date 2026-10-10. Confidence tags: **[confirmed]** comes from official source or docs, **[secondary]** comes from search summaries, **[verify]** must be checked in Phase 0.
+Status: **Reference.** Written as the hackathon plan and kept as the description of the system; where it and the code disagree, the code wins. Research date 2026-10-10. Confidence tags: **[confirmed]** comes from official source or docs, **[secondary]** comes from search summaries, **[verify]** was unconfirmed at the time.
 
 ## 0. Knight Hacks IX: what's actually confirmed
 

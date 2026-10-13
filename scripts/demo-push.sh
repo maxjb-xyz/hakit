@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T-705 demo kit: scripted commits on an hk-* branch of the DEMO repository (docs/DEMO.md §4).
+# T-705 demo kit: scripted commits on an hk-* branch of the DEMO repository (docs/archive/DEMO.md §4).
 # Run it in a local clone of the demo project's GitHub repo, never in the Hakit repo itself.
 #
 #   scripts/demo-push.sh <path-to-demo-repo-clone> <HK-number> [slug] [commits]
